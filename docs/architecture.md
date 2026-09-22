@@ -171,6 +171,15 @@ Expected v1 state includes:
 
 Configuration is not stored in the state directory.
 
+## Configuration
+
+Configuration is loaded from one YAML document at startup. Unknown fields,
+duplicate provider IDs, malformed listener addresses, invalid provider URLs,
+and unsupported provider types cause loading to fail. The currently
+implemented schema supports the server listener, state directory, and the
+common fields required for Ollama providers. Configuration for later
+providers and subsystems is intentionally rejected until implemented.
+
 ## Security Invariants
 
 - Provider credentials are bound to provider endpoints.

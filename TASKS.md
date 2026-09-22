@@ -8,6 +8,25 @@ No task is currently in progress.
 
 ## DONE
 
+### TASK-002 — YAML configuration loader
+
+Goal:
+Load and validate the initial gateway configuration.
+
+Completed:
+- added strict single-document YAML decoding with unknown-field rejection
+- added file-based configuration loading
+- validated listener and state settings plus the minimal Ollama provider schema
+- validated provider IDs, uniqueness, supported type, and HTTP(S) base URLs
+- added focused loader and validation tests
+
+Decisions:
+- used `gopkg.in/yaml.v3`, because the Go standard library has no YAML decoder
+- intentionally reject configuration for providers and subsystems that are not
+  implemented yet
+
+---
+
 ### TASK-001 — Bootstrap Go project
 
 Goal:
@@ -35,18 +54,6 @@ Completed:
 ---
 
 ## TODO
-
-### TASK-002 — YAML configuration loader
-
-Implement:
-- YAML config loading
-- strict unknown-field rejection
-- configuration validation
-
-Do not yet implement provider-specific configuration beyond the minimum
-structures needed for Ollama.
-
----
 
 ### TASK-003 — Secret references
 

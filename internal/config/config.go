@@ -27,7 +27,14 @@ type Config struct {
 
 // ServerConfig controls the gateway listener.
 type ServerConfig struct {
-	Listen string `yaml:"listen"`
+	Listen         string                      `yaml:"listen"`
+	Authentication *ServerAuthenticationConfig `yaml:"authentication,omitempty"`
+}
+
+// ServerAuthenticationConfig identifies the secret used to authenticate
+// clients. Authentication enforcement is implemented separately.
+type ServerAuthenticationConfig struct {
+	APIKey SecretRef `yaml:"api_key"`
 }
 
 // StateConfig identifies the directory used for persistent gateway state.
@@ -97,6 +104,11 @@ func (c Config) Validate() error {
 	}
 	if _, _, err := net.SplitHostPort(c.Server.Listen); err != nil {
 		return fmt.Errorf("server.listen must be a host:port address: %w", err)
+	}
+	if c.Server.Authentication != nil {
+		if err := c.Server.Authentication.APIKey.Validate(); err != nil {
+			return fmt.Errorf("server.authentication.api_key: %w", err)
+		}
 	}
 	if strings.TrimSpace(c.State.Directory) == "" {
 		return errors.New("state.directory is required")

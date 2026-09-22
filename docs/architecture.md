@@ -176,9 +176,11 @@ Configuration is not stored in the state directory.
 Configuration is loaded from one YAML document at startup. Unknown fields,
 duplicate provider IDs, malformed listener addresses, invalid provider URLs,
 and unsupported provider types cause loading to fail. The currently
-implemented schema supports the server listener, state directory, and the
-common fields required for Ollama providers. Configuration for later
-providers and subsystems is intentionally rejected until implemented.
+implemented schema supports the server listener and optional API-key secret
+reference, state directory, and the common fields required for Ollama
+providers. Secret references select exactly one environment variable or file;
+file values are trimmed of surrounding whitespace when resolved. Configuration
+for later providers and subsystems is intentionally rejected until implemented.
 
 ## Security Invariants
 

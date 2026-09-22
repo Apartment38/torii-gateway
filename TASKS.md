@@ -8,6 +8,15 @@ No task is currently in progress.
 
 ## DONE
 
+### Continuous integration workflow
+
+Added a minimal GitHub Actions workflow for pushes to `main` and pull requests
+targeting `main`. CI verifies formatting and module tidiness, runs `go vet`, the
+standard and race-enabled test suites, and builds all packages using the Go
+version declared in `go.mod`.
+
+---
+
 ### Documentation workflow clarification
 
 Clarified that documentation updates are required for durable changes to

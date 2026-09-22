@@ -1,3 +1,3 @@
 module github.com/Apartment38/torii-router
 
-go 1.27.1
+go 1.25.1

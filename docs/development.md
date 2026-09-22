@@ -46,6 +46,10 @@ Run only the secret-reference tests while working on secret loading:
 
     go test ./internal/config -run SecretRef
 
+Run the gateway authentication tests while working on client authentication:
+
+    go test ./internal/api
+
 ## Format
 
     gofmt -w .

@@ -8,6 +8,26 @@ No task is currently in progress.
 
 ## DONE
 
+### TASK-004 — Gateway bearer authentication
+
+Goal:
+Protect gateway API handlers with the configured bearer API key.
+
+Completed:
+- added the extensible client authenticator and identity contracts
+- added static `Authorization: Bearer` authentication for the v1 API key
+- compared fixed-size API-key digests in constant time
+- added OpenAI-style JSON authentication errors and bearer challenges
+- added focused middleware, credential rejection, and identity tests
+
+Decisions:
+- all missing, malformed, duplicate, and invalid credentials return the same
+  response to avoid exposing authentication details
+- store and compare SHA-256 digests so comparisons remain fixed-length even
+  when a presented credential has a different length
+
+---
+
 ### TASK-003 — Secret references
 
 Goal:
@@ -75,15 +95,6 @@ Completed:
 ---
 
 ## TODO
-
-### TASK-004 — Gateway bearer authentication
-
-Implement:
-- Authorization: Bearer
-- constant-time comparison
-- OpenAI-style unauthorized response
-
----
 
 ### TASK-005 — Provider/model ID parsing
 

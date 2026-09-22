@@ -56,7 +56,11 @@ Before finishing:
 1. Run relevant tests.
 2. Run `go test ./...` when practical.
 3. Update TASKS.md.
-4. Update documentation if behavior changed.
+4. Update documentation when the task changes architecture, public behavior,
+   configuration, developer workflow, significant design decisions, or another
+   durable project convention. Do not add narrow task-specific test commands to
+   `docs/development.md` unless they are useful as a reusable development
+   procedure.
 5. Leave the repository in a buildable, resumable state.
 6. Make one focused commit if Git commits are permitted.
 

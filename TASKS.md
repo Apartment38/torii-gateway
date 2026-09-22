@@ -8,6 +8,16 @@ No task is currently in progress.
 
 ## DONE
 
+### Documentation workflow clarification
+
+Clarified that documentation updates are required for durable changes to
+architecture, public behavior, configuration, developer workflow, and
+significant design decisions. Narrow task-specific test commands no longer need
+to be added to `docs/development.md` unless they are reusable development
+procedures.
+
+---
+
 ### TASK-005 — Provider/model ID parsing
 
 Goal:

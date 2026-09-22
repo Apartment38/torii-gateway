@@ -42,6 +42,10 @@ Run the configuration loader tests while working on configuration:
 
     go test ./internal/config
 
+Run only the secret-reference tests while working on secret loading:
+
+    go test ./internal/config -run SecretRef
+
 ## Format
 
     gofmt -w .
@@ -65,6 +69,23 @@ Secrets should be supplied through:
 
 - environment variables
 - files
+
+Secret references use exactly one source:
+
+    server:
+      authentication:
+        api_key:
+          env: GATEWAY_API_KEY
+
+or:
+
+    server:
+      authentication:
+        api_key:
+          file: /run/secrets/gateway-api-key
+
+File-backed secret values are trimmed of surrounding whitespace when loaded.
+Environment-backed values are used unchanged.
 
 ## Running Locally
 

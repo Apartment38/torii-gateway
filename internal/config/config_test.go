@@ -40,6 +40,34 @@ func TestLoadConfiguration(t *testing.T) {
 	}
 }
 
+func TestDecodeServerAuthenticationSecret(t *testing.T) {
+	input := strings.Replace(validConfig, "state:\n", `  authentication:
+    api_key:
+      env: GATEWAY_API_KEY
+state:
+`, 1)
+	cfg, err := config.Decode(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if got := cfg.Server.Authentication.APIKey.Env; got != "GATEWAY_API_KEY" {
+		t.Fatalf("API key environment variable = %q, want %q", got, "GATEWAY_API_KEY")
+	}
+}
+
+func TestDecodeRejectsInvalidServerAuthenticationSecret(t *testing.T) {
+	input := strings.Replace(validConfig, "state:\n", `  authentication:
+    api_key:
+      env: GATEWAY_API_KEY
+      file: /run/secrets/gateway-api-key
+state:
+`, 1)
+	_, err := config.Decode(strings.NewReader(input))
+	if err == nil || !strings.Contains(err.Error(), "exactly one of env or file") {
+		t.Fatalf("Decode() error = %v, want exactly-one-source error", err)
+	}
+}
+
 func TestDecodeRejectsUnknownField(t *testing.T) {
 	input := strings.Replace(validConfig, "  listen:", "  unknown: true\n  listen:", 1)
 	_, err := config.Decode(strings.NewReader(input))

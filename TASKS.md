@@ -8,6 +8,27 @@ No task is currently in progress.
 
 ## DONE
 
+### TASK-003 — Secret references
+
+Goal:
+Load secrets referenced by environment variables or files without allowing
+secret values in YAML.
+
+Completed:
+- added a reusable `SecretRef` with strict exactly-one-source validation
+- added environment-variable resolution without altering the stored value
+- added file resolution with surrounding whitespace trimming
+- added optional server API-key secret configuration for strict YAML loading
+- added focused validation, resolution, and configuration decoding tests
+
+Decisions:
+- environment values are preserved exactly; only file-backed values are
+  whitespace-trimmed as required
+- missing environment variables and unreadable files fail resolution without
+  exposing secret values in errors
+
+---
+
 ### TASK-002 — YAML configuration loader
 
 Goal:
@@ -54,16 +75,6 @@ Completed:
 ---
 
 ## TODO
-
-### TASK-003 — Secret references
-
-Implement:
-- environment-variable secrets
-- file-backed secrets
-- validation requiring exactly one source
-- whitespace trimming for files
-
----
 
 ### TASK-004 — Gateway bearer authentication
 

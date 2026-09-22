@@ -19,6 +19,7 @@ Completed:
 - compared fixed-size API-key digests in constant time
 - added OpenAI-style JSON authentication errors and bearer challenges
 - added focused middleware, credential rejection, and identity tests
+- made the middleware fail closed for missing authenticators and identities
 
 Decisions:
 - all missing, malformed, duplicate, and invalid credentials return the same

@@ -74,8 +74,12 @@ func ClientIdentityFromContext(ctx context.Context) (*ClientIdentity, bool) {
 // clients.
 func AuthenticateMiddleware(authenticator ClientAuthenticator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if authenticator == nil {
+			writeUnauthorized(w)
+			return
+		}
 		identity, err := authenticator.Authenticate(r)
-		if err != nil {
+		if err != nil || identity == nil {
 			writeUnauthorized(w)
 			return
 		}

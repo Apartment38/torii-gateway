@@ -2,6 +2,12 @@
 
 ## IN PROGRESS
 
+No task is currently in progress.
+
+---
+
+## DONE
+
 ### TASK-001 — Bootstrap Go project
 
 Goal:
@@ -18,6 +24,13 @@ Requirements:
 Acceptance:
 - `go build ./...` succeeds
 - `go test ./...` succeeds
+
+Completed:
+- initialized the Go module and gateway command
+- added the Milestone 1 package skeleton for API, configuration, providers,
+  and upstream transports
+- kept the module dependency-free
+- documented and verified the repository-wide build and test commands
 
 ---
 

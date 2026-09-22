@@ -15,6 +15,8 @@ No database or external infrastructure is required for v1 development.
 
 ## Build
 
+Build every command and package in the repository:
+
     go build ./...
 
 To build the gateway binary:
@@ -23,7 +25,8 @@ To build the gateway binary:
 
 ## Test
 
-Run all tests:
+Run all package tests (this also compiles packages that do not yet have test
+files):
 
     go test ./...
 

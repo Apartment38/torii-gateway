@@ -61,8 +61,16 @@ Run the gateway authentication tests while working on client authentication:
 Before committing, verify:
 
     gofmt -w .
+    go mod tidy
+    go vet ./...
     go test ./...
+    go test -race ./...
     go build ./...
+
+The GitHub Actions CI workflow runs these checks independently on pushes to
+`main` and on pull requests targeting `main`. It reads the required Go version
+from `go.mod`, caches downloaded modules, and fails rather than rewriting files
+when formatting or committed module metadata is not current.
 
 ## Configuration
 

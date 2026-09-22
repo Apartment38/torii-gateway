@@ -89,6 +89,10 @@ Public model IDs use:
 
 The provider ID ends at the first `/`.
 
+Provider IDs must match `[a-z0-9][a-z0-9._-]*`. Public model IDs are
+rejected when the separator is absent, the provider ID is invalid, or the
+upstream model ID is empty.
+
 For example:
 
     openrouter/google/gemini-2.5-pro

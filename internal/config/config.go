@@ -8,13 +8,11 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 
+	"github.com/Apartment38/torii-router/internal/provider"
 	"gopkg.in/yaml.v3"
 )
-
-var providerIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Config is the configuration implemented by the current gateway milestone.
 // Additional sections must not be added until their behavior is implemented;
@@ -118,20 +116,20 @@ func (c Config) Validate() error {
 	}
 
 	ids := make(map[string]struct{}, len(c.Providers))
-	for i, provider := range c.Providers {
+	for i, providerConfig := range c.Providers {
 		field := fmt.Sprintf("providers[%d]", i)
-		if !providerIDPattern.MatchString(provider.ID) {
-			return fmt.Errorf("%s.id must match %s", field, providerIDPattern.String())
+		if err := provider.ValidateID(providerConfig.ID); err != nil {
+			return fmt.Errorf("%s.id: %w", field, err)
 		}
-		if _, exists := ids[provider.ID]; exists {
-			return fmt.Errorf("%s.id %q is duplicated", field, provider.ID)
+		if _, exists := ids[providerConfig.ID]; exists {
+			return fmt.Errorf("%s.id %q is duplicated", field, providerConfig.ID)
 		}
-		ids[provider.ID] = struct{}{}
+		ids[providerConfig.ID] = struct{}{}
 
-		if provider.Type != "ollama" {
-			return fmt.Errorf("%s.type %q is unsupported; only %q is currently supported", field, provider.Type, "ollama")
+		if providerConfig.Type != "ollama" {
+			return fmt.Errorf("%s.type %q is unsupported; only %q is currently supported", field, providerConfig.Type, "ollama")
 		}
-		if err := validateBaseURL(provider.BaseURL); err != nil {
+		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
 			return fmt.Errorf("%s.base_url: %w", field, err)
 		}
 	}

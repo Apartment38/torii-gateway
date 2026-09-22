@@ -140,6 +140,12 @@ Before provider work, also read:
 
 - `docs/provider-notes.md`
 
+Update documentation when a task changes architecture, public behavior,
+configuration, developer workflow, significant design decisions, or another
+durable project convention. Narrow task-specific test commands do not need to
+be added to this guide unless they are genuinely useful as a reusable
+development procedure.
+
 ## Adding a Provider
 
 General process:
@@ -151,7 +157,9 @@ General process:
 5. Add authentication handling.
 6. Add provider contract tests.
 7. Add streaming tests.
-8. Update architecture documentation if behavior changes.
+8. Update the relevant provider or architecture documentation if public
+   behavior, configuration, architecture, or a significant design decision
+   changes.
 
 Do not create a custom protocol adapter if the generic OpenAI-compatible
 transport is sufficient.
@@ -190,7 +198,9 @@ Before finishing:
 2. run `go test ./...`
 3. run `go build ./...`
 4. update `TASKS.md`
-5. update relevant documentation
+5. update documentation when the task changes architecture, public behavior,
+   configuration, developer workflow, significant design decisions, or another
+   durable project convention
 6. leave the repository in a resumable state
 
 ## Troubleshooting

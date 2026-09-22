@@ -3680,7 +3680,10 @@ Before an agent stops because of quota, context limit, or task completion, it sh
 2. run the narrowest relevant tests
 3. run `go test ./...` when practical
 4. update `TASKS.md`
-5. update relevant documentation
+5. update documentation when the task changes architecture, public behavior,
+   configuration, developer workflow, significant design decisions, or another
+   durable project convention; do not add narrow task-specific test commands to
+   `docs/development.md` unless they are useful as a reusable procedure
 6. record unresolved problems
 7. make a focused Git commit
 
@@ -4078,7 +4081,9 @@ Agent/session 6:
 Nous Portal
 ```
 
-Provider work should include tests and documentation in the same task.
+Provider work should include tests in the same task, plus documentation when
+the work changes public behavior, configuration, architecture, significant
+design decisions, or reusable development procedures.
 
 ---
 
@@ -4239,7 +4244,10 @@ At minimum:
 8. Add or update tests for every behavioral change.
 9. Run the relevant tests before finishing.
 10. Update TASKS.md with result and remaining issues.
-11. Update documentation when behavior changes.
+11. Update documentation when architecture, public behavior, configuration,
+    developer workflow, significant design decisions, or another durable
+    project convention changes. Do not add narrow task-specific test commands
+    to `docs/development.md` unless they are useful as a reusable procedure.
 12. Leave the repository in a resumable state.
 ```
 

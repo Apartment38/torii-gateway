@@ -9,6 +9,12 @@ import (
 	"github.com/Apartment38/torii-router/internal/api"
 )
 
+type nilIdentityAuthenticator struct{}
+
+func (nilIdentityAuthenticator) Authenticate(*http.Request) (*api.ClientIdentity, error) {
+	return nil, nil
+}
+
 func TestAuthenticateMiddlewareAcceptsBearerKey(t *testing.T) {
 	authenticator, err := api.NewStaticBearerAuthenticator("gateway-secret")
 	if err != nil {
@@ -90,6 +96,32 @@ func TestAuthenticateMiddlewareRejectsUnauthorizedRequests(t *testing.T) {
 				t.Errorf("unexpected error envelope: %#v", envelope.Error)
 			}
 		})
+	}
+}
+
+func TestAuthenticateMiddlewareRejectsNilAuthenticator(t *testing.T) {
+	handler := api.AuthenticateMiddleware(nil, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("protected handler was called")
+	}))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAuthenticateMiddlewareRejectsNilIdentity(t *testing.T) {
+	handler := api.AuthenticateMiddleware(nilIdentityAuthenticator{}, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("protected handler was called")
+	}))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
 

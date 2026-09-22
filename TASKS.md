@@ -8,6 +8,24 @@ No task is currently in progress.
 
 ## DONE
 
+### TASK-005 — Provider/model ID parsing
+
+Goal:
+Parse public model IDs into validated provider namespaces and upstream model
+IDs.
+
+Completed:
+- added provider ID validation shared by configuration and model ID parsing
+- split public model IDs on the first slash only
+- rejected missing separators and empty upstream model IDs
+- added tests for simple and OpenRouter-style nested model IDs
+
+Decisions:
+- parsing returns no partial provider or model value when validation fails
+- upstream model IDs are otherwise preserved verbatim, including nested slashes
+
+---
+
 ### TASK-004 — Gateway bearer authentication
 
 Goal:
@@ -96,16 +114,6 @@ Completed:
 ---
 
 ## TODO
-
-### TASK-005 — Provider/model ID parsing
-
-Implement:
-- `<provider>/<model>`
-- split on first slash only
-- provider ID validation
-- tests for OpenRouter-style nested model IDs
-
----
 
 ### TASK-006 — Generic OpenAI-compatible transport
 

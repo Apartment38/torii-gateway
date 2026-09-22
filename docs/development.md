@@ -38,6 +38,10 @@ Run a specific package:
 
     go test ./internal/provider/...
 
+Run the provider/model ID parsing tests:
+
+    go test ./internal/provider -run 'ParseModelID|ValidateID'
+
 Run the configuration loader tests while working on configuration:
 
     go test ./internal/config

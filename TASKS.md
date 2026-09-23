@@ -38,6 +38,9 @@ Completed:
 - validate configured bearer keys at startup and bound idle HTTP connections
 - preserve escaped provider base paths and remove response headers named by
   upstream `Connection` tokens
+- preserve escaped trailing base-path slashes, strictly reject trailing commas,
+  strip proxy connection headers, validate model catalogs, and bound model
+  discovery calls without limiting inference
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

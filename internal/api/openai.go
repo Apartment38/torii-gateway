@@ -147,7 +147,7 @@ func copyResponseHeaders(dst, src http.Header) {
 			continue
 		}
 		switch canonical {
-		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade", "Content-Length":
+		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Proxy-Connection", "Te", "Trailer", "Transfer-Encoding", "Upgrade", "Content-Length":
 			continue
 		}
 		for _, value := range values {

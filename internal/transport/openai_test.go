@@ -63,10 +63,31 @@ func TestOpenAICompatibleRejectsMalformedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{`[]`, `{`, `{} {`, `{}`, `{"model":"one","model":"two"}`, `{"model":"one","messages":[true false]}`} {
+	for _, body := range []string{`[]`, `{`, `{} {`, `{}`, `{"model":"one",}`, `{"model":"one","model":"two"}`, `{"model":"one","messages":[true false]}`} {
 		if _, err := client.Do(context.Background(), "/v1/chat/completions", []byte(body), "x"); err == nil {
 			t.Errorf("Do(%q) error = nil", body)
 		}
+	}
+}
+
+func TestOpenAICompatiblePreservesEscapedTrailingBasePathSlash(t *testing.T) {
+	var escapedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		escapedPath = r.URL.EscapedPath()
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+	client, err := transport.NewOpenAICompatible(server.URL+`/tenant%2F`, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(context.Background(), "/v1/chat/completions", []byte(`{"model":"local/a"}`), "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if escapedPath != "/tenant%2F/v1/chat/completions" {
+		t.Fatalf("escaped path = %q", escapedPath)
 	}
 }
 

@@ -9,9 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Apartment38/torii-router/internal/transport"
 )
+
+const modelDiscoveryTimeout = 10 * time.Second
 
 // Ollama implements model discovery and non-streaming inference for an Ollama
 // server. Inference uses Ollama's OpenAI-compatible API.
@@ -44,11 +47,15 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 		return nil, errors.New("Ollama provider is not initialized")
 	}
 	u := *o.baseURL
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/models"
-	if u.RawPath != "" {
-		u.RawPath = strings.TrimRight(u.RawPath, "/") + "/v1/models"
+	escapedPath := strings.TrimRight(u.EscapedPath(), "/") + "/v1/models"
+	path, err := url.PathUnescape(escapedPath)
+	if err != nil {
+		return nil, fmt.Errorf("construct Ollama model URL: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	u.Path, u.RawPath = path, escapedPath
+	discoveryCtx, cancel := context.WithTimeout(ctx, modelDiscoveryTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(discoveryCtx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create Ollama model request: %w", err)
 	}
@@ -61,15 +68,22 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 		return nil, fmt.Errorf("discover Ollama models: upstream returned %s", response.Status)
 	}
-	var catalog struct {
-		Data []Model `json:"data"`
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 16<<20))
-	if err := decoder.Decode(&catalog); err != nil {
+	if err := decoder.Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("decode Ollama models: %w", err)
 	}
-	models := make([]Model, 0, len(catalog.Data))
-	for _, model := range catalog.Data {
+	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return nil, errors.New("decode Ollama models: data must be an array")
+	}
+	var catalog []Model
+	if err := json.Unmarshal(envelope.Data, &catalog); err != nil || catalog == nil {
+		return nil, errors.New("decode Ollama models: data must be an array")
+	}
+	models := make([]Model, 0, len(catalog))
+	for _, model := range catalog {
 		if model.ID == "" {
 			return nil, errors.New("decode Ollama models: model has empty ID")
 		}

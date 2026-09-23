@@ -113,12 +113,17 @@ func inspectRequest(body []byte) (RequestFields, int, int, error) {
 	}
 	i++
 	fields, modelStart, modelEnd := RequestFields{}, -1, -1
+	expectField := false
 	for {
 		i = skipSpace(body, i)
 		if i < len(body) && body[i] == '}' {
+			if expectField {
+				return fields, -1, -1, invalid("expected field after comma")
+			}
 			i++
 			break
 		}
+		expectField = false
 		keyStart := i
 		next, err := scanString(body, i)
 		if err != nil {
@@ -158,6 +163,7 @@ func inspectRequest(body []byte) (RequestFields, int, int, error) {
 		}
 		if body[i] == ',' {
 			i++
+			expectField = true
 			continue
 		}
 		if body[i] == '}' {
@@ -270,8 +276,11 @@ func skipSpace(b []byte, i int) int {
 func invalid(message string) error { return fmt.Errorf("%w: %s", ErrInvalidRequest, message) }
 
 func appendURLPath(u *url.URL, endpoint string) {
-	u.Path = strings.TrimRight(u.Path, "/") + endpoint
-	if u.RawPath != "" {
-		u.RawPath = strings.TrimRight(u.RawPath, "/") + endpoint
+	escapedPath := strings.TrimRight(u.EscapedPath(), "/") + endpoint
+	path, err := url.PathUnescape(escapedPath)
+	if err != nil {
+		panic("url.URL returned an invalid escaped path: " + err.Error())
 	}
+	u.Path = path
+	u.RawPath = escapedPath
 }

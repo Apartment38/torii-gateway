@@ -163,6 +163,7 @@ func TestOpenAIHandlerRemovesConnectionNamedHeaders(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Connection", "X-Upstream-Hop")
 		w.Header().Set("X-Upstream-Hop", "private")
+		w.Header().Set("Proxy-Connection", "keep-alive")
 		w.Header().Set("X-End-To-End", "public")
 		_, _ = io.WriteString(w, `{}`)
 	}))
@@ -176,5 +177,8 @@ func TestOpenAIHandlerRemovesConnectionNamedHeaders(t *testing.T) {
 	}
 	if got := response.Header().Get("X-End-To-End"); got != "public" {
 		t.Errorf("X-End-To-End = %q", got)
+	}
+	if got := response.Header().Get("Proxy-Connection"); got != "" {
+		t.Errorf("Proxy-Connection = %q", got)
 	}
 }

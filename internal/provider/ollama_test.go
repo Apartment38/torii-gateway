@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Apartment38/torii-router/internal/provider"
 )
@@ -33,6 +35,62 @@ func TestOllamaDiscoversNamespacedModels(t *testing.T) {
 	if models[0].Created != 123 || models[0].OwnedBy != "library" || models[1].Object != "model" {
 		t.Fatalf("metadata = %#v", models)
 	}
+}
+
+func TestOllamaPreservesEscapedTrailingBasePathSlash(t *testing.T) {
+	var escapedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		escapedPath = r.URL.EscapedPath()
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+	ollama, err := provider.NewOllama("local", server.URL+`/tenant%2F`, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ollama.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if escapedPath != "/tenant%2F/v1/models" {
+		t.Fatalf("escaped path = %q", escapedPath)
+	}
+}
+
+func TestOllamaRejectsMissingOrNullModelData(t *testing.T) {
+	for _, body := range []string{`{}`, `{"data":null}`, `{"data":{}}`} {
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+			ollama, err := provider.NewOllama("local", server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ollama.Models(context.Background()); err == nil || !strings.Contains(err.Error(), "data must be an array") {
+				t.Fatalf("Models() error = %v", err)
+			}
+		})
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestOllamaModelDiscoveryHasDeadline(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		deadline, ok := request.Context().Deadline()
+		if !ok || time.Until(deadline) > 11*time.Second || time.Until(deadline) < 8*time.Second {
+			t.Fatalf("discovery deadline = %v, present = %v", deadline, ok)
+		}
+		return nil, context.Canceled
+	})}
+	ollama, err := provider.NewOllama("local", "http://example.test", client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = ollama.Models(context.Background())
 }
 
 func TestOllamaChatCompletionsUsesCompatibleTransport(t *testing.T) {

@@ -221,6 +221,8 @@ preserved by the generic compatible transport.
 - Streaming is deliberately rejected pending TASK-008.
 - Native Ollama metadata endpoints are not queried yet.
 - Ollama authentication is not currently configured or sent.
+- Model-discovery calls have a 10-second deadline; inference uses the caller's
+  context without that discovery-specific limit.
 
 ## Custom OpenAI-Compatible Providers
 

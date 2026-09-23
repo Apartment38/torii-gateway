@@ -88,17 +88,19 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_json")
 		return
 	}
-	var fields struct {
-		Model  string          `json:"model"`
-		Stream json.RawMessage `json:"stream"`
-	}
-	if err := json.Unmarshal(body, &fields); err != nil || fields.Model == "" {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
 		return
 	}
-	if len(fields.Stream) != 0 {
+	var model string
+	if err := json.Unmarshal(fields["model"], &model); err != nil || model == "" {
+		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
+		return
+	}
+	if streamField, exists := fields["stream"]; exists {
 		var stream bool
-		if err := json.Unmarshal(fields.Stream, &stream); err != nil {
+		if err := json.Unmarshal(streamField, &stream); err != nil {
 			writeAPIError(w, http.StatusBadRequest, "stream must be a boolean", "invalid_request_error", "invalid_stream")
 			return
 		}
@@ -107,7 +109,7 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	providerID, modelID, err := provider.ParseModelID(fields.Model)
+	providerID, modelID, err := provider.ParseModelID(model)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
 		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")

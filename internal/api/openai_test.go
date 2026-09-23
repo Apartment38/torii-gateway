@@ -77,3 +77,47 @@ func TestOpenAIHandlerRejectsStreamingWithoutCallingUpstream(t *testing.T) {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
 	}
 }
+
+func TestOpenAIHandlerMatchesRoutingFieldsCaseSensitively(t *testing.T) {
+	localCalled := false
+	localServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		localCalled = true
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const expected = `{"model":"a","Model":"cloud/b","Stream":true}`
+		if string(body) != expected {
+			t.Errorf("upstream body = %s, want %s", body, expected)
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer localServer.Close()
+	cloudServer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("case-variant Model field routed request to cloud provider")
+	}))
+	defer cloudServer.Close()
+
+	local, err := provider.NewOllama("local", localServer.URL, localServer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloud, err := provider.NewOllama("cloud", cloudServer.URL, cloudServer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{local, cloud})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	requestBody := `{"model":"local/a","Model":"cloud/b","Stream":true}`
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+	if !localCalled {
+		t.Fatal("local provider was not called")
+	}
+}

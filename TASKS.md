@@ -30,6 +30,8 @@ Completed:
   authenticated model catalog
 - ensured graceful shutdown waits for active requests to finish, up to the
   configured 10-second shutdown deadline
+- made routing-field extraction case-sensitive so unknown case variants cannot
+  override the requested provider or model
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

@@ -128,7 +128,8 @@ Credentials must never be reused for another upstream endpoint.
 
 The current OpenAI HTTP handler maintains an ordered collection of configured
 inference providers plus an ID lookup. Explicit `provider/model` requests are
-sent only to the named provider.
+sent only to the named provider. Routing fields use exact, case-sensitive JSON
+key matching; differently cased keys remain unknown passthrough fields.
 
 ## Model Catalog
 

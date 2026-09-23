@@ -24,6 +24,10 @@ Completed:
   Completions handlers
 - explicitly reject streaming requests until TASK-008
 - added transport, provider, and end-to-end handler contract tests
+- wired configuration loading, Ollama providers, bearer authentication, health
+  checks, and the OpenAI handler into the `gateway serve` executable
+- added a process-level test that builds and starts the gateway and requests its
+  authenticated model catalog
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

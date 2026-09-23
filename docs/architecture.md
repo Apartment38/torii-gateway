@@ -25,6 +25,12 @@ The project prioritizes:
 
 The gateway runs as a single Go process.
 
+The `gateway serve --config <path>` command loads and validates configuration,
+resolves the gateway API key, constructs each configured Ollama provider, and
+serves the API on the configured listener. It shuts down gracefully on SIGINT
+or SIGTERM. The health endpoint remains unauthenticated; all other currently
+served routes require bearer authentication.
+
 No external database, Redis instance, message queue, sidecar, or worker
 service is required.
 

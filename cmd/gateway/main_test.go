@@ -97,6 +97,55 @@ providers:
 	}
 }
 
+func TestServeHTTPWaitsForActiveRequestDuringShutdown(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(requestStarted)
+		<-releaseRequest
+		w.WriteHeader(http.StatusNoContent)
+	})}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- serveHTTP(ctx, server, listener)
+	}()
+
+	responseDone := make(chan error, 1)
+	go func() {
+		response, err := http.Get("http://" + listener.Addr().String())
+		if err == nil {
+			_ = response.Body.Close()
+		}
+		responseDone <- err
+	}()
+	select {
+	case <-requestStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not reach handler")
+	}
+
+	cancel()
+	select {
+	case err := <-serveDone:
+		t.Fatalf("serveHTTP returned before active request completed: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseRequest)
+	if err := <-responseDone; err != nil {
+		t.Fatalf("active request failed during shutdown: %v", err)
+	}
+	if err := <-serveDone; err != nil {
+		t.Fatalf("serveHTTP returned an error: %v", err)
+	}
+}
+
 func unusedAddress(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

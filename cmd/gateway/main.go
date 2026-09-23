@@ -56,18 +56,35 @@ func run(ctx context.Context, args []string) error {
 	defer listener.Close()
 
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
-	stopped := make(chan struct{})
+	return serveHTTP(ctx, server, listener)
+}
+
+func serveHTTP(ctx context.Context, server *http.Server, listener net.Listener) error {
+	serveErr := make(chan error, 1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_ = server.Shutdown(shutdownCtx)
-		case <-stopped:
-		}
+		serveErr <- server.Serve(listener)
 	}()
-	err = server.Serve(listener)
-	close(stopped)
+
+	select {
+	case err := <-serveErr:
+		return normalizeServeError(err)
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	shutdownErr := server.Shutdown(shutdownCtx)
+	serveError := normalizeServeError(<-serveErr)
+	if serveError != nil {
+		return serveError
+	}
+	if shutdownErr != nil {
+		return fmt.Errorf("shut down HTTP server: %w", shutdownErr)
+	}
+	return nil
+}
+
+func normalizeServeError(err error) error {
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}

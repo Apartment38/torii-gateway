@@ -29,7 +29,9 @@ The `gateway serve --config <path>` command loads and validates configuration,
 resolves the gateway API key, constructs each configured Ollama provider, and
 serves the API on the configured listener. It shuts down gracefully on SIGINT
 or SIGTERM. The health endpoint remains unauthenticated; all other currently
-served routes require bearer authentication.
+served routes require bearer authentication. On SIGINT or SIGTERM, the process
+stops accepting new connections and waits up to 10 seconds for active requests
+to finish before exiting.
 
 No external database, Redis instance, message queue, sidecar, or worker
 service is required.

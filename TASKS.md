@@ -28,6 +28,8 @@ Completed:
   checks, and the OpenAI handler into the `gateway serve` executable
 - added a process-level test that builds and starts the gateway and requests its
   authenticated model catalog
+- ensured graceful shutdown waits for active requests to finish, up to the
+  configured 10-second shutdown deadline
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

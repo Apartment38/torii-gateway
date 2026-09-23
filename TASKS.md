@@ -8,6 +8,15 @@ No task is currently in progress.
 
 ## DONE
 
+### OpenAI-compatible transport hardening
+
+Hardened the shared OpenAI-compatible path by preserving escaped trailing
+base-path slashes, bounding Ollama model discovery, validating model-catalog
+arrays, rejecting top-level trailing commas, and stripping all applicable
+hop-by-hop response headers, including `Proxy-Connection`.
+
+---
+
 ### Continuous integration workflow
 
 Added a minimal GitHub Actions workflow for pushes to `main` and pull requests

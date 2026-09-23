@@ -67,6 +67,13 @@ The gateway:
 3. preserves unknown request fields
 4. forwards the request
 
+The implemented transport accepts a raw JSON request, validates its top-level
+structure, and replaces only the encoded value of the top-level model field.
+All other request bytes, including unknown fields, retain their original
+representation. The transport reuses the provider's HTTP client. It currently
+supports non-streaming requests only; `stream: true` is rejected explicitly
+until the SSE relay is implemented.
+
 ### Translated transport
 
 Used when the upstream protocol differs from the public OpenAI-compatible
@@ -111,6 +118,10 @@ Provider credentials are scoped to their owning provider.
 
 Credentials must never be reused for another upstream endpoint.
 
+The current OpenAI HTTP handler maintains an ordered collection of configured
+inference providers plus an ID lookup. Explicit `provider/model` requests are
+sent only to the named provider.
+
 ## Model Catalog
 
 The model catalog combines:
@@ -121,6 +132,12 @@ The model catalog combines:
 Live authoritative provider metadata takes precedence over bundled values.
 
 Unknown capability values remain unknown rather than being guessed.
+
+Ollama models are currently discovered from its OpenAI-compatible
+`GET /v1/models` endpoint. The gateway prefixes each upstream ID with the
+configured provider ID and exposes the result through `GET /v1/models` and
+`GET /v1/models/{model}`. A provider discovery failure currently fails the
+catalog request rather than returning a partial result.
 
 ## Streaming
 

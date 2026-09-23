@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -78,6 +79,15 @@ func TestOpenAIHandlerRejectsStreamingWithoutCallingUpstream(t *testing.T) {
 	}
 }
 
+func TestOpenAIHandlerRejectsNonBooleanStream(t *testing.T) {
+	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{failingProvider{}})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"broken/model","stream":"yes"}`)))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_stream") {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestOpenAIHandlerMatchesRoutingFieldsCaseSensitively(t *testing.T) {
 	localCalled := false
 	localServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -119,5 +129,52 @@ func TestOpenAIHandlerMatchesRoutingFieldsCaseSensitively(t *testing.T) {
 	}
 	if !localCalled {
 		t.Fatal("local provider was not called")
+	}
+}
+
+func TestOpenAIHandlerRejectsOversizedRequest(t *testing.T) {
+	handler, _ := api.NewOpenAIHandler(nil)
+	response := httptest.NewRecorder()
+	body := io.MultiReader(strings.NewReader(`{"model":"local/a","padding":"`), io.LimitReader(zeroReader{}, 32<<20), strings.NewReader(`"}`))
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body))
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusRequestEntityTooLarge, response.Body.String())
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil || envelope.Error.Code != "request_too_large" {
+		t.Fatalf("response = %s, decode error = %v", response.Body.String(), err)
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}
+
+func TestOpenAIHandlerRemovesConnectionNamedHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Connection", "X-Upstream-Hop")
+		w.Header().Set("X-Upstream-Hop", "private")
+		w.Header().Set("X-End-To-End", "public")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
+	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"local/a"}`)))
+	if got := response.Header().Get("X-Upstream-Hop"); got != "" {
+		t.Errorf("X-Upstream-Hop = %q", got)
+	}
+	if got := response.Header().Get("X-End-To-End"); got != "public" {
+		t.Errorf("X-End-To-End = %q", got)
 	}
 }

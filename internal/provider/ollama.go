@@ -45,6 +45,9 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 	}
 	u := *o.baseURL
 	u.Path = strings.TrimRight(u.Path, "/") + "/v1/models"
+	if u.RawPath != "" {
+		u.RawPath = strings.TrimRight(u.RawPath, "/") + "/v1/models"
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create Ollama model request: %w", err)

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-router/internal/transport"
 )
 
 const maxRequestBody = 32 << 20
@@ -85,31 +86,32 @@ func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicI
 func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "Request body exceeds the maximum allowed size", "invalid_request_error", "request_too_large")
+			return
+		}
 		writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_json")
 		return
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
-		return
-	}
-	var model string
-	if err := json.Unmarshal(fields["model"], &model); err != nil || model == "" {
-		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
-		return
-	}
-	if streamField, exists := fields["stream"]; exists {
-		var stream bool
-		if err := json.Unmarshal(streamField, &stream); err != nil {
+	fields, err := transport.InspectRequest(body)
+	if err != nil {
+		if errors.Is(err, transport.ErrInvalidStream) {
 			writeAPIError(w, http.StatusBadRequest, "stream must be a boolean", "invalid_request_error", "invalid_stream")
 			return
 		}
-		if stream {
-			writeAPIError(w, http.StatusBadRequest, "Streaming is not supported yet", "invalid_request_error", "unsupported_streaming")
-			return
-		}
+		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
+		return
 	}
-	providerID, modelID, err := provider.ParseModelID(model)
+	if fields.Model == "" {
+		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
+		return
+	}
+	if fields.Stream {
+		writeAPIError(w, http.StatusBadRequest, "Streaming is not supported yet", "invalid_request_error", "unsupported_streaming")
+		return
+	}
+	providerID, modelID, err := provider.ParseModelID(fields.Model)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
 		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
@@ -117,6 +119,10 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 	}
 	response, err := upstream.ChatCompletions(r.Context(), body, modelID)
 	if err != nil {
+		if errors.Is(err, transport.ErrInvalidRequest) {
+			writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_request")
+			return
+		}
 		writeAPIError(w, http.StatusBadGateway, "Upstream request failed", "api_error", "upstream_error")
 		return
 	}
@@ -127,8 +133,20 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 }
 
 func copyResponseHeaders(dst, src http.Header) {
+	hopByHop := make(map[string]struct{})
+	for _, value := range src.Values("Connection") {
+		for _, token := range strings.Split(value, ",") {
+			if token = http.CanonicalHeaderKey(strings.TrimSpace(token)); token != "" {
+				hopByHop[token] = struct{}{}
+			}
+		}
+	}
 	for key, values := range src {
-		switch http.CanonicalHeaderKey(key) {
+		canonical := http.CanonicalHeaderKey(key)
+		if _, excluded := hopByHop[canonical]; excluded {
+			continue
+		}
+		switch canonical {
 		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade", "Content-Length":
 			continue
 		}

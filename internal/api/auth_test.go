@@ -126,7 +126,9 @@ func TestAuthenticateMiddlewareRejectsNilIdentity(t *testing.T) {
 }
 
 func TestStaticBearerAuthenticatorRejectsEmptyKey(t *testing.T) {
-	if _, err := api.NewStaticBearerAuthenticator(""); err == nil {
-		t.Fatal("NewStaticBearerAuthenticator() error = nil, want error")
+	for _, key := range []string{"", " leading", "trailing ", "embedded key", "tab\tkey", "line\nkey"} {
+		if _, err := api.NewStaticBearerAuthenticator(key); err == nil {
+			t.Errorf("NewStaticBearerAuthenticator(%q) error = nil, want error", key)
+		}
 	}
 }

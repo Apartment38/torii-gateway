@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Apartment38/torii-router/internal/config"
 )
 
 func TestGatewayProcessServesAuthenticatedModels(t *testing.T) {
@@ -143,6 +145,33 @@ func TestServeHTTPWaitsForActiveRequestDuringShutdown(t *testing.T) {
 	}
 	if err := <-serveDone; err != nil {
 		t.Fatalf("serveHTTP returned an error: %v", err)
+	}
+}
+
+func TestBuildHandlerRejectsAPIKeyContainingWhitespace(t *testing.T) {
+	t.Setenv("TEST_GATEWAY_API_KEY", " unusable-key")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	configuration := `server:
+  listen: 127.0.0.1:0
+  authentication:
+    api_key:
+      env: TEST_GATEWAY_API_KEY
+state:
+  directory: /tmp/state
+providers:
+  - id: local
+    type: ollama
+    base_url: http://127.0.0.1:11434
+`
+	if err := os.WriteFile(cfgPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildHandler(cfg); err == nil || !strings.Contains(err.Error(), "whitespace") {
+		t.Fatalf("buildHandler() error = %v, want whitespace validation error", err)
 	}
 }
 

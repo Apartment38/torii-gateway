@@ -32,6 +32,12 @@ Completed:
   configured 10-second shutdown deadline
 - made routing-field extraction case-sensitive so unknown case variants cannot
   override the requested provider or model
+- extract routing fields without copying unrelated large request values, return
+  413 for bodies over 32 MiB, and distinguish client validation failures from
+  upstream failures
+- validate configured bearer keys at startup and bound idle HTTP connections
+- preserve escaped provider base paths and remove response headers named by
+  upstream `Connection` tokens
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

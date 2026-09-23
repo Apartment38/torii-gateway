@@ -55,7 +55,11 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer listener.Close()
 
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	return serveHTTP(ctx, server, listener)
 }
 

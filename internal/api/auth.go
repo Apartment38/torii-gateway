@@ -32,8 +32,8 @@ type StaticBearerAuthenticator struct {
 
 // NewStaticBearerAuthenticator creates an authenticator for apiKey.
 func NewStaticBearerAuthenticator(apiKey string) (*StaticBearerAuthenticator, error) {
-	if apiKey == "" {
-		return nil, errors.New("gateway API key must not be empty")
+	if apiKey == "" || strings.ContainsAny(apiKey, " \t\r\n") {
+		return nil, errors.New("gateway API key must be non-empty and contain no whitespace")
 	}
 	return &StaticBearerAuthenticator{keyDigest: sha256.Sum256([]byte(apiKey))}, nil
 }

@@ -8,6 +8,49 @@ No task is currently in progress.
 
 ## DONE
 
+### TASK-006 and TASK-007 — Transparent transport and Ollama provider
+
+Goal:
+Forward OpenAI-compatible requests without dropping unknown fields, and support
+model discovery plus non-streaming Chat Completions through Ollama.
+
+Completed:
+- added a reusable OpenAI-compatible transport with byte-targeted top-level
+  model rewriting, context cancellation, shared HTTP-client reuse, and exact
+  preservation of every other request field
+- added Ollama model discovery through its OpenAI-compatible model endpoint
+- exposed discovered models under provider-qualified public IDs
+- added OpenAI-compatible model-list, model-retrieval, and non-streaming Chat
+  Completions handlers
+- explicitly reject streaming requests until TASK-008
+- added transport, provider, and end-to-end handler contract tests
+- wired configuration loading, Ollama providers, bearer authentication, health
+  checks, and the OpenAI handler into the `gateway serve` executable
+- added a process-level test that builds and starts the gateway and requests its
+  authenticated model catalog
+- ensured graceful shutdown waits for active requests to finish, up to the
+  configured 10-second shutdown deadline
+- made routing-field extraction case-sensitive so unknown case variants cannot
+  override the requested provider or model
+- extract routing fields without copying unrelated large request values, return
+  413 for bodies over 32 MiB, and distinguish client validation failures from
+  upstream failures
+- validate configured bearer keys at startup and bound idle HTTP connections
+- preserve escaped provider base paths and remove response headers named by
+  upstream `Connection` tokens
+- preserve escaped trailing base-path slashes, strictly reject trailing commas,
+  strip proxy connection headers, validate model catalogs, and bound model
+  discovery calls without limiting inference
+
+Decisions:
+- gateway client authorization is never forwarded to Ollama
+- upstream status, body, and end-to-end response headers are relayed for Chat
+  Completions while hop-by-hop headers are removed
+- model discovery currently fails the aggregate request when a configured
+  provider is unavailable; partial-catalog policy remains future work
+
+---
+
 ### Continuous integration workflow
 
 Added a minimal GitHub Actions workflow for pushes to `main` and pull requests
@@ -133,20 +176,6 @@ Completed:
 ---
 
 ## TODO
-
-### TASK-006 — Generic OpenAI-compatible transport
-
-Implement transparent passthrough transport.
-
-Do not implement routing or classifiers.
-
----
-
-### TASK-007 — Ollama provider
-
-Use the generic OpenAI-compatible transport where possible.
-
----
 
 ### TASK-008 — SSE streaming relay
 

@@ -25,6 +25,14 @@ The project prioritizes:
 
 The gateway runs as a single Go process.
 
+The `gateway serve --config <path>` command loads and validates configuration,
+resolves the gateway API key, constructs each configured Ollama provider, and
+serves the API on the configured listener. It shuts down gracefully on SIGINT
+or SIGTERM. The health endpoint remains unauthenticated; all other currently
+served routes require bearer authentication. On SIGINT or SIGTERM, the process
+stops accepting new connections and waits up to 10 seconds for active requests
+to finish before exiting. Idle client connections are closed after 60 seconds.
+
 No external database, Redis instance, message queue, sidecar, or worker
 service is required.
 
@@ -66,6 +74,13 @@ The gateway:
 2. rewrites the public model ID to the upstream model ID
 3. preserves unknown request fields
 4. forwards the request
+
+The implemented transport accepts a raw JSON request, validates its top-level
+structure, and replaces only the encoded value of the top-level model field.
+All other request bytes, including unknown fields, retain their original
+representation. The transport reuses the provider's HTTP client. It currently
+supports non-streaming requests only; `stream: true` is rejected explicitly
+until the SSE relay is implemented.
 
 ### Translated transport
 
@@ -111,6 +126,13 @@ Provider credentials are scoped to their owning provider.
 
 Credentials must never be reused for another upstream endpoint.
 
+The current OpenAI HTTP handler maintains an ordered collection of configured
+inference providers plus an ID lookup. Explicit `provider/model` requests are
+sent only to the named provider. Routing fields use exact, case-sensitive JSON
+key matching; differently cased keys remain unknown passthrough fields. Routing
+inspection does not copy unrelated values, keeping memory overhead bounded for
+requests containing large message or image payloads.
+
 ## Model Catalog
 
 The model catalog combines:
@@ -121,6 +143,12 @@ The model catalog combines:
 Live authoritative provider metadata takes precedence over bundled values.
 
 Unknown capability values remain unknown rather than being guessed.
+
+Ollama models are currently discovered from its OpenAI-compatible
+`GET /v1/models` endpoint. The gateway prefixes each upstream ID with the
+configured provider ID and exposes the result through `GET /v1/models` and
+`GET /v1/models/{model}`. A provider discovery failure currently fails the
+catalog request rather than returning a partial result.
 
 ## Streaming
 
@@ -183,8 +211,10 @@ and unsupported provider types cause loading to fail. The currently
 implemented schema supports the server listener and optional API-key secret
 reference, state directory, and the common fields required for Ollama
 providers. Secret references select exactly one environment variable or file;
-file values are trimmed of surrounding whitespace when resolved. Configuration
-for later providers and subsystems is intentionally rejected until implemented.
+file values are trimmed of surrounding whitespace when resolved. API keys
+containing whitespace are rejected at startup because they cannot be represented
+by the supported Bearer syntax. Configuration for later providers and
+subsystems is intentionally rejected until implemented.
 
 ## Security Invariants
 

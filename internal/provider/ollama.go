@@ -11,74 +11,13 @@ import (
 	"net/url"
 	"strings"
 	"time"
-)
-
-const ollamaDiscoveryTimeout = 10 * time.Second
-
-// Ollama provides the model-discovery portion of an OpenAI-compatible Ollama
-// endpoint. Inference requests use their caller's context and are deliberately
-// not subject to the shorter discovery timeout.
-type Ollama struct {
-	baseURL          *url.URL
-	client           *http.Client
-	discoveryTimeout time.Duration
-}
-
-// NewOllama creates an Ollama model-discovery client.
-func NewOllama(baseURL *url.URL, client *http.Client) (*Ollama, error) {
-	if baseURL == nil {
-		return nil, errors.New("ollama base URL is required")
-	}
-	if client == nil {
-		return nil, errors.New("ollama HTTP client is required")
-	}
-	baseCopy := *baseURL
-	return &Ollama{
-		baseURL:          &baseCopy,
-		client:           client,
-		discoveryTimeout: ollamaDiscoveryTimeout,
-	}, nil
-}
-
-// Models returns the raw model objects advertised by Ollama's OpenAI-compatible
-// model catalog. Keeping each object raw avoids discarding provider extensions.
-func (o *Ollama) Models(ctx context.Context) ([]json.RawMessage, error) {
-	ctx, cancel := context.WithTimeout(ctx, o.discoveryTimeout)
-	defer cancel()
-
-	endpoint := appendURLPath(o.baseURL, "/v1/models")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("create Ollama model request: %w", err)
-	}
-	resp, err := o.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("retrieve Ollama models: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("retrieve Ollama models: upstream returned %s", resp.Status)
-	}
-
-	var catalog struct {
-		Data json.RawMessage `json:"data"`
-	}
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&catalog); err != nil {
-		return nil, fmt.Errorf("decode Ollama model catalog: %w", err)
-	}
-	if len(catalog.Data) == 0 || bytes.Equal(bytes.TrimSpace(catalog.Data), []byte("null")) {
-		return nil, errors.New("decode Ollama model catalog: data must be an array")
-	}
-	var models []json.RawMessage
-	if err := json.Unmarshal(catalog.Data, &models); err != nil {
-		return nil, fmt.Errorf("decode Ollama model catalog data: %w", err)
 
 	"github.com/Apartment38/torii-router/internal/transport"
 )
 
 const modelDiscoveryTimeout = 10 * time.Second
+
+const maxModelCatalogSize = 16 << 20
 
 // Ollama implements model discovery and non-streaming inference for an Ollama
 // server. Inference uses Ollama's OpenAI-compatible API.
@@ -132,22 +71,46 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 		return nil, fmt.Errorf("discover Ollama models: upstream returned %s", response.Status)
 	}
+	limitedBody := &io.LimitedReader{R: response.Body, N: maxModelCatalogSize + 1}
 	var envelope struct {
 		Data json.RawMessage `json:"data"`
 	}
-	decoder := json.NewDecoder(io.LimitReader(response.Body, 16<<20))
+	decoder := json.NewDecoder(limitedBody)
 	if err := decoder.Decode(&envelope); err != nil {
+		if limitedBody.N == 0 {
+			return nil, fmt.Errorf("decode Ollama models: response exceeds %d bytes", maxModelCatalogSize)
+		}
 		return nil, fmt.Errorf("decode Ollama models: %w", err)
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if limitedBody.N == 0 {
+			return nil, fmt.Errorf("decode Ollama models: response exceeds %d bytes", maxModelCatalogSize)
+		}
+		if err == nil {
+			return nil, errors.New("decode Ollama models: response must contain one JSON value")
+		}
+		return nil, fmt.Errorf("decode Ollama models: trailing data: %w", err)
+	}
+	if limitedBody.N == 0 {
+		return nil, fmt.Errorf("decode Ollama models: response exceeds %d bytes", maxModelCatalogSize)
 	}
 	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
 		return nil, errors.New("decode Ollama models: data must be an array")
 	}
-	var catalog []Model
-	if err := json.Unmarshal(envelope.Data, &catalog); err != nil || catalog == nil {
+	var entries []json.RawMessage
+	if err := json.Unmarshal(envelope.Data, &entries); err != nil || entries == nil {
 		return nil, errors.New("decode Ollama models: data must be an array")
 	}
-	models := make([]Model, 0, len(catalog))
-	for _, model := range catalog {
+	models := make([]Model, 0, len(entries))
+	for _, entry := range entries {
+		trimmed := bytes.TrimSpace(entry)
+		if len(trimmed) < 2 || trimmed[0] != '{' {
+			return nil, errors.New("decode Ollama models: each model must be an object")
+		}
+		var model Model
+		if err := json.Unmarshal(entry, &model); err != nil {
+			return nil, fmt.Errorf("decode Ollama models: invalid model object: %w", err)
+		}
 		if model.ID == "" {
 			return nil, errors.New("decode Ollama models: model has empty ID")
 		}
@@ -163,25 +126,6 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 	return models, nil
 }
 
-// appendURLPath appends an escaped path without allowing url.URL.Path and
-// RawPath to disagree. In particular, an escaped terminal slash (%2F) is data,
-// not the separator that should be trimmed before joining.
-func appendURLPath(base *url.URL, suffix string) *url.URL {
-	joined := *base
-	suffix = "/" + strings.TrimLeft(suffix, "/")
-
-	if joined.RawPath == "" {
-		joined.Path = strings.TrimSuffix(joined.Path, "/") + suffix
-		return &joined
-	}
-
-	if strings.HasSuffix(joined.RawPath, "/") {
-		joined.RawPath = strings.TrimSuffix(joined.RawPath, "/")
-		joined.Path = strings.TrimSuffix(joined.Path, "/")
-	}
-	joined.Path += suffix
-	joined.RawPath += suffix
-	return &joined
 func (o *Ollama) ChatCompletions(ctx context.Context, body []byte, model string) (*http.Response, error) {
 	return o.transport.Do(ctx, "/v1/chat/completions", body, model)
 }

@@ -47,6 +47,8 @@ Completed:
 - preserve escaped trailing base-path slashes, strictly reject trailing commas,
   strip proxy connection headers, validate model catalogs, and bound model
   discovery calls without limiting inference
+- validate complete, size-bounded model-catalog documents and require every
+  catalog entry to be an object
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

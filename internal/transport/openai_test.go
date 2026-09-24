@@ -1,20 +1,3 @@
-package transport
-
-import "testing"
-
-func TestRequestModelRejectsTopLevelTrailingComma(t *testing.T) {
-	if _, err := RequestModel([]byte(`{"model":"local/a",}`)); err == nil {
-		t.Fatal("RequestModel() accepted a trailing comma")
-	}
-}
-
-func TestRequestModelPreservesUnknownFields(t *testing.T) {
-	model, err := RequestModel([]byte(`{"future":{"value":true},"model":"local/a"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if model != "local/a" {
-		t.Fatalf("RequestModel() = %q, want local/a", model)
 package transport_test
 
 import (
@@ -80,7 +63,7 @@ func TestOpenAICompatibleRejectsMalformedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{`[]`, `{`, `{} {`, `{}`, `{"model":"one",}`, `{"model":"one","model":"two"}`, `{"model":"one","messages":[true false]}`} {
+	for _, body := range []string{`[]`, `{`, `{} {`, `{}`, `{"model":null}`, `{"model":"one","model":"two"}`, `{"model":"one",}`, `{"model":"one","messages":[true false]}`} {
 		if _, err := client.Do(context.Background(), "/v1/chat/completions", []byte(body), "x"); err == nil {
 			t.Errorf("Do(%q) error = nil", body)
 		}

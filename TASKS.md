@@ -8,6 +8,18 @@ No task is currently in progress.
 
 ## DONE
 
+### Version 1 release documentation
+
+Prepared the public-facing version 1 documentation and configuration example.
+
+Completed:
+- documented the project's purpose, implemented feature set, limitations,
+  source installation, configuration schema, API usage, and operational notes
+- added a safe example configuration using an environment-backed client API
+  key and a local Ollama provider
+- added a test that loads the committed example through the strict production
+  configuration decoder to prevent it from becoming stale or invalid
+
 ### TASK-008 — SSE streaming relay
 
 Goal:

@@ -294,3 +294,30 @@ A historical accounting ledger is a future feature and should not expand
 v1 scope.
 
 Future accounting storage may use CSV or SQLite.
+
+---
+
+## ADR-015 — Reserve Version 1 for the Complete Approved Scope
+
+Status: Accepted
+
+Decision:
+
+The current Ollama-only explicit-routing build is a pre-v1 milestone. The
+project may be labeled Version 1 only after the ordered roadmap in `TASKS.md`
+has been completed and its final release task verifies every item in the
+Version 1 definition of done.
+
+Reason:
+
+The smart virtual model, session affinity, quota/cost-aware routing, required
+providers, and complete endpoint surface are core Version 1 requirements, not
+post-v1 enhancements. Calling a smaller milestone Version 1 would make the
+implementation plan and compatibility promise ambiguous.
+
+Consequences:
+
+- documentation must distinguish implemented behavior from the Version 1 target
+- intermediate builds and artifacts use pre-release or milestone terminology
+- removing a Version 1 requirement requires a separate architecture decision
+  and corresponding implementation-plan change

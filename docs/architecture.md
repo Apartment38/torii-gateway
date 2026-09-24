@@ -2,10 +2,12 @@
 
 ## Purpose
 
-This document describes the architecture currently implemented in the
-gateway.
+This document distinguishes the architecture currently implemented in the
+gateway from the approved Version 1 target. The repository is pre-v1: only the
+explicit Ollama Chat Completions path is currently usable. Sections labeled
+"planned" are contracts, not claims about the running product.
 
-For planned functionality that has not yet been implemented, see:
+For the complete target and ordered implementation work, see:
 
 - `docs/implementation-plan.md`
 - `TASKS.md`
@@ -57,8 +59,11 @@ Current request flow:
       v
     Upstream provider
 
-As intelligent routing is implemented, this section should be updated to
-reflect the actual request path.
+The Version 1 planned path inserts session resolution, request-requirement
+extraction, classification, deterministic selection, quota/cost policy, and
+failure handling between authentication and the provider registry. `smart`
+requests use that path; explicit `provider/model` requests continue to resolve
+directly and can never be substituted.
 
 ## Transport Model
 
@@ -134,7 +139,12 @@ requests containing large message or image payloads.
 
 ## Model Catalog
 
-The model catalog combines:
+**Current:** model discovery is aggregated directly by the HTTP handler. Ollama
+models are read from the OpenAI-compatible model endpoint, prefixed, and
+returned; one provider failure fails the request. There is no capability merge,
+refresh cache, or partial result policy yet.
+
+**Version 1 target:** a catalog component combines:
 
 1. provider-discovered metadata
 2. bundled capability metadata
@@ -143,11 +153,6 @@ Live authoritative provider metadata takes precedence over bundled values.
 
 Unknown capability values remain unknown rather than being guessed.
 
-Ollama models are currently discovered from its OpenAI-compatible
-`GET /v1/models` endpoint. The gateway prefixes each upstream ID with the
-configured provider ID and exposes the result through `GET /v1/models` and
-`GET /v1/models/{model}`. A provider discovery failure currently fails the
-catalog request rather than returning a partial result.
 
 ## Streaming
 
@@ -164,9 +169,8 @@ rerouted to another model.
 
 ## Smart Routing
 
-[Update this section when implemented.]
-
-The planned smart model consists of:
+**Not implemented.** The Version 1 smart model is delivered by TASK-024 through
+TASK-029 and consists of:
 
     request requirements
         |
@@ -189,17 +193,17 @@ Classification and model selection are separate concerns.
 
 ## Session State
 
-[Update when implemented.]
-
-Version 1 session state is stored in memory only.
+**Not implemented.** TASK-030 through TASK-033 add identification, bounded
+in-memory affinity, tool-loop pinning, and pre-stream failure handoff. Version 1
+session state is stored in memory only and is deliberately lost on restart.
 
 ## Persistent State
 
-Persistent state lives beneath:
+**Current:** `state.directory` is validated and reserved, but the gateway does
+not write persistent state.
 
-    /state
-
-Expected v1 state includes:
+**Version 1 target:** persistent state lives beneath the configured state
+directory (normally `/state`). Expected state includes:
 
     /state/auth/
     /state/usage.json
@@ -230,9 +234,9 @@ subsystems is intentionally rejected until implemented.
 
 ## Package Layout
 
-Keep this section synchronized with the repository.
-
-Example:
+The implemented packages are `cmd/gateway`, `internal/api`, `internal/config`,
+`internal/provider`, and `internal/transport`. Planned components are added only
+by their corresponding task. The intended Version 1 layout is:
 
     cmd/gateway/
     internal/api/

@@ -9,6 +9,14 @@ This document defines the initial architecture and implementation plan for a lig
 
 The intended audience is a coding agent implementing the project from scratch.
 
+**Current status (2026-09-24): pre-v1.** The repository currently implements
+an Ollama-backed transparent Chat Completions slice with authentication, model
+discovery, and SSE relay. It is not Version 1 because the required endpoint
+surface, providers, smart model, sessions, and quota/cost-aware routing are not
+complete. `TASKS.md` is the authoritative ordered execution roadmap; this
+document remains the Version 1 product and architecture contract. A build may
+be called Version 1 only after TASK-041 verifies the definition of done.
+
 The design priorities are, in order:
 
 1. Correct OpenAI-client compatibility.
@@ -3084,223 +3092,31 @@ Do not optimize the classifier before measuring it.
 
 # 64. Implementation Milestones
 
-## Milestone 0 — Protocol Verification
+Implementation is tracked as single-task milestones in `TASKS.md`. The task
+list, rather than this section, owns detailed dependencies and acceptance
+criteria. The phases below define ordering and map the original architectural
+milestones to executable tasks:
 
-Before implementation of specialized adapters:
+| Phase | Tasks | Exit condition |
+| --- | --- | --- |
+| Current transparent foundation | TASK-001–TASK-008 (done) | Authenticated Ollama model discovery and Chat Completions, including SSE, work end to end. |
+| Complete API and catalog foundation | TASK-009–TASK-012 | The promised stateless OpenAI endpoint surface, errors/request IDs, catalog metadata, and generic compatible providers are complete. |
+| API-key and translated providers | TASK-013–TASK-018 | OpenRouter, OpenAI API, Gemini, xAI, and Anthropic work through verified transparent or translated transports. |
+| Subscription providers | TASK-019–TASK-023 | Secure credential state and CLI flows support verified OpenAI Codex subscription and Nous Portal adapters. |
+| Classification and smart routing | TASK-024–TASK-029 | The `smart` model classifies requirements and deterministically selects a capable physical model. |
+| Sessions, handoff, and quota | TASK-030–TASK-036 | Agent/tool sessions remain pinned; pre-stream rerouting, quota, aggregate usage, cost, and latency influence selection. |
+| Product hardening and release | TASK-037–TASK-041 | Configuration, compatibility/security suites, container, and performance baselines pass, followed by a complete Version 1 audit. |
 
-- inspect current Codex/Hermes OAuth flow
-- inspect current Codex Responses wire protocol
-- inspect current Nous OAuth/inference flow
-- verify current Jev APIs
-- document provider quota endpoints
-- document provider model-catalog endpoints
-- identify which providers expose pricing metadata
-- identify which providers expose capability metadata
+Protocol verification is part of each provider/classifier task so findings are
+fresh when code is written. Each such task must update `docs/provider-notes.md`
+before implementation. This replaces the earlier broad milestones that allowed
+multiple unrelated features to appear complete as one unit.
 
-Write findings into:
-
-```text
-docs/provider-notes.md
-```
-
-Do not block generic gateway work on unavailable optional metadata.
-
----
-
-## Milestone 1 — Minimal Transparent Gateway
-
-Implement:
-
-- Go project
-- YAML config
-- strict config validation
-- secret references
-- gateway bearer authentication
-- `/healthz`
-- generic OpenAI-compatible upstream
-- Ollama provider
-- `/v1/models`
-- `/v1/models/{model}`
-- `/v1/chat/completions`
-- `/v1/completions`
-- `/v1/embeddings`
-- `/v1/responses`
-- streaming
-
-Success criterion:
-
-```text
-OpenAI SDK
-    ↓
-gateway
-    ↓
-Ollama
-```
-
-works for:
-
-- normal text
-- streaming
-- tools
-- vision
-- structured output
-- reasoning
-
----
-
-## Milestone 2 — Catalog and Provider Registry
-
-Implement:
-
-- provider registry
-- provider/model naming
-- slash-safe model retrieval
-- multi-provider catalog aggregation
-- capability database
-- metadata merge
-- partial-provider startup failure handling
-
-Add:
-
-```text
-custom OpenAI-compatible endpoints
-```
-
----
-
-## Milestone 3 — API-Key Cloud Providers
-
-Implement:
-
-1. OpenRouter
-2. OpenAI API
-3. Gemini
-4. xAI
-5. Anthropic
-
-Reuse transparent transport wherever possible.
-
-Use translation only when necessary.
-
----
-
-## Milestone 4 — Subscription Providers
-
-Implement:
-
-1. OpenAI Codex subscription
-2. Nous Portal
-
-OpenAI Codex must use ChatGPT OAuth and its dedicated Codex Responses transport, matching the same broad model Hermes currently uses rather than pretending the subscription is an OpenAI API key.
-
----
-
-## Milestone 5 — Classification Framework
-
-Implement:
-
-- fixed `Classification` schema
-- classifier interface
-- objective requirement extraction
-- Jev direct
-- Jev through OpenRouter/provider transport
-- Ollama embedding classifier
-- connected-model classifier
-- classifier failure policy
-- recursion prevention
-
----
-
-## Milestone 6 — Smart Router
-
-Implement:
-
-- `smart` virtual model
-- hard capability filtering
-- quality eligibility
-- context headroom
-- paid/free filtering
-- estimated-cost calculation
-- quota integration
-- local/cloud preference
-- latency EWMA
-- deterministic tie-breaking
-
-Produce debug-level routing explanation:
-
-```text
-classified: coding/high
-required: tools, reasoning
-candidates: 14
-capability eligible: 6
-quality eligible: 3
-selected: openrouter/vendor/model
-reason: lowest estimated cost among eligible models
-```
-
-Do not expose this explanation in normal inference responses.
-
----
-
-## Milestone 7 — Session Affinity
-
-Implement:
-
-- `X-Session-ID`
-- metadata session hints
-- conversation fingerprinting
-- in-memory session state
-- inactivity expiration
-- explicit deletion
-- context reset
-- tool-loop detection
-- model pinning
-
----
-
-## Milestone 8 — Failure and Handoff
-
-Implement:
-
-- typed upstream errors
-- `fail`
-- `reroute`
-- pre-stream handoff
-- no mid-stream handoff
-- model-facing handoff notice
-- client-facing handoff headers
-- replacement-model selection
-
----
-
-## Milestone 9 — Quota State
-
-Implement:
-
-- provider quota queries where available
-- response-header quota updates
-- local configured allowances
-- minimal persistent usage totals
-- quota cache
-- exhausted-model exclusion
-
-Do not turn this milestone into the future accounting product.
-
----
-
-## Milestone 10 — Container and Release
-
-Implement:
-
-- multi-stage container
-- non-root runtime
-- `/config`
-- `/state`
-- `linux/amd64`
-- version information
-- release build
-- client compatibility suite
-- performance baseline
+No phase changes the v1 constraints: one binary/process, flat-file persistence,
+no database/Redis/queue/sidecar, transparent forwarding where possible, and no
+mid-stream handoff. Optional metadata unavailable from an upstream must not
+block explicit transparent routing, but unsupported request features must still
+produce explicit errors.
 
 ---
 

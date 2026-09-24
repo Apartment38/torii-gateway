@@ -3,8 +3,10 @@
 Torii Router is a lightweight, resource-efficient LLM gateway written in Go.
 It presents an OpenAI-compatible HTTP API in front of one or more Ollama
 servers and gives every upstream model a provider-qualified name such as
-`local/llama3.2`. Version 1 is intentionally a small, single-process gateway:
-it needs no database, Redis instance, queue, sidecar, or web interface.
+`local/llama3.2`. The current build is a **pre-v1 milestone**: it is a usable
+Ollama-backed Chat Completions gateway, but it does not yet meet the repository's
+Version 1 scope. It needs no database, Redis instance, queue, sidecar, or web
+interface.
 
 The gateway is designed for clients that already support the OpenAI Chat
 Completions API. It rewrites only the requested model name and otherwise
@@ -12,7 +14,7 @@ passes the JSON request through to Ollama, preserving unknown fields. Both
 ordinary JSON responses and streamed SSE responses are relayed, and explicit
 model requests are always sent to the provider named in the model ID.
 
-## Version 1 features
+## Currently implemented features
 
 - OpenAI-compatible `GET /v1/models`, `GET /v1/models/{model}`, and
   `POST /v1/chat/completions` endpoints
@@ -23,12 +25,13 @@ model requests are always sent to the provider named in the model ID.
 - secrets loaded from an environment variable or a file, never inline YAML
 - strict configuration validation and graceful shutdown
 
-Version 1 performs **explicit routing only**. It does not yet provide the
-planned `smart` virtual model, automatic model selection, session affinity,
-quotas, accounting, or non-Ollama providers. See
-[`docs/implementation-plan.md`](docs/implementation-plan.md) for the longer-term
-plan and [`docs/architecture.md`](docs/architecture.md) for the behavior that
-is currently implemented.
+This pre-v1 milestone performs **explicit routing only**. It does not yet
+provide the Version 1 `smart` virtual model, automatic model selection, session
+affinity, quota/cost-aware routing, the full OpenAI endpoint set, or required
+non-Ollama providers. [`TASKS.md`](TASKS.md) is the ordered implementation
+roadmap, [`docs/implementation-plan.md`](docs/implementation-plan.md) defines
+the complete Version 1 contract, and [`docs/architecture.md`](docs/architecture.md)
+describes implemented versus planned behavior.
 
 ## Requirements
 
@@ -48,7 +51,7 @@ mkdir -p bin
 go build -o ./bin/gateway ./cmd/gateway
 ```
 
-Copy the release-ready example configuration, choose a strong client-facing
+Copy the example configuration, choose a strong client-facing
 API key, and start the server:
 
 ```sh
@@ -111,18 +114,19 @@ newline safe to use. Do not put the secret value itself in YAML.
 
 `state.directory` is required and reserves the location for gateway state.
 Use a writable, persistent path such as `/state` for deployments. The current
-explicit-routing release does not write state, but keeping the path stable
+explicit-routing milestone does not write state, but keeping the path stable
 allows future stateful features to be enabled without restructuring the
 deployment.
 
 ### Providers
 
-`providers` must contain at least one provider. Version 1 accepts these fields:
+`providers` must contain at least one provider. The current pre-v1 build
+accepts these fields:
 
 | Field | Description |
 | --- | --- |
 | `id` | Unique lowercase namespace matching `[a-z0-9][a-z0-9._-]*`. This becomes the prefix in public model IDs. |
-| `type` | Must be `ollama` in version 1. |
+| `type` | Must currently be `ollama`. |
 | `base_url` | Ollama's HTTP or HTTPS base URL. Credentials, query strings, and fragments are rejected. A path prefix is allowed. |
 
 For multiple Ollama servers, add more entries with unique IDs:

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Apartment38/torii-router/internal/api"
 	"github.com/Apartment38/torii-router/internal/provider"
@@ -70,21 +71,82 @@ func (failingProvider) ChatCompletions(context.Context, []byte, string) (*http.R
 	return nil, context.Canceled
 }
 
-func TestOpenAIHandlerRejectsStreamingWithoutCallingUpstream(t *testing.T) {
-	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{failingProvider{}})
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"broken/model","stream":true}`)))
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "unsupported_streaming") {
-		t.Fatalf("response = %d %s", response.Code, response.Body.String())
-	}
-}
-
 func TestOpenAIHandlerRejectsNonBooleanStream(t *testing.T) {
 	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{failingProvider{}})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"broken/model","stream":"yes"}`)))
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_stream") {
 		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestOpenAIHandlerFlushesStreamingEvents(t *testing.T) {
+	secondEvent := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "text/event-stream" {
+			t.Errorf("Accept = %q", r.Header.Get("Accept"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: first\n\n")
+		w.(http.Flusher).Flush()
+		<-secondEvent
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+	ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
+	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	gateway := httptest.NewServer(handler)
+	defer gateway.Close()
+
+	response, err := http.Post(gateway.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"local/a","stream":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	first := make([]byte, len("data: first\n\n"))
+	if _, err := io.ReadFull(response.Body, first); err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != "data: first\n\n" {
+		t.Fatalf("first event = %q", first)
+	}
+	close(secondEvent)
+	rest, err := io.ReadAll(response.Body)
+	if err != nil || string(rest) != "data: [DONE]\n\n" {
+		t.Fatalf("remaining stream = %q, error = %v", rest, err)
+	}
+}
+
+func TestOpenAIHandlerCancelsUpstreamWhenClientDisconnects(t *testing.T) {
+	canceled := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: first\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+		close(canceled)
+	}))
+	defer upstream.Close()
+	ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
+	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	gateway := httptest.NewServer(handler)
+	defer gateway.Close()
+
+	response, err := http.Post(gateway.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"local/a","stream":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := make([]byte, len("data: first\n\n"))
+	if _, err := io.ReadFull(response.Body, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-canceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("upstream context was not canceled after downstream disconnect")
 	}
 }
 

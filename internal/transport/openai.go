@@ -47,9 +47,9 @@ func NewOpenAICompatible(baseURL string, client *http.Client) (*OpenAICompatible
 	return &OpenAICompatible{baseURL: u, client: client}, nil
 }
 
-// Do sends a non-streaming JSON request after replacing only the top-level
-// model field. Unknown fields remain raw JSON values and are passed through.
-// The caller owns the returned response body.
+// Do sends a JSON request after replacing only the top-level model field.
+// Unknown fields remain raw JSON values and are passed through. Streaming
+// responses are returned without being read; the caller owns the response body.
 func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
 	if t == nil || t.baseURL == nil || t.client == nil {
 		return nil, errors.New("OpenAI-compatible transport is not initialized")
@@ -57,7 +57,7 @@ func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte,
 	if !strings.HasPrefix(endpoint, "/") || strings.Contains(endpoint, "?") {
 		return nil, errors.New("upstream endpoint must be an absolute path without a query")
 	}
-	rewritten, err := rewriteRequest(body, model)
+	rewritten, stream, err := rewriteRequest(body, model)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,11 @@ func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte,
 		return nil, fmt.Errorf("create upstream request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	} else {
+		req.Header.Set("Accept", "application/json")
+	}
 	response, err := t.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send upstream request: %w", err)
@@ -76,19 +80,16 @@ func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte,
 	return response, nil
 }
 
-func rewriteRequest(body []byte, model string) ([]byte, error) {
+func rewriteRequest(body []byte, model string) ([]byte, bool, error) {
 	if model == "" {
-		return nil, fmt.Errorf("%w: upstream model ID must not be empty", ErrInvalidRequest)
+		return nil, false, fmt.Errorf("%w: upstream model ID must not be empty", ErrInvalidRequest)
 	}
 	fields, modelStart, modelEnd, err := inspectRequest(body)
 	if err != nil {
-		return nil, err
-	}
-	if fields.Stream {
-		return nil, invalid("streaming is not supported yet")
+		return nil, false, err
 	}
 	if modelStart < 0 {
-		return nil, fmt.Errorf("%w: model is required", ErrInvalidRequest)
+		return nil, false, fmt.Errorf("%w: model is required", ErrInvalidRequest)
 	}
 
 	encodedModel, _ := json.Marshal(model)
@@ -96,7 +97,7 @@ func rewriteRequest(body []byte, model string) ([]byte, error) {
 	rewritten = append(rewritten, body[:modelStart]...)
 	rewritten = append(rewritten, encodedModel...)
 	rewritten = append(rewritten, body[modelEnd:]...)
-	return rewritten, nil
+	return rewritten, fields.Stream, nil
 }
 
 // InspectRequest validates a JSON object and extracts routing fields without

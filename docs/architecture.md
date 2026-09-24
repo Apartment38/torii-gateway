@@ -78,9 +78,8 @@ The gateway:
 The implemented transport accepts a raw JSON request, validates its top-level
 structure, and replaces only the encoded value of the top-level model field.
 All other request bytes, including unknown fields, retain their original
-representation. The transport reuses the provider's HTTP client. It currently
-supports non-streaming requests only; `stream: true` is rejected explicitly
-until the SSE relay is implemented.
+representation. The transport reuses the provider's HTTP client and supports
+both JSON and SSE Chat Completions responses.
 
 ### Translated transport
 
@@ -154,7 +153,11 @@ catalog request rather than returning a partial result.
 
 Streaming uses SSE passthrough wherever possible.
 
-The gateway must not buffer an entire streaming response.
+The gateway relays upstream stream bytes without parsing or rebuilding events
+and flushes each copied chunk promptly. This preserves event ordering and
+unknown payload fields, including tool-call and reasoning deltas, without
+buffering the entire response. The downstream request context controls the
+upstream request, so a disconnected client cancels upstream work.
 
 Once downstream response bytes have been emitted, the request cannot be
 rerouted to another model.

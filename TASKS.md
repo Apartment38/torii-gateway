@@ -8,6 +8,12 @@ No task is currently in progress.
 
 ## DONE
 
+### OpenAI-compatible transport hardening
+
+Hardened the shared OpenAI-compatible path by preserving escaped trailing
+base-path slashes, bounding Ollama model discovery, validating model-catalog
+arrays, rejecting top-level trailing commas, and stripping all applicable
+hop-by-hop response headers, including `Proxy-Connection`.
 ### TASK-006 and TASK-007 — Transparent transport and Ollama provider
 
 Goal:
@@ -41,6 +47,8 @@ Completed:
 - preserve escaped trailing base-path slashes, strictly reject trailing commas,
   strip proxy connection headers, validate model catalogs, and bound model
   discovery calls without limiting inference
+- validate complete, size-bounded model-catalog documents and require every
+  catalog entry to be an object
 
 Decisions:
 - gateway client authorization is never forwarded to Ollama

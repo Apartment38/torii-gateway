@@ -127,31 +127,44 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer response.Body.Close()
-	copyResponseHeaders(w.Header(), response.Header)
+	CopyResponseHeaders(w.Header(), response.Header)
 	w.WriteHeader(response.StatusCode)
 	_, _ = io.Copy(w, response.Body)
 }
 
-func copyResponseHeaders(dst, src http.Header) {
-	hopByHop := make(map[string]struct{})
-	for _, value := range src.Values("Connection") {
-		for _, token := range strings.Split(value, ",") {
-			if token = http.CanonicalHeaderKey(strings.TrimSpace(token)); token != "" {
-				hopByHop[token] = struct{}{}
-			}
+var hopByHopResponseHeaders = map[string]struct{}{
+	"connection":          {},
+	"content-length":      {},
+	"keep-alive":          {},
+	"proxy-authenticate":  {},
+	"proxy-authorization": {},
+	"proxy-connection":    {},
+	"te":                  {},
+	"trailer":             {},
+	"transfer-encoding":   {},
+	"upgrade":             {},
+}
+
+// CopyResponseHeaders copies end-to-end upstream headers to a downstream
+// response. Headers named by Connection are hop-by-hop as well as the standard
+// and de facto static hop-by-hop names. Content-Length is omitted because the
+// HTTP server computes it from the relayed response body.
+func CopyResponseHeaders(dst, src http.Header) {
+	excluded := make(map[string]struct{}, len(hopByHopResponseHeaders))
+	for name := range hopByHopResponseHeaders {
+		excluded[name] = struct{}{}
+	}
+	for _, connection := range src.Values("Connection") {
+		for name := range strings.SplitSeq(connection, ",") {
+			excluded[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
 		}
 	}
-	for key, values := range src {
-		canonical := http.CanonicalHeaderKey(key)
-		if _, excluded := hopByHop[canonical]; excluded {
-			continue
-		}
-		switch canonical {
-		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Proxy-Connection", "Te", "Trailer", "Transfer-Encoding", "Upgrade", "Content-Length":
+	for name, values := range src {
+		if _, skip := excluded[strings.ToLower(name)]; skip {
 			continue
 		}
 		for _, value := range values {
-			dst.Add(key, value)
+			dst.Add(name, value)
 		}
 	}
 }

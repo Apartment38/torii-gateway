@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,8 @@ import (
 )
 
 const modelDiscoveryTimeout = 10 * time.Second
+
+const maxModelCatalogSize = 16 << 20
 
 // Ollama implements model discovery and non-streaming inference for an Ollama
 // server. Inference uses Ollama's OpenAI-compatible API.
@@ -68,22 +71,46 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 		return nil, fmt.Errorf("discover Ollama models: upstream returned %s", response.Status)
 	}
+	limitedBody := &io.LimitedReader{R: response.Body, N: maxModelCatalogSize + 1}
 	var envelope struct {
 		Data json.RawMessage `json:"data"`
 	}
-	decoder := json.NewDecoder(io.LimitReader(response.Body, 16<<20))
+	decoder := json.NewDecoder(limitedBody)
 	if err := decoder.Decode(&envelope); err != nil {
+		if limitedBody.N == 0 {
+			return nil, fmt.Errorf("decode Ollama models: response exceeds %d bytes", maxModelCatalogSize)
+		}
 		return nil, fmt.Errorf("decode Ollama models: %w", err)
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if limitedBody.N == 0 {
+			return nil, fmt.Errorf("decode Ollama models: response exceeds %d bytes", maxModelCatalogSize)
+		}
+		if err == nil {
+			return nil, errors.New("decode Ollama models: response must contain one JSON value")
+		}
+		return nil, fmt.Errorf("decode Ollama models: trailing data: %w", err)
+	}
+	if limitedBody.N == 0 {
+		return nil, fmt.Errorf("decode Ollama models: response exceeds %d bytes", maxModelCatalogSize)
 	}
 	if len(envelope.Data) == 0 || string(envelope.Data) == "null" {
 		return nil, errors.New("decode Ollama models: data must be an array")
 	}
-	var catalog []Model
-	if err := json.Unmarshal(envelope.Data, &catalog); err != nil || catalog == nil {
+	var entries []json.RawMessage
+	if err := json.Unmarshal(envelope.Data, &entries); err != nil || entries == nil {
 		return nil, errors.New("decode Ollama models: data must be an array")
 	}
-	models := make([]Model, 0, len(catalog))
-	for _, model := range catalog {
+	models := make([]Model, 0, len(entries))
+	for _, entry := range entries {
+		trimmed := bytes.TrimSpace(entry)
+		if len(trimmed) < 2 || trimmed[0] != '{' {
+			return nil, errors.New("decode Ollama models: each model must be an object")
+		}
+		var model Model
+		if err := json.Unmarshal(entry, &model); err != nil {
+			return nil, fmt.Errorf("decode Ollama models: invalid model object: %w", err)
+		}
 		if model.ID == "" {
 			return nil, errors.New("decode Ollama models: model has empty ID")
 		}

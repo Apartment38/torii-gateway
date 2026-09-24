@@ -1,8 +1,10 @@
 package provider_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -56,6 +58,25 @@ func TestOllamaPreservesEscapedTrailingBasePathSlash(t *testing.T) {
 	}
 }
 
+func TestOllamaRemovesRepeatedTrailingBasePathSlashes(t *testing.T) {
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+	ollama, err := provider.NewOllama("local", server.URL+`/root///`, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ollama.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/root/v1/models" {
+		t.Fatalf("path = %q", path)
+	}
+}
+
 func TestOllamaRejectsMissingOrNullModelData(t *testing.T) {
 	for _, body := range []string{`{}`, `{"data":null}`, `{"data":{}}`} {
 		t.Run(body, func(t *testing.T) {
@@ -71,6 +92,56 @@ func TestOllamaRejectsMissingOrNullModelData(t *testing.T) {
 				t.Fatalf("Models() error = %v", err)
 			}
 		})
+	}
+}
+
+func TestOllamaRejectsMalformedCatalogDocument(t *testing.T) {
+	for _, body := range []string{`{"data":[]}garbage`, `{"data":[]} {"data":[]}`} {
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+			ollama, err := provider.NewOllama("local", server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ollama.Models(context.Background()); err == nil {
+				t.Fatal("Models() error = nil")
+			}
+		})
+	}
+}
+
+func TestOllamaRejectsNonObjectCatalogEntries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[null,1,"qwen"]}`))
+	}))
+	defer server.Close()
+	ollama, err := provider.NewOllama("local", server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ollama.Models(context.Background()); err == nil || !strings.Contains(err.Error(), "must be an object") {
+		t.Fatalf("Models() error = %v", err)
+	}
+}
+
+func TestOllamaRejectsOversizedCatalog(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[],"padding":"`))
+		chunk := bytes.Repeat([]byte("x"), 1<<20)
+		for range 17 {
+			_, _ = io.Copy(w, bytes.NewReader(chunk))
+		}
+	}))
+	defer server.Close()
+	ollama, err := provider.NewOllama("local", server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ollama.Models(context.Background()); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("Models() error = %v, want oversized response error", err)
 	}
 }
 

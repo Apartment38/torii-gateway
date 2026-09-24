@@ -63,7 +63,7 @@ func TestOpenAICompatibleRejectsMalformedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{`[]`, `{`, `{} {`, `{}`, `{"model":"one",}`, `{"model":"one","model":"two"}`, `{"model":"one","messages":[true false]}`} {
+	for _, body := range []string{`[]`, `{`, `{} {`, `{}`, `{"model":null}`, `{"model":"one","model":"two"}`, `{"model":"one",}`, `{"model":"one","messages":[true false]}`} {
 		if _, err := client.Do(context.Background(), "/v1/chat/completions", []byte(body), "x"); err == nil {
 			t.Errorf("Do(%q) error = nil", body)
 		}

@@ -107,10 +107,6 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
 		return
 	}
-	if fields.Stream {
-		writeAPIError(w, http.StatusBadRequest, "Streaming is not supported yet", "invalid_request_error", "unsupported_streaming")
-		return
-	}
 	providerID, modelID, err := provider.ParseModelID(fields.Model)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
@@ -129,7 +125,36 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 	defer response.Body.Close()
 	CopyResponseHeaders(w.Header(), response.Header)
 	w.WriteHeader(response.StatusCode)
+	if fields.Stream {
+		_ = relayStream(w, response.Body)
+		return
+	}
 	_, _ = io.Copy(w, response.Body)
+}
+
+// relayStream copies upstream bytes as they arrive and flushes every write.
+// It deliberately does not parse SSE, preserving event data (including unknown
+// fields and tool-call deltas) byte-for-byte and without buffering a response.
+func relayStream(w http.ResponseWriter, src io.Reader) error {
+	controller := http.NewResponseController(w)
+	_, err := io.Copy(flushingWriter{writer: w, flush: controller.Flush}, src)
+	return err
+}
+
+type flushingWriter struct {
+	writer io.Writer
+	flush  func() error
+}
+
+func (w flushingWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	if err != nil {
+		return n, err
+	}
+	if err := w.flush(); err != nil {
+		return n, err
+	}
+	return n, nil
 }
 
 var hopByHopResponseHeaders = map[string]struct{}{

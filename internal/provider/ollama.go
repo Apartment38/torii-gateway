@@ -19,8 +19,8 @@ const modelDiscoveryTimeout = 10 * time.Second
 
 const maxModelCatalogSize = 16 << 20
 
-// Ollama implements model discovery and non-streaming inference for an Ollama
-// server. Inference uses Ollama's OpenAI-compatible API.
+// Ollama implements model discovery and inference for an Ollama server.
+// Inference uses Ollama's OpenAI-compatible API, including SSE streaming.
 type Ollama struct {
 	id        string
 	baseURL   *url.URL

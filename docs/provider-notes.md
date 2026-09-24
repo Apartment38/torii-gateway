@@ -201,8 +201,9 @@ Verify:
 
 ### Status
 
-Implementation status: model discovery and non-streaming Chat Completions
-Last implementation update: 2026-09-23
+Implementation status: model discovery and Chat Completions, including SSE
+streaming
+Last implementation update: 2026-09-24
 
 ### API
 
@@ -214,11 +215,11 @@ The configured base URL is used with Ollama's OpenAI-compatible endpoints:
 Discovered upstream model IDs are exposed publicly as
 `<configured-provider-id>/<upstream-model-id>`. Chat Completion requests have
 that prefix removed before forwarding. Unknown JSON request fields are
-preserved by the generic compatible transport.
+preserved by the generic compatible transport. Streaming responses are
+relayed byte-for-byte and flushed as upstream bytes arrive.
 
 ### Current Limitations
 
-- Streaming is deliberately rejected pending TASK-008.
 - Native Ollama metadata endpoints are not queried yet.
 - Ollama authentication is not currently configured or sent.
 - Model-discovery calls have a 10-second deadline; inference uses the caller's

@@ -48,13 +48,31 @@ func TestOpenAICompatibleRewritesModelAndPreservesUnknownFields(t *testing.T) {
 	}
 }
 
-func TestOpenAICompatibleRejectsStreaming(t *testing.T) {
-	client, err := transport.NewOpenAICompatible("http://example.test", nil)
+func TestOpenAICompatibleForwardsStreamingRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept"); got != "text/event-stream" {
+			t.Errorf("Accept = %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if got, want := string(body), `{"model":"x","stream":true}`; got != want {
+			t.Errorf("body = %s, want %s", got, want)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+	client, err := transport.NewOpenAICompatible(server.URL, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Do(context.Background(), "/v1/chat/completions", []byte(`{"model":"x","stream":true}`), "x"); err == nil {
-		t.Fatal("Do() error = nil, want streaming error")
+	response, err := client.Do(context.Background(), "/v1/chat/completions", []byte(`{"model":"public/x","stream":true}`), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	got, _ := io.ReadAll(response.Body)
+	if string(got) != "data: [DONE]\n\n" {
+		t.Fatalf("response = %q", got)
 	}
 }
 

@@ -8,6 +8,24 @@ No task is currently in progress.
 
 ## DONE
 
+### TASK-008 — SSE streaming relay
+
+Goal:
+Relay streaming Chat Completions with low overhead and prompt cancellation.
+
+Completed:
+- enabled `stream: true` on the transparent OpenAI-compatible transport
+- advertised `text/event-stream` to upstreams for streaming requests
+- relayed upstream stream bytes without parsing or rebuilding SSE events
+- flushed each copied upstream chunk promptly instead of buffering the response
+- retained request-context cancellation through the upstream request
+- added transport and end-to-end prompt-flush coverage
+
+Decisions:
+- preserve SSE payloads byte-for-byte so unknown, tool-call, and reasoning
+  deltas remain compatible
+- terminate a failed stream rather than attempting a mid-stream provider switch
+
 ### OpenAI-compatible transport hardening
 
 Hardened the shared OpenAI-compatible path by preserving escaped trailing
@@ -185,6 +203,4 @@ Completed:
 
 ## TODO
 
-### TASK-008 — SSE streaming relay
-
-Implement low-overhead streaming passthrough and cancellation.
+No tasks are currently queued.

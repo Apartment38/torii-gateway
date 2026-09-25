@@ -196,20 +196,27 @@ Before introducing a dependency, determine:
 
 Before beginning:
 
-1. Read `TASKS.md`.
-2. Confirm the assigned task.
-3. Inspect related implementation and tests.
+1. Read `TASKS.md` and select the first unblocked TODO task unless another task
+   is explicitly assigned.
+2. Move only that single-task milestone to `IN PROGRESS`; do not bundle later
+   roadmap tasks into the same change.
+3. Confirm all listed dependencies are in `DONE`.
+4. Inspect related implementation and tests.
+5. For provider work, update dated protocol findings in
+   `docs/provider-notes.md` before implementation.
 
 Before finishing:
 
 1. run relevant tests
 2. run `go test ./...`
 3. run `go build ./...`
-4. update `TASKS.md`
+4. move the completed milestone from TODO to `DONE` in `TASKS.md`, recording
+   its result and any remaining issues
 5. update documentation when the task changes architecture, public behavior,
    configuration, developer workflow, significant design decisions, or another
    durable project convention
-6. leave the repository in a resumable state
+6. leave the repository in a buildable, resumable state with the next task and
+   its dependencies clear
 
 ## Troubleshooting
 

@@ -1,0 +1,21 @@
+# Torii Router version 1 configuration.
+# Copy this file to config.yaml and set TORII_API_KEY before starting.
+server:
+  # Use 0.0.0.0:8080 when the gateway must listen outside the local machine or
+  # container. Authentication is required on every endpoint except /healthz.
+  listen: 127.0.0.1:8080
+  authentication:
+    api_key:
+      env: TORII_API_KEY
+
+# Reserved for persistent gateway state. The explicit-routing v1 release does
+# not write state yet, but a stable location is required by the configuration.
+state:
+  directory: ./state
+
+providers:
+  # Provider IDs become the prefix of public model IDs (for example,
+  # local/llama3.2). Each ID must be unique.
+  - id: local
+    type: ollama
+    base_url: http://127.0.0.1:11434

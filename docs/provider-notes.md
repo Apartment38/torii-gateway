@@ -24,6 +24,13 @@ For each provider, record:
 
 Do not record credentials here.
 
+The repository is currently pre-v1. Provider research and implementation are
+scheduled as single-task milestones in `TASKS.md` (TASK-013 through TASK-018 and
+TASK-021 through TASK-023). Before changing an adapter, replace its placeholders
+with dated findings from primary documentation, identify which fields are
+verified versus inferred, and record unsupported behavior explicitly. A
+provider task is not complete until its notes and contract tests agree.
+
 ---
 
 ## OpenRouter

@@ -269,11 +269,24 @@ Expose deterministic model list and retrieval views and test stale/partial data.
 **Depends on:** TASK-011
 
 Extend strict configuration and the registry for arbitrary compatible
-endpoints, per-provider API-key secret references, optional safe headers, and
-model discovery. Reuse the transparent transport, bind credentials to the
-configured origin, reject unsafe URL/header configuration, and cover multiple
-providers, nested model IDs, credential isolation, streaming, and catalog
-failure cases.
+endpoints. Support optional bearer API-key secret references and explicit
+no-auth mode; arbitrary literal or secret-backed request headers; custom CA
+bundles and an explicit TLS-verification toggle; startup model discovery or a
+static model list; `auto`, `chat_completions`, and `responses` transport
+selection; configured upstream model-name rewriting; and separate request and
+connect timeouts. Make `auto` probe conservatively instead of inferring a
+transport from model names. Reuse the transparent transport where selected,
+bind credentials and secret headers to the configured origin, reject unsafe
+URL, header, and TLS configuration, and do not silently discard features that
+the selected transport cannot represent.
+
+Test multiple providers, authenticated and no-auth operation, literal and
+secret-backed headers, nested and rewritten model IDs, static catalogs and
+discovery failures, transport selection and conservative `auto` probing,
+custom-CA trust and disabled-verification modes, independent connect/request
+timeouts (without imposing a streaming response deadline), credential and
+secret-header isolation across origins, unsupported-feature errors, and
+byte-preserving streaming through compatible transports.
 
 ### Provider verification and adapters
 

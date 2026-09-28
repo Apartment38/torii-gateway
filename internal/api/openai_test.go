@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,7 @@ func TestOpenAIHandlerOllamaEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	handler, err := api.NewOpenAIHandler([]provider.OpenAIProvider{ollama})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,12 +68,63 @@ func (failingProvider) ID() string { return "broken" }
 func (failingProvider) Models(context.Context) ([]provider.Model, error) {
 	return nil, context.Canceled
 }
-func (failingProvider) ChatCompletions(context.Context, []byte, string) (*http.Response, error) {
+func (failingProvider) Forward(context.Context, string, []byte, string) (*http.Response, error) {
 	return nil, context.Canceled
 }
 
+func TestOpenAIHandlerForwardsTransparentEndpoints(t *testing.T) {
+	endpoints := []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses"}
+	for _, endpoint := range endpoints {
+		t.Run(endpoint, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != endpoint {
+					t.Errorf("path = %q, want %q", r.URL.Path, endpoint)
+				}
+				body, _ := io.ReadAll(r.Body)
+				if got, want := string(body), `{"model":"qwen3","extension":{"keep":true}}`; got != want {
+					t.Errorf("body = %s, want %s", got, want)
+				}
+				w.Header().Set("X-Upstream", "preserved")
+				w.WriteHeader(http.StatusCreated)
+				_, _ = io.WriteString(w, `{"ok":true}`)
+			}))
+			defer upstream.Close()
+			ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
+			handler, _ := api.NewOpenAIHandler([]provider.OpenAIProvider{ollama})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{"model":"local/qwen3","extension":{"keep":true}}`)))
+			if response.Code != http.StatusCreated || response.Header().Get("X-Upstream") != "preserved" || response.Body.String() != `{"ok":true}` {
+				t.Fatalf("response = %d, headers %v, body %s", response.Code, response.Header(), response.Body.String())
+			}
+		})
+	}
+}
+
+func TestOpenAIHandlerRejectsStatefulResponsesFields(t *testing.T) {
+	for _, parameter := range []string{"previous_response_id", "conversation"} {
+		t.Run(parameter, func(t *testing.T) {
+			handler, _ := api.NewOpenAIHandler([]provider.OpenAIProvider{failingProvider{}})
+			response := httptest.NewRecorder()
+			body := fmt.Sprintf(`{"model":"broken/model",%q:null}`, parameter)
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body)))
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+			}
+			var envelope struct {
+				Error struct {
+					Code  string  `json:"code"`
+					Param *string `json:"param"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil || envelope.Error.Code != "unsupported_parameter" || envelope.Error.Param == nil || *envelope.Error.Param != parameter {
+				t.Fatalf("response = %s, decode error = %v", response.Body.String(), err)
+			}
+		})
+	}
+}
+
 func TestOpenAIHandlerRejectsNonBooleanStream(t *testing.T) {
-	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{failingProvider{}})
+	handler, _ := api.NewOpenAIHandler([]provider.OpenAIProvider{failingProvider{}})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"broken/model","stream":"yes"}`)))
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_stream") {
@@ -94,7 +146,7 @@ func TestOpenAIHandlerFlushesStreamingEvents(t *testing.T) {
 	}))
 	defer upstream.Close()
 	ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
-	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	handler, _ := api.NewOpenAIHandler([]provider.OpenAIProvider{ollama})
 	gateway := httptest.NewServer(handler)
 	defer gateway.Close()
 
@@ -128,7 +180,7 @@ func TestOpenAIHandlerCancelsUpstreamWhenClientDisconnects(t *testing.T) {
 	}))
 	defer upstream.Close()
 	ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
-	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	handler, _ := api.NewOpenAIHandler([]provider.OpenAIProvider{ollama})
 	gateway := httptest.NewServer(handler)
 	defer gateway.Close()
 
@@ -178,7 +230,7 @@ func TestOpenAIHandlerMatchesRoutingFieldsCaseSensitively(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{local, cloud})
+	handler, err := api.NewOpenAIHandler([]provider.OpenAIProvider{local, cloud})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +283,7 @@ func TestOpenAIHandlerRemovesConnectionNamedHeaders(t *testing.T) {
 	}))
 	defer upstream.Close()
 	ollama, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
-	handler, _ := api.NewOpenAIHandler([]provider.ChatCompletionsProvider{ollama})
+	handler, _ := api.NewOpenAIHandler([]provider.OpenAIProvider{ollama})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"local/a"}`)))
 	if got := response.Header().Get("X-Upstream-Hop"); got != "" {

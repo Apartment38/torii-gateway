@@ -19,8 +19,9 @@ type Provider interface {
 	Models(context.Context) ([]Model, error)
 }
 
-// ChatCompletionsProvider supports transparent Chat Completions requests.
-type ChatCompletionsProvider interface {
+// OpenAIProvider supports the transparent OpenAI-compatible inference
+// endpoints exposed by the gateway.
+type OpenAIProvider interface {
 	Provider
-	ChatCompletions(context.Context, []byte, string) (*http.Response, error)
+	Forward(context.Context, string, []byte, string) (*http.Response, error)
 }

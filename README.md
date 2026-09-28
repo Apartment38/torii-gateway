@@ -4,20 +4,21 @@ Torii Router is a lightweight, resource-efficient LLM gateway written in Go.
 It presents an OpenAI-compatible HTTP API in front of one or more Ollama
 servers and gives every upstream model a provider-qualified name such as
 `local/llama3.2`. The current build is a **pre-v1 milestone**: it is a usable
-Ollama-backed Chat Completions gateway, but it does not yet meet the repository's
+Ollama-backed OpenAI-compatible gateway, but it does not yet meet the repository's
 Version 1 scope. It needs no database, Redis instance, queue, sidecar, or web
 interface.
 
-The gateway is designed for clients that already support the OpenAI Chat
-Completions API. It rewrites only the requested model name and otherwise
+The gateway is designed for clients that already support the OpenAI API. It
+rewrites only the requested model name and otherwise
 passes the JSON request through to Ollama, preserving unknown fields. Both
-ordinary JSON responses and streamed SSE responses are relayed, and explicit
-model requests are always sent to the provider named in the model ID.
+ordinary JSON responses and streamed SSE responses are relayed where supported,
+and explicit model requests are always sent to the provider named in the model
+ID.
 
 ## Currently implemented features
 
-- OpenAI-compatible `GET /v1/models`, `GET /v1/models/{model}`, and
-  `POST /v1/chat/completions` endpoints
+- OpenAI-compatible model, Chat Completions, Completions, Embeddings, and
+  stateless Responses endpoints
 - multiple Ollama upstreams with `provider/model` public model IDs
 - transparent request forwarding, including fields the gateway does not know
 - low-overhead, byte-for-byte SSE streaming
@@ -178,12 +179,17 @@ For streaming, set `"stream": true` and use `curl --no-buffer`. OpenAI SDKs
 can connect by setting their base URL to `http://127.0.0.1:8080/v1`, using the
 configured Torii API key, and selecting a provider-qualified model name.
 
+The same transparent forwarding is available at `POST /v1/completions`,
+`POST /v1/embeddings`, and `POST /v1/responses`. Responses requests are
+stateless: `previous_response_id` and `conversation` are rejected with an
+`unsupported_parameter` error rather than being ignored or stored.
+
 ## Operational notes
 
 - `GET /v1/models` queries every configured upstream. If any provider is
   unavailable or returns an invalid catalog, the gateway returns an upstream
   error rather than a partial model list.
-- Chat Completions request bodies are limited to 32 MiB.
+- Inference request bodies are limited to 32 MiB.
 - Upstream inference has no gateway-imposed completion timeout. Client
   disconnects cancel the upstream request.
 - On `SIGINT` or `SIGTERM`, the server stops accepting connections and gives

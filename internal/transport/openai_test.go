@@ -123,6 +123,16 @@ func TestInspectRequestDoesNotCopyUnrelatedFields(t *testing.T) {
 	}
 }
 
+func TestInspectRequestFindsStatefulResponsesFields(t *testing.T) {
+	fields, err := transport.InspectRequest([]byte(`{"model":"local/a","previous_response_id":null,"conversation":{"id":"c"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fields.PreviousResponseID || !fields.Conversation {
+		t.Fatalf("fields = %#v", fields)
+	}
+}
+
 func TestOpenAICompatiblePreservesEscapedBasePath(t *testing.T) {
 	var escapedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

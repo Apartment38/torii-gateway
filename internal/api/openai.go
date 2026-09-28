@@ -16,12 +16,12 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
-	providers []provider.ChatCompletionsProvider
-	byID      map[string]provider.ChatCompletionsProvider
+	providers []provider.OpenAIProvider
+	byID      map[string]provider.OpenAIProvider
 }
 
-func NewOpenAIHandler(providers []provider.ChatCompletionsProvider) (*OpenAIHandler, error) {
-	registered := make(map[string]provider.ChatCompletionsProvider, len(providers))
+func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, error) {
+	registered := make(map[string]provider.OpenAIProvider, len(providers))
 	for _, p := range providers {
 		if p == nil {
 			return nil, errors.New("register provider: nil provider")
@@ -31,7 +31,7 @@ func NewOpenAIHandler(providers []provider.ChatCompletionsProvider) (*OpenAIHand
 		}
 		registered[p.ID()] = p
 	}
-	return &OpenAIHandler{providers: append([]provider.ChatCompletionsProvider(nil), providers...), byID: registered}, nil
+	return &OpenAIHandler{providers: append([]provider.OpenAIProvider(nil), providers...), byID: registered}, nil
 }
 
 func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +41,13 @@ func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/"):
 		h.getModel(w, r, strings.TrimPrefix(r.URL.Path, "/v1/models/"))
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
-		h.chatCompletions(w, r)
+		h.forward(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/completions":
+		h.forward(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/embeddings":
+		h.forward(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/responses":
+		h.forward(w, r)
 	default:
 		writeAPIError(w, http.StatusNotFound, "Not found", "invalid_request_error", "not_found")
 	}
@@ -83,7 +89,7 @@ func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicI
 	writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
 }
 
-func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) {
+func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
@@ -107,13 +113,23 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
 		return
 	}
+	if r.URL.Path == "/v1/responses" {
+		if fields.PreviousResponseID {
+			writeUnsupportedParameter(w, "previous_response_id")
+			return
+		}
+		if fields.Conversation {
+			writeUnsupportedParameter(w, "conversation")
+			return
+		}
+	}
 	providerID, modelID, err := provider.ParseModelID(fields.Model)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
 		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
 		return
 	}
-	response, err := upstream.ChatCompletions(r.Context(), body, modelID)
+	response, err := upstream.Forward(r.Context(), r.URL.Path, body, modelID)
 	if err != nil {
 		if errors.Is(err, transport.ErrInvalidRequest) {
 			writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_request")
@@ -130,6 +146,10 @@ func (h *OpenAIHandler) chatCompletions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	_, _ = io.Copy(w, response.Body)
+}
+
+func writeUnsupportedParameter(w http.ResponseWriter, parameter string) {
+	writeAPIErrorWithParam(w, http.StatusBadRequest, fmt.Sprintf("The %s parameter is not supported; Responses requests must be stateless", parameter), "invalid_request_error", "unsupported_parameter", &parameter)
 }
 
 // relayStream copies upstream bytes as they arrive and flushes every write.
@@ -201,6 +221,10 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func writeAPIError(w http.ResponseWriter, status int, message, errorType, code string) {
+	writeAPIErrorWithParam(w, status, message, errorType, code, nil)
+}
+
+func writeAPIErrorWithParam(w http.ResponseWriter, status int, message, errorType, code string, param *string) {
 	writeJSON(w, status, struct {
 		Error struct {
 			Message string  `json:"message"`
@@ -213,5 +237,5 @@ func writeAPIError(w http.ResponseWriter, status int, message, errorType, code s
 		Type    string  `json:"type"`
 		Param   *string `json:"param"`
 		Code    string  `json:"code"`
-	}{Message: message, Type: errorType, Code: code}})
+	}{Message: message, Type: errorType, Param: param, Code: code}})
 }

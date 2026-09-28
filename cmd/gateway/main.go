@@ -108,7 +108,7 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 		return nil, err
 	}
 
-	providers := make([]provider.ChatCompletionsProvider, 0, len(cfg.Providers))
+	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
 	for _, providerConfig := range cfg.Providers {
 		upstream, err := provider.NewOllama(providerConfig.ID, providerConfig.BaseURL, &http.Client{})
 		if err != nil {

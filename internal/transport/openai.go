@@ -20,8 +20,10 @@ var ErrInvalidStream = errors.New("invalid stream field")
 
 // RequestFields contains the top-level fields needed before routing a request.
 type RequestFields struct {
-	Model  string
-	Stream bool
+	Model              string
+	Stream             bool
+	PreviousResponseID bool
+	Conversation       bool
 }
 
 // OpenAICompatible forwards requests to an upstream which implements the
@@ -157,6 +159,10 @@ func inspectRequest(body []byte) (RequestFields, int, int, error) {
 			if err := json.Unmarshal(body[valueStart:i], &fields.Stream); err != nil {
 				return fields, -1, -1, fmt.Errorf("%w: %w", ErrInvalidRequest, ErrInvalidStream)
 			}
+		case "previous_response_id":
+			fields.PreviousResponseID = true
+		case "conversation":
+			fields.Conversation = true
 		}
 		i = skipSpace(body, i)
 		if i >= len(body) {

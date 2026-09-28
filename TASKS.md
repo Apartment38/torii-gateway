@@ -15,6 +15,28 @@ TODO list below and move only that task here while implementing it.
 
 ## DONE
 
+### TASK-009 — Complete transparent OpenAI endpoint coverage
+
+Goal:
+Expose the complete transparent OpenAI-compatible endpoint set supported by
+the Ollama MVP.
+
+Completed:
+- added transparent Completions, Embeddings, and stateless Responses handlers
+  alongside Chat Completions
+- preserved unknown request fields and the existing 32 MiB body limit across
+  every inference endpoint
+- relayed JSON and supported streaming responses through the shared transport
+- rejected `previous_response_id` and `conversation` with an OpenAI-style
+  `unsupported_parameter` error
+- added transport, provider, handler, and end-to-end endpoint coverage
+
+Decisions:
+- use one provider forwarding contract for the compatible endpoint set so all
+  endpoints retain identical byte-preservation and cancellation behavior
+- treat the presence of a stateful Responses field as unsupported, including a
+  null value, rather than silently changing request semantics
+
 ### Pre-v1 usage documentation
 
 Prepared public-facing documentation for the currently implemented pre-v1
@@ -232,16 +254,6 @@ when public behavior or architecture changes. Provider tasks must first update
 upstream metadata must not block the transparent gateway path.
 
 ### Foundation and complete public API
-
-#### TASK-009 — Complete transparent OpenAI endpoint coverage
-
-**Depends on:** TASK-008
-
-Add transparent `POST /v1/completions`, `POST /v1/embeddings`, and stateless
-`POST /v1/responses` forwarding, including streaming where the endpoint permits
-it. Preserve unknown fields, enforce the existing body limit, reject stateful
-Responses fields such as `previous_response_id` with an OpenAI-style
-unsupported-parameter error, and add handler/transport/end-to-end tests.
 
 #### TASK-010 — Normalize public errors and request IDs
 

@@ -84,7 +84,9 @@ The implemented transport accepts a raw JSON request, validates its top-level
 structure, and replaces only the encoded value of the top-level model field.
 All other request bytes, including unknown fields, retain their original
 representation. The transport reuses the provider's HTTP client and supports
-both JSON and SSE Chat Completions responses.
+Chat Completions, Completions, Embeddings, and stateless Responses. JSON and
+SSE bodies are relayed without interpretation. Stateful Responses fields
+(`previous_response_id` and `conversation`) are rejected at the public API.
 
 ### Translated transport
 

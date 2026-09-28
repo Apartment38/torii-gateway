@@ -126,6 +126,11 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 	return models, nil
 }
 
-func (o *Ollama) ChatCompletions(ctx context.Context, body []byte, model string) (*http.Response, error) {
-	return o.transport.Do(ctx, "/v1/chat/completions", body, model)
+func (o *Ollama) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
+	switch endpoint {
+	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses":
+		return o.transport.Do(ctx, endpoint, body, model)
+	default:
+		return nil, fmt.Errorf("unsupported Ollama endpoint %q", endpoint)
+	}
 }

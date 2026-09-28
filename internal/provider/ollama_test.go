@@ -164,30 +164,44 @@ func TestOllamaModelDiscoveryHasDeadline(t *testing.T) {
 	_, _ = ollama.Models(context.Background())
 }
 
-func TestOllamaChatCompletionsUsesCompatibleTransport(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		var request struct {
-			Model string `json:"model"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatal(err)
-		}
-		if request.Model != "qwen3" {
-			t.Errorf("model = %q", request.Model)
-		}
-		_, _ = w.Write([]byte(`{"id":"chatcmpl-1"}`))
-	}))
-	defer server.Close()
-	ollama, err := provider.NewOllama("local", server.URL, server.Client())
+func TestOllamaForwardsCompatibleEndpoints(t *testing.T) {
+	for _, endpoint := range []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses"} {
+		t.Run(endpoint, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != endpoint {
+					t.Fatalf("path = %q, want %q", r.URL.Path, endpoint)
+				}
+				var request struct {
+					Model string `json:"model"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Fatal(err)
+				}
+				if request.Model != "qwen3" {
+					t.Errorf("model = %q", request.Model)
+				}
+				_, _ = w.Write([]byte(`{"id":"chatcmpl-1"}`))
+			}))
+			defer server.Close()
+			ollama, err := provider.NewOllama("local", server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := ollama.Forward(context.Background(), endpoint, []byte(`{"model":"local/qwen3","messages":[]}`), "qwen3")
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+		})
+	}
+}
+
+func TestOllamaRejectsUnsupportedEndpoint(t *testing.T) {
+	ollama, err := provider.NewOllama("local", "http://example.test", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := ollama.ChatCompletions(context.Background(), []byte(`{"model":"local/qwen3","messages":[]}`), "qwen3")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := ollama.Forward(context.Background(), "/v1/files", []byte(`{"model":"local/qwen3"}`), "qwen3"); err == nil {
+		t.Fatal("Forward() error = nil")
 	}
-	response.Body.Close()
 }

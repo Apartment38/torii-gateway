@@ -18,6 +18,130 @@ allow.
 
 ## DONE
 
+### TASK-034 — Implement quota and allowance state
+
+Goal:
+Represent known and unknown quota consistently and cache provider snapshots.
+
+Completed:
+- added normalized known/unknown quota, remaining fraction, and exhaustion state
+- added local allowance injection, TTL expiry, invalidation, and finite-value validation
+- coalesced concurrent refreshes per model and preserved caller cancellation
+- added cache, unknown-state, exhaustion, local allowance, and race coverage
+
+Decisions:
+- unknown quota is never interpreted as exhausted or unlimited
+- failed refreshes are not cached, allowing the next request to retry
+
+### TASK-028 — Implement deterministic model selection
+
+Goal:
+Choose the cheapest eligible physical model using explainable deterministic policy.
+
+Completed:
+- added hard endpoint, feature, context-headroom, availability, quota, and free-only filters
+- added configurable complexity, tool, and reasoning quality thresholds with
+  unknown-quality fallback only when no known-quality model qualifies
+- added upper-bound input/output cost estimation and zero monetary cost for local models
+- added quota, location, EWMA latency, context headroom, and lexical tie-breaking
+- returned per-model debug reasons and added table and order-independence fuzz tests
+
+Decisions:
+- unknown endpoint or required-feature support is not treated as verified support
+- unknown price is more expensive than known price and is excluded in free-only mode
+- unknown latency is neutral and therefore does not beat measured latency solely
+  because it happens to be represented as zero
+
+### TASK-024 — Implement request requirements and classifier contracts
+
+Goal:
+Define objective request requirements and one validated classifier contract.
+
+Completed:
+- added the fixed Version 1 task, complexity, requirement, preference, confidence,
+  failure-policy, request, classifier, and runner contracts
+- extracted endpoint, tools, images, structured output, reasoning, streaming,
+  approximate input size, and output limits without modifying raw request bytes
+- made objective requirements override semantic classifier output
+- bounded classifier calls, prohibited `smart` recursion, and implemented the
+  deterministic general/medium capability fallback
+- added malformed schema, extraction, recursion, timeout, and fallback tests
+
+Decisions:
+- estimated input tokens use a deterministic conservative byte heuristic until a
+  provider tokenizer exists and are not presented as billed usage
+- classification describes work and requirements only; it never names a model
+
+### TASK-020 — Add authentication administration CLI
+
+Goal:
+Provide validated, non-interactive administration of provider credentials.
+
+Completed:
+- added `gateway auth login`, `logout`, and `status` commands
+- required the provider to exist in a strictly decoded configuration
+- accepted access and optional refresh tokens only through environment variables
+  or files and persisted endpoint-bound credentials
+- reported only provider state, including expiry, without printing tokens
+- added login/restart/status/logout, redaction, and invalid-configuration tests
+
+Decisions:
+- token values are never accepted as command-line arguments
+- OAuth-specific interactive acquisition remains owned by each OAuth provider
+
+### TASK-019 — Add secure persistent credential storage
+
+Goal:
+Persist provider-scoped OAuth credentials safely below the configured state directory.
+
+Completed:
+- added a versioned provider-bound credential record and store interface
+- added restrictive auth-directory and credential-file permissions
+- added size-bounded, strict, corruption-safe reads with secret-safe errors
+- added same-directory atomic replacement, file and directory syncing, deletion,
+  restart persistence, and provider-isolation coverage
+
+Decisions:
+- every stored credential is bound to both a validated provider ID and endpoint
+- unsafe permissions, symlinks, unknown fields, trailing data, and wrong provider
+  records are rejected instead of repaired or partially loaded
+
+### TASK-017 — Define the canonical translated request/response model
+
+Goal:
+Define the translation-only contract needed by the Codex transport without
+changing transparent compatible traffic.
+
+Completed:
+- added canonical chat/Responses requests, messages, multimodal content, tools,
+  tool calls/results, structured output, reasoning, output limits, and extensions
+- added canonical responses, normalized usage and finish reasons, and streaming deltas
+- added strict validation for lossy or ambiguous request states
+- added round-trip and invalid-contract tests
+
+Decisions:
+- unknown translated fields must be retained as validated raw JSON extensions or
+  rejected by an adapter; silent loss is forbidden
+- transparent OpenAI-compatible providers continue to use raw request bytes and
+  do not instantiate the canonical model
+
+### TASK-012 — Add configurable generic OpenAI-compatible providers
+
+Goal:
+Add origin-isolated, configurable standard OpenAI-compatible upstreams.
+
+Completed:
+- added optional discovery or static catalogs, model aliases, and transparent forwarding
+- added environment/file-backed bearer and custom-header secrets with unsafe-header rejection
+- added independent connection, request, and discovery timeouts plus TLS CA/server-name configuration
+- disabled redirects and isolated clients, credentials, TLS, and connection pools by provider
+- added configuration, discovery, rewriting, passthrough, streaming, and credential-isolation tests
+
+Decisions:
+- custom header values are secret references rather than inline strings
+- redirects are returned rather than followed so credentials never leave the configured origin
+- generic providers use the existing byte-preserving compatible transport
+
 ### TASK-011 — Build the model catalog and capability metadata core
 
 Goal:
@@ -313,18 +437,6 @@ and recording a focused commit for each before beginning the next.
 
 ### Foundation and complete public API
 
-#### TASK-012 — Add configurable generic OpenAI-compatible providers
-
-**Depends on:** TASK-011
-
-Extend configuration and the provider registry for arbitrary standard
-OpenAI-compatible endpoints, including local self-hosted servers. Support
-optional bearer secrets or no auth, safe custom headers and TLS configuration,
-static or discovered models, transport selection, model-name rewriting, and
-separate connection/request timeouts. Preserve unknown request fields and bind
-all credentials to their configured origin. Add fake-server, isolation,
-streaming, and configuration tests.
-
 ##### TASK-014 — Verify the normal OpenAI API profile
 
 **Depends on:** TASK-012
@@ -334,31 +446,44 @@ configuration/profile over the standard compatible provider. Keep API-key
 credentials, endpoints, and clients strictly separate from Codex subscription
 OAuth credentials.
 
+**Handoff instructions for the completing agent:**
+
+1. Start with primary-source research. Use only current official OpenAI API
+   documentation and, where documentation links to it, an official OpenAI
+   specification. Record the verification date and direct source URLs in the
+   `OpenAI API` section of `docs/provider-notes.md`. At minimum verify the API
+   origin/base path, bearer authentication, project/organization headers,
+   model listing, each Version 1 transparent endpoint, SSE behavior, error
+   envelopes, request IDs, and whether redirects are part of the contract.
+2. Do not infer normal API behavior from ChatGPT, Codex CLI, or third-party SDK
+   implementations. Clearly label anything not stated by a primary source as
+   unverified and do not turn it into capability metadata.
+3. Inspect `internal/config/config.go`, `internal/provider/openai_compatible.go`,
+   `internal/transport/openai.go`, and `cmd/gateway/main.go` before coding. Add a
+   first-class `openai` profile over the existing compatible provider rather
+   than duplicating its forwarding implementation. Define and test which
+   fields are fixed by the profile and which safe fields remain configurable.
+4. Require an external secret reference for the normal OpenAI API key. Bind
+   that key, any project/organization headers, the HTTP client, and the
+   verified normal-API origin together. Never read credentials from
+   `state.directory/auth`, and never accept a ChatGPT/Codex OAuth credential.
+5. Add strict configuration tests, fake-server discovery and inference tests,
+   JSON and SSE passthrough tests, model-rewrite tests, redirect/origin
+   isolation tests, and explicit tests proving a stored `openai-codex`
+   credential cannot be sent by this profile. No real API key is required for
+   the automated suite; any live smoke test must be opt-in and secret-safe.
+6. Update the README, example configuration, architecture/provider notes, and
+   this task record. Run the full repository checks and leave one focused
+   commit. Do not mark TASK-014 done merely for adding documentation or a type
+   alias; the configured profile must work through the public endpoints.
+
+Previous attempts in this environment could not reach the official sources:
+the web research service returned `401 Unauthorized`, and direct `curl` calls
+to `platform.openai.com` and `api.openai.com` were rejected by the environment
+proxy with `403`. Retry from an environment with official-source access rather
+than copying the unverified placeholders in `docs/provider-notes.md`.
+
 #### 2. Build the Codex subscription path
-
-##### TASK-017 — Define the canonical translated request/response model
-
-**Depends on:** TASK-010
-
-Add the translation-only representation needed by Codex for instructions,
-multimodal messages, tools and results, structured output, reasoning controls,
-usage, finish reasons, and streaming deltas. Define lossless/error rules and
-round-trip tests; compatible traffic must continue to bypass translation.
-
-##### TASK-019 — Add secure persistent credential storage
-
-**Depends on:** TASK-010
-
-Store provider-scoped credentials below `state.directory/auth` with restrictive
-permissions, atomic replacement, corruption-safe reads, and secret-safe errors.
-Test restart and cross-provider isolation behavior.
-
-##### TASK-020 — Add authentication administration CLI
-
-**Depends on:** TASK-019
-
-Implement config validation plus provider login, logout, and status commands.
-Support non-interactive operation, never print tokens, and test exit behavior.
 
 ##### TASK-021 — Verify and implement ChatGPT Codex subscription authentication
 
@@ -368,6 +493,55 @@ Document the current verified ChatGPT OAuth flow, refresh lifecycle, audience,
 account identifiers, and persisted fields. Implement the supported login and
 refresh flow with endpoint binding and tests proving API keys and OAuth tokens
 cannot cross endpoints.
+
+**Handoff instructions for the completing agent:**
+
+1. Treat this as security-sensitive research before implementation. Use
+   current official OpenAI documentation and the official `openai/codex`
+   repository as primary sources. Pin every source-code finding to a commit
+   SHA, record the verification date and direct links in the `OpenAI Codex
+   Subscription` section of `docs/provider-notes.md`, and distinguish observed
+   code behavior from documented guarantees.
+2. Verify rather than guess all OAuth details: client identifier, authorization
+   and token origins, device-code endpoints and polling errors, browser
+   authorization-code + PKCE parameters, redirect URI, scopes, audience,
+   refresh grant and rotation, expiry handling, account/principal selection,
+   cancellation, and the exact endpoint/account binding required on requests.
+   Never place real tokens, authorization codes, or identifying account values
+   in the repository, fixtures, logs, errors, or task notes.
+3. Read `internal/state/credentials.go`, the `gateway auth` implementation in
+   `cmd/gateway/main.go`, `internal/config/config.go`, and the canonical types in
+   `internal/transport/canonical.go` before changing shared contracts. Extend
+   the existing credential store and CLI; do not create a second token store or
+   silently reinterpret the normal OpenAI `bearer_token` configuration.
+4. Add an explicit `openai-codex` provider configuration whose OAuth issuer,
+   token client, persisted credential, refresh path, and eventual inference
+   client are origin-bound. Validate loaded records against both provider ID
+   and endpoint/issuer identity. Refresh early enough to avoid expiry during a
+   request, coalesce concurrent refreshes, persist rotated refresh tokens
+   atomically, and fail closed on corrupt, expired-without-refresh, wrong
+   audience, wrong account, or endpoint-mismatched credentials.
+5. Integrate verified device-code login as the default and browser PKCE only as
+   supported by the verified upstream. Preserve non-interactive operation for
+   status/logout and automation. Never print tokens; ensure cancellation and
+   OAuth error paths have deterministic exit behavior.
+6. Use fake authorization/token servers and injectable clocks/randomness for
+   automated tests. Cover successful login, device polling (`pending`, pacing,
+   denial, expiry), PKCE verification, refresh and rotation, restart, concurrent
+   refresh, logout, redaction, account selection, cancellation, malformed
+   responses, and strict cross-origin/cross-provider isolation. Add tests that
+   normal OpenAI API keys cannot reach Codex endpoints and Codex OAuth tokens
+   cannot reach `api.openai.com`. Keep any real login test opt-in.
+7. Update provider notes before code, then update architecture, configuration,
+   CLI/README documentation, and this task record. Run all repository checks
+   and leave one focused commit. TASK-021 is complete only when login, durable
+   restart, automatic refresh, logout, and the credential-isolation tests all
+   pass; transport translation and inference remain TASK-022.
+
+Official OpenAI/Codex sources were unreachable in the previous environment
+(web research returned `401`; direct HTTPS was proxy-blocked with `403`). A
+completing agent must repeat the research with working official-source access.
+Do not implement from memory, Hermes behavior alone, or stale blog posts.
 
 ##### TASK-022 — Implement the ChatGPT Codex subscription transport
 
@@ -379,14 +553,6 @@ unsupported features explicitly, and expose `openai-codex/<model>` IDs. Add
 fixtures, fake-server tests, and opt-in live tests.
 
 #### 3. Implement classification and smart selection
-
-##### TASK-024 — Implement request requirements and classifier contracts
-
-**Depends on:** TASK-011, TASK-017
-
-Define objective request requirements, the fixed classification schema,
-classifier interface, validation, recursion prevention, timeouts, and failure
-policies. Extract hard requirements without losing unknown request fields.
 
 ##### TASK-025 — Implement the generic connected-model classifier
 
@@ -414,15 +580,6 @@ failure policy with a fake local endpoint.
 Add deterministic in-memory prototype similarity over a configured physical
 Ollama embedding model. Validate vector shape and finite values and test
 thresholds, cancellation, and stability.
-
-##### TASK-028 — Implement deterministic model selection
-
-**Depends on:** TASK-011, TASK-024
-
-Implement pure selection policy: capability and endpoint filtering, context
-headroom, quality, paid/free and known-price rules, estimated cost, quota, local
-preference, latency, and stable tie-breaking. Return structured debug reasons
-and add table/fuzz tests.
 
 ##### TASK-029 — Expose and route the `smart` virtual model
 
@@ -462,13 +619,6 @@ parallel and incomplete tool exchanges.
 Classify retryable failures and support configured fail/reroute behavior only
 before downstream bytes are committed. Preserve request/tool context, cap
 attempts, and never substitute an explicit model.
-
-##### TASK-034 — Implement quota and allowance state
-
-**Depends on:** TASK-011, TASK-019
-
-Add known/unknown quota semantics, local allowances, normalized snapshots, TTL
-caching, concurrency control, and exhausted-model filtering.
 
 ##### TASK-035 — Persist minimal aggregate usage
 

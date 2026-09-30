@@ -30,7 +30,7 @@ The project prioritizes:
 The gateway runs as a single Go process.
 
 The `gateway serve --config <path>` command loads and validates configuration,
-resolves the gateway API key, constructs each configured Ollama provider, and
+resolves the gateway API key, constructs each configured provider, and
 serves the API on the configured listener. It shuts down gracefully on SIGINT
 or SIGTERM. The health endpoint remains unauthenticated; all other currently
 served routes require bearer authentication. On SIGINT or SIGTERM, the process
@@ -39,6 +39,13 @@ to finish before exiting. Idle client connections are closed after 60 seconds.
 
 No external database, Redis instance, message queue, sidecar, or worker
 service is required.
+
+OAuth-capable providers use a versioned flat-file credential store below
+`state.directory/auth`. Provider IDs and upstream endpoints are recorded with
+each credential. The store uses a mode-0700 directory, mode-0600 regular files,
+size-bounded strict decoding, same-directory atomic replacement, and filesystem
+syncing; corrupt or weakly protected records fail closed without including token
+values in errors.
 
 ## Request Flow
 
@@ -64,9 +71,7 @@ Current request flow:
       v
     Upstream provider
 
-The Version 1 planned path inserts session resolution, request-requirement
-extraction, classification, deterministic selection, quota/cost policy, and
-failure handling between authentication and the provider registry. `smart`
+The request-requirement and classification contracts are implemented; the remaining Version 1 path inserts session resolution, deterministic selection, quota/cost policy, and failure handling between authentication and the provider registry. `smart`
 requests use that path; explicit `provider/model` requests continue to resolve
 directly and can never be substituted.
 
@@ -107,6 +112,13 @@ Version 2.
 
 Translation must be isolated from generic request routing.
 
+The implemented canonical translation contract represents instructions,
+system/developer/user/assistant/tool messages, text and image content, tools and
+results, structured output, reasoning controls, token limits, normalized usage,
+finish reasons, and stream deltas. Fields not understood by the shared contract
+are retained as validated raw JSON extensions for an adapter to preserve or
+explicitly reject. Transparent providers never instantiate this model.
+
 ## Provider Model
 
 Providers are identified by a unique provider ID.
@@ -139,6 +151,12 @@ Provider credentials are scoped to their owning provider.
 
 Credentials must never be reused for another upstream endpoint.
 
+Generic compatible providers use independent HTTP clients and do not follow
+redirects. Optional bearer credentials and custom-header values are resolved
+from secret references and attached only by the owning provider transport.
+Per-provider TLS trust, TLS server name, connection timeout, request timeout,
+and discovery timeout settings do not affect other providers.
+
 The current OpenAI HTTP handler maintains an ordered collection of configured
 inference providers plus an ID lookup. Explicit `provider/model` requests are
 sent only to the named provider. Routing fields use exact, case-sensitive JSON
@@ -158,6 +176,12 @@ Configuration overrides take precedence over both. Published snapshots are
 sorted and immutable, and duplicate public model IDs reject the refresh.
 
 Unknown capability values remain unknown rather than being guessed.
+The implemented pure selector filters unavailable, exhausted, incompatible,
+insufficient-context, and disallowed paid candidates before considering quality.
+It then deterministically orders eligible models by estimated cost, quota,
+location preference, measured latency, context headroom, and public ID, retaining
+structured rejection and selection reasons. Unknown quality is admitted only
+when no known-quality candidate meets the configured threshold.
 Endpoint and feature support use explicit supported, unsupported, and unknown
 states; descriptors also carry context, pricing, quality, locality,
 availability, staleness, and metadata provenance for later routing policy.

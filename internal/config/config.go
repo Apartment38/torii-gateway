@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Apartment38/torii-router/internal/provider"
 	"gopkg.in/yaml.v3"
@@ -40,12 +42,27 @@ type StateConfig struct {
 	Directory string `yaml:"directory"`
 }
 
-// ProviderConfig contains the common fields needed to configure an Ollama
-// provider. Provider-specific settings will be added with their providers.
+// ProviderConfig contains common and standard compatible provider settings.
 type ProviderConfig struct {
-	ID      string `yaml:"id"`
-	Type    string `yaml:"type"`
-	BaseURL string `yaml:"base_url"`
+	ID               string               `yaml:"id"`
+	Type             string               `yaml:"type"`
+	BaseURL          string               `yaml:"base_url"`
+	BearerToken      *SecretRef           `yaml:"bearer_token,omitempty"`
+	Headers          map[string]SecretRef `yaml:"headers,omitempty"`
+	TLS              *TLSConfig           `yaml:"tls,omitempty"`
+	Models           []string             `yaml:"models,omitempty"`
+	DiscoverModels   *bool                `yaml:"discover_models,omitempty"`
+	Transport        string               `yaml:"transport,omitempty"`
+	ModelRewrites    map[string]string    `yaml:"model_rewrites,omitempty"`
+	ConnectTimeout   string               `yaml:"connect_timeout,omitempty"`
+	RequestTimeout   string               `yaml:"request_timeout,omitempty"`
+	DiscoveryTimeout string               `yaml:"discovery_timeout,omitempty"`
+}
+
+// TLSConfig controls certificate verification for one provider origin.
+type TLSConfig struct {
+	CAFile     string `yaml:"ca_file,omitempty"`
+	ServerName string `yaml:"server_name,omitempty"`
 }
 
 // Load reads, strictly decodes, and validates a YAML configuration file.
@@ -126,15 +143,90 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if providerConfig.Type != "ollama" {
-			return fmt.Errorf("%s.type %q is unsupported; only %q is currently supported", field, providerConfig.Type, "ollama")
+		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" {
+			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
 			return fmt.Errorf("%s.base_url: %w", field, err)
 		}
+		if providerConfig.Type == "ollama" && (providerConfig.BearerToken != nil || len(providerConfig.Headers) > 0 || providerConfig.TLS != nil || len(providerConfig.Models) > 0 || providerConfig.DiscoverModels != nil || providerConfig.Transport != "" || len(providerConfig.ModelRewrites) > 0 || providerConfig.ConnectTimeout != "" || providerConfig.RequestTimeout != "" || providerConfig.DiscoveryTimeout != "") {
+			return fmt.Errorf("%s: generic provider options require type openai_compatible", field)
+		}
+		if providerConfig.Type == "openai_compatible" {
+			if err := validateCompatibleProvider(providerConfig); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+		}
 	}
 
 	return nil
+}
+
+func validateCompatibleProvider(p ProviderConfig) error {
+	if p.Transport != "" && p.Transport != "openai_compatible" {
+		return fmt.Errorf("transport %q is unsupported", p.Transport)
+	}
+	if p.BearerToken != nil {
+		if err := p.BearerToken.Validate(); err != nil {
+			return fmt.Errorf("bearer_token: %w", err)
+		}
+	}
+	for name, ref := range p.Headers {
+		canonical := http.CanonicalHeaderKey(name)
+		if canonical == "" || !validCustomHeader(canonical) {
+			return fmt.Errorf("header %q is unsafe or not canonical", name)
+		}
+		if err := ref.Validate(); err != nil {
+			return fmt.Errorf("header %q: %w", name, err)
+		}
+	}
+	discover := true
+	if p.DiscoverModels != nil {
+		discover = *p.DiscoverModels
+	}
+	if !discover && len(p.Models) == 0 {
+		return errors.New("models are required when discover_models is false")
+	}
+	seen := map[string]struct{}{}
+	for _, model := range p.Models {
+		if strings.TrimSpace(model) == "" {
+			return fmt.Errorf("model %q must be non-empty", model)
+		}
+		if _, ok := seen[model]; ok {
+			return fmt.Errorf("model %q is duplicated", model)
+		}
+		seen[model] = struct{}{}
+	}
+	rewriteTargets := map[string]string{}
+	for alias, upstream := range p.ModelRewrites {
+		if strings.TrimSpace(alias) == "" || strings.TrimSpace(upstream) == "" {
+			return fmt.Errorf("invalid model rewrite %q", alias)
+		}
+		if prior, ok := rewriteTargets[upstream]; ok {
+			return fmt.Errorf("model rewrites %q and %q have the same upstream model", prior, alias)
+		}
+		rewriteTargets[upstream] = alias
+	}
+	for name, raw := range map[string]string{"connect_timeout": p.ConnectTimeout, "request_timeout": p.RequestTimeout, "discovery_timeout": p.DiscoveryTimeout} {
+		if raw != "" {
+			d, err := time.ParseDuration(raw)
+			if err != nil || d <= 0 {
+				return fmt.Errorf("%s must be a positive duration", name)
+			}
+		}
+	}
+	if p.TLS != nil && strings.TrimSpace(p.TLS.CAFile) == "" && strings.TrimSpace(p.TLS.ServerName) == "" {
+		return errors.New("tls must configure ca_file or server_name")
+	}
+	return nil
+}
+
+func validCustomHeader(name string) bool {
+	switch name {
+	case "Authorization", "Host", "Content-Type", "Accept", "Connection", "Proxy-Connection", "Transfer-Encoding", "Upgrade", "X-Request-Id":
+		return false
+	}
+	return !strings.HasPrefix(name, "Sec-") && !strings.ContainsAny(name, " \t\r\n:")
 }
 
 func validateBaseURL(raw string) error {

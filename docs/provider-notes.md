@@ -241,4 +241,40 @@ relayed byte-for-byte and flushed as upstream bytes arrive.
 
 ## Custom OpenAI-Compatible Providers
 
-Record generic assumptions and compatibility requirements here.
+### Status
+
+Implementation status: complete for the transparent Version 1 endpoint set
+Last verified: 2026-09-30
+
+### Protocol profile
+
+The generic provider treats the configured base URL as an origin-bound OpenAI
+HTTP API and uses `GET /v1/models` for optional discovery. It transparently
+forwards Chat Completions, Completions, Embeddings, and stateless Responses,
+rewriting only the top-level model. The model list is expected to be an object
+with a `data` array whose entries contain non-empty string `id` fields.
+
+The profile can instead use a static model list for servers that do not expose
+model discovery. Public aliases can map to different upstream model names.
+Streaming remains byte-for-byte SSE passthrough; compatibility therefore does
+not depend on the gateway knowing every event or request field.
+
+### Authentication and transport
+
+Each provider may have no authentication, one bearer secret reference, and
+secret-reference-backed custom headers. Hop-by-hop headers, request framing
+headers, `Host`, `Authorization`, `X-Request-ID`, and browser `Sec-*` headers
+cannot be configured as custom headers. Redirects are not followed, ensuring
+credentials cannot leave the exact configured provider origin. Each provider
+gets an independent HTTP client, connection pool, TLS roots/server name, dial
+ timeout, request timeout, and discovery timeout.
+
+### Primary sources
+
+- OpenAI API authentication: https://platform.openai.com/docs/api-reference/authentication
+- OpenAI Models list operation: https://platform.openai.com/docs/api-reference/models/list
+- OpenAI Chat Completions: https://platform.openai.com/docs/api-reference/chat
+- OpenAI Responses: https://platform.openai.com/docs/api-reference/responses
+- OpenAI Embeddings: https://platform.openai.com/docs/api-reference/embeddings
+- Go HTTP client redirect policy: https://pkg.go.dev/net/http#Client
+- Go TLS client configuration: https://pkg.go.dev/crypto/tls#Config

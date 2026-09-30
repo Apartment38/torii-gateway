@@ -25,6 +25,7 @@ ID.
 - bearer authentication for every API endpoint except `GET /healthz`
 - secrets loaded from an environment variable or a file, never inline YAML
 - strict configuration validation and graceful shutdown
+- request IDs, typed OpenAI-style errors, and secret-safe structured logging
 
 This pre-v1 milestone performs **explicit routing only**. It does not yet
 provide the Version 1 `smart` virtual model, automatic model selection, session
@@ -192,6 +193,9 @@ stateless: `previous_response_id` and `conversation` are rejected with an
 - Inference request bodies are limited to 32 MiB.
 - Upstream inference has no gateway-imposed completion timeout. Client
   disconnects cancel the upstream request.
+- Every response includes `X-Request-ID`. Safe client-supplied IDs are retained;
+  otherwise the gateway generates one and uses it for structured request logs
+  and upstream correlation.
 - On `SIGINT` or `SIGTERM`, the server stops accepting connections and gives
   active requests up to 10 seconds to finish.
 - TLS termination is not built in. Bind to loopback for local use, or place

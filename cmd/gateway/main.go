@@ -128,5 +128,5 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
 	mux.Handle("/", api.AuthenticateMiddleware(authenticator, openAI))
-	return mux, nil
+	return api.RequestIDMiddleware(nil, mux), nil
 }

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Apartment38/torii-router/internal/fault"
 	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-router/internal/requestid"
 	"github.com/Apartment38/torii-router/internal/transport"
 )
 
@@ -58,7 +60,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 	for _, p := range h.providers {
 		discovered, err := p.Models(r.Context())
 		if err != nil {
-			writeAPIError(w, http.StatusBadGateway, "Failed to discover upstream models", "api_error", "upstream_error")
+			writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
 			return
 		}
 		models = append(models, discovered...)
@@ -72,12 +74,12 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
 	providerID, _, err := provider.ParseModelID(publicID)
 	if err != nil || h.byID[providerID] == nil {
-		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
+		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
 	models, err := h.byID[providerID].Models(r.Context())
 	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, "Failed to discover upstream models", "api_error", "upstream_error")
+		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
 		return
 	}
 	for _, model := range models {
@@ -86,7 +88,7 @@ func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicI
 			return
 		}
 	}
-	writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
+	writeError(w, fault.New(fault.ModelNotFound, "model"))
 }
 
 func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +96,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeAPIError(w, http.StatusRequestEntityTooLarge, "Request body exceeds the maximum allowed size", "invalid_request_error", "request_too_large")
+			writeError(w, fault.New(fault.ContextTooLarge, ""))
 			return
 		}
 		writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_json")
@@ -126,7 +128,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	providerID, modelID, err := provider.ParseModelID(fields.Model)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
-		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
+		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
 	response, err := upstream.Forward(r.Context(), r.URL.Path, body, modelID)
@@ -135,11 +137,14 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_request")
 			return
 		}
-		writeAPIError(w, http.StatusBadGateway, "Upstream request failed", "api_error", "upstream_error")
+		writeError(w, fault.Wrap(fault.ProviderUnavailable, "forward request", err))
 		return
 	}
 	defer response.Body.Close()
 	CopyResponseHeaders(w.Header(), response.Header)
+	if id, ok := requestid.FromContext(r.Context()); ok {
+		w.Header().Set(requestIDHeader, id)
+	}
 	w.WriteHeader(response.StatusCode)
 	if fields.Stream {
 		_ = relayStream(w, response.Body)
@@ -225,17 +230,10 @@ func writeAPIError(w http.ResponseWriter, status int, message, errorType, code s
 }
 
 func writeAPIErrorWithParam(w http.ResponseWriter, status int, message, errorType, code string, param *string) {
-	writeJSON(w, status, struct {
-		Error struct {
-			Message string  `json:"message"`
-			Type    string  `json:"type"`
-			Param   *string `json:"param"`
-			Code    string  `json:"code"`
-		} `json:"error"`
-	}{Error: struct {
-		Message string  `json:"message"`
-		Type    string  `json:"type"`
-		Param   *string `json:"param"`
-		Code    string  `json:"code"`
-	}{Message: message, Type: errorType, Param: param, Code: code}})
+	writeJSON(w, status, errorEnvelope{Error: errorBody{
+		Message: message,
+		Type:    errorType,
+		Param:   param,
+		Code:    code,
+	}})
 }

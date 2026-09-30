@@ -45,6 +45,9 @@ Current request flow:
     Client
       |
       v
+    Request ID and structured request logging
+      |
+      v
     API authentication
       |
       v
@@ -168,6 +171,23 @@ upstream request, so a disconnected client cancels upstream work.
 
 Once downstream response bytes have been emitted, the request cannot be
 rerouted to another model.
+
+## Errors, Request IDs, and Logging
+
+Internal component failures use a shared typed taxonomy, allowing the API to
+map client, authentication, routing, provider, quota, capability, classifier,
+and streaming failures without inspecting error-message text. Public failures
+use one OpenAI-style JSON envelope and deliberately omit internal error detail.
+
+Every request receives an `X-Request-ID`. A single safe client value (at most
+128 characters from a conservative ASCII alphabet) is retained; otherwise the
+gateway generates a cryptographically random value. The same value is returned
+to the client, carried in request context, and sent to the selected upstream.
+An upstream response cannot replace the gateway's correlation ID.
+
+The request middleware writes a structured `slog` completion record with the
+request ID, method, URL path, status, and duration. It does not log query
+values, headers, request or response bodies, prompts, tokens, or secrets.
 
 ## Smart Routing
 

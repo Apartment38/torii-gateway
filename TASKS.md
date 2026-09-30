@@ -15,6 +15,29 @@ TODO list below and move only that task here while implementing it.
 
 ## DONE
 
+### TASK-010 — Normalize public errors and request IDs
+
+Goal:
+Provide shared typed failures and safe request correlation across the public API.
+
+Completed:
+- added the shared OpenAI error envelope and typed internal failure taxonomy
+- mapped authentication, request, routing, provider, upstream, capability,
+  quota, classifier, and stream failures without matching error strings
+- accepted safe client request IDs or generated cryptographically random IDs
+- returned the gateway request ID on every response and propagated it to the
+  selected upstream while preventing an upstream ID from replacing it
+- added structured `slog` completion records containing request metadata only
+- tested status/code mappings, propagation, generated IDs, typed wrapping, and
+  log redaction invariants
+
+Decisions:
+- accept one request ID of at most 128 characters from a conservative ASCII
+  alphabet; replace missing, duplicate, or unsafe values
+- keep request IDs in a small context package so transports do not depend on
+  the HTTP API package
+- log method and URL path but never query values, headers, bodies, or credentials
+
 ### TASK-009 — Complete transparent OpenAI endpoint coverage
 
 Goal:
@@ -254,16 +277,6 @@ when public behavior or architecture changes. Provider tasks must first update
 upstream metadata must not block the transparent gateway path.
 
 ### Foundation and complete public API
-
-#### TASK-010 — Normalize public errors and request IDs
-
-**Depends on:** TASK-009
-
-Define the shared OpenAI error envelope and typed internal errors for client,
-authentication, routing, provider, and upstream failures. Accept or generate a
-request ID, return it in responses, propagate it upstream where safe, and add
-structured `slog` records that never include request bodies, tokens, or secrets.
-Test status/code mappings, request-ID propagation, and redaction invariants.
 
 #### TASK-011 — Build the model catalog and capability metadata core
 

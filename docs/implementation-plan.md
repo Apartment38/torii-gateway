@@ -18,6 +18,23 @@ complete. `TASKS.md` is the authoritative ordered execution roadmap; this
 document remains the Version 1 product and architecture contract. A build may
 be called Version 1 only after TASK-041 verifies the definition of done.
 
+### Version 1 scope boundary
+
+Version 1 supports exactly these upstream families:
+
+1. local Ollama instances;
+2. standard OpenAI-compatible HTTP endpoints, including the normal API-key-
+   billed OpenAI API and self-hosted compatible servers; and
+3. ChatGPT Codex access backed by a user's subscription and isolated OAuth
+   credentials.
+
+Provider-specific OpenRouter, Nous Portal, Gemini, xAI, and Anthropic adapters
+are Version 2 work. Jev is also deferred to Version 2. Version 1 instead allows
+a self-hosted Laya model, addressed through a configured physical provider, to
+produce the semantic classification used by `smart` routing. This boundary is
+normative: later provider sections retained for design context do not expand
+the Version 1 definition of done.
+
 The design priorities are, in order:
 
 1. Correct OpenAI-client compatibility.
@@ -76,6 +93,8 @@ must remain a simple, low-overhead proxy operation.
 
 Do not implement these features yet:
 
+- dedicated OpenRouter, Nous Portal, Gemini, xAI, or Anthropic adapters
+- Jev classifier transports
 - full accounting ledger
 - historical accounting reports
 - SQLite configuration
@@ -148,13 +167,10 @@ Do not split the gateway into microservices.
                                            ▼
                                     Provider Registry
                                            │
-              ┌───────────────┬────────────┼──────────────┐
-              ▼               ▼            ▼              ▼
-          OpenRouter       OpenAI       Gemini         Ollama
-              │                            │
-              ├── Anthropic                ├── xAI
-              ├── Nous Portal              └── custom
-              └── OpenAI Codex
+                           ┌───────────────┼──────────────┐
+                           ▼               ▼              ▼
+                  OpenAI-compatible   OpenAI Codex     Ollama
+                  (cloud or local)    subscription     (local)
 ```
 
 All components run in one address space.
@@ -173,12 +189,9 @@ Use this whenever the upstream accepts the same OpenAI request format being pres
 
 Examples include:
 
-- OpenRouter
-- many custom endpoints
+- the standard OpenAI API
+- self-hosted OpenAI-compatible endpoints
 - Ollama
-- Gemini's OpenAI-compatible API where applicable
-- xAI's compatible endpoints where applicable
-- OpenAI API when endpoint formats match
 
 Flow:
 
@@ -215,9 +228,6 @@ OpenAI Chat/Responses
        ↓
 OpenAI Codex Responses
 
-OpenAI Chat/Responses
-       ↓
-Anthropic Messages
 ```
 
 The canonical representation must support:
@@ -297,7 +307,11 @@ All `/v1/*` and `/gateway/*` endpoints require gateway authentication.
 
 ---
 
-# 7. Required Providers
+# 7. Provider Scope
+
+Only Sections 7.2, 7.3, 7.8, and the compatible-endpoint configuration in
+Section 7.9 are required for Version 1. All other provider-specific sections
+are retained as a Version 2 backlog.
 
 Provider IDs must:
 
@@ -337,7 +351,7 @@ google/gemini-2.5-pro
 
 ---
 
-## 7.1 OpenRouter
+## 7.1 OpenRouter (Version 2)
 
 Authentication:
 
@@ -373,9 +387,13 @@ Treat OpenRouter as one upstream provider.
 
 ---
 
-## 7.2 OpenAI API
+## 7.2 Standard OpenAI-Compatible Endpoints (Version 1)
 
-This is normal API-billed OpenAI access.
+This family covers normal API-billed OpenAI access and arbitrary cloud or
+self-hosted endpoints that implement the standard OpenAI HTTP surface. The
+official API uses the `openai` namespace; custom endpoint IDs are configured by
+the operator. Provider-specific behavior for OpenRouter, Gemini, and xAI is not
+part of Version 1 even when those services offer partly compatible APIs.
 
 Authentication:
 
@@ -509,7 +527,7 @@ Do not assume models available through the normal OpenAI API are automatically a
 
 ---
 
-## 7.4 Nous Portal
+## 7.4 Nous Portal (Version 2)
 
 Support Nous Portal as a subscription/OAuth provider.
 
@@ -569,7 +587,7 @@ API-key support is conditional on confirmed upstream support.
 
 ---
 
-## 7.5 Google Gemini API
+## 7.5 Google Gemini API (Version 2)
 
 Authentication:
 
@@ -591,7 +609,7 @@ Add provider-specific translation only for features that cannot be represented b
 
 ---
 
-## 7.6 xAI / Grok API
+## 7.6 xAI / Grok API (Version 2)
 
 Authentication:
 
@@ -613,7 +631,7 @@ This requirement refers to the normal Grok API.
 
 ---
 
-## 7.7 Anthropic API
+## 7.7 Anthropic API (Version 2)
 
 Authentication:
 
@@ -679,7 +697,7 @@ Use Ollama's native model metadata endpoints where they provide richer capabilit
 
 ---
 
-## 7.9 Custom OpenAI-Compatible Providers
+## 7.9 Custom OpenAI-Compatible Providers (Version 1)
 
 Support an arbitrary number.
 
@@ -1145,44 +1163,37 @@ Version 1 supports three classifier families.
 
 ---
 
-## 17.1 Jev
+## 17.1 Self-hosted Laya
 
-Support Jev through:
-
-```text
-TypeSafe direct
-OpenRouter
-```
-
-Keep classification semantics separate from the Jev transport.
-
-Conceptually:
+Support a self-hosted Laya routing model through a configured physical
+OpenAI-compatible or Ollama provider. Laya is a classifier, not an inference
+provider selected to answer the user's request.
 
 ```text
-JevClassifier
-     │
-     ├─ TypeSafeTransport
-     └─ ProviderTransport(OpenRouter)
+LayaClassifier
+     |
+     +-- ProviderRegistry
+             |
+             +-- configured local provider/model
 ```
 
-Do not hardcode one Jev provider/model slug globally.
-
-Configuration identifies the transport/model.
+Configuration identifies the physical provider-qualified model. It must never
+resolve to `smart`, and the gateway must validate Laya's output against the
+common classification schema before using it. No cloud Laya service or special
+credential flow is required in Version 1.
 
 Example:
 
 ```yaml
 router:
   classifier:
-    type: jev
-
-    transport:
-      type: provider
-      provider: openrouter
-      model: typesafe/jev
+    type: laya
+    model: local/laya
 ```
 
-This design must allow future typed decision models to be added without changing the router.
+Keep classification semantics separate from provider transport so Laya can run
+on any supported local compatible runtime. Jev transports may be added in
+Version 2 without changing the router contract.
 
 ---
 
@@ -3035,7 +3046,7 @@ Hermes's current implementation is a useful behavioral reference for the Codex R
 
 ---
 
-# 62. Nous Portal Integration Tests
+# 62. Nous Portal Integration Tests (Version 2)
 
 Verify:
 
@@ -3101,9 +3112,8 @@ milestones to executable tasks:
 | Phase | Tasks | Exit condition |
 | --- | --- | --- |
 | Current transparent foundation | TASK-001–TASK-008 (done) | Authenticated Ollama model discovery and Chat Completions, including SSE, work end to end. |
-| Complete API and catalog foundation | TASK-009–TASK-012 | The promised stateless OpenAI endpoint surface, errors/request IDs, catalog metadata, and generic compatible providers are complete. |
-| API-key and translated providers | TASK-013–TASK-018 | OpenRouter, OpenAI API, Gemini, xAI, and Anthropic work through verified transparent or translated transports. |
-| Subscription providers | TASK-019–TASK-023 | Secure credential state and CLI flows support verified OpenAI Codex subscription and Nous Portal adapters. |
+| Complete API and catalog foundation | TASK-009–TASK-012, TASK-014 | The promised stateless OpenAI endpoint surface, errors/request IDs, catalog metadata, and standard OpenAI-compatible endpoints are complete. |
+| Codex translation and authentication | TASK-017, TASK-019–TASK-022 | Secure credential state and CLI flows support verified ChatGPT Codex subscription access. |
 | Classification and smart routing | TASK-024–TASK-029 | The `smart` model classifies requirements and deterministically selects a capable physical model. |
 | Sessions, handoff, and quota | TASK-030–TASK-036 | Agent/tool sessions remain pinned; pre-stream rerouting, quota, aggregate usage, cost, and latency influence selection. |
 | Product hardening and release | TASK-037–TASK-041 | Configuration, compatibility/security suites, container, and performance baselines pass, followed by a complete Version 1 audit. |
@@ -3112,6 +3122,9 @@ Protocol verification is part of each provider/classifier task so findings are
 fresh when code is written. Each such task must update `docs/provider-notes.md`
 before implementation. This replaces the earlier broad milestones that allowed
 multiple unrelated features to appear complete as one unit.
+
+TASK-013, TASK-015, TASK-016, TASK-018, and TASK-023 are explicitly excluded
+from these Version 1 phases and are listed as Version 2 work in `TASKS.md`.
 
 No phase changes the v1 constraints: one binary/process, flat-file persistence,
 no database/Redis/queue/sidecar, transparent forwarding where possible, and no
@@ -3142,15 +3155,11 @@ Version 1 is complete when:
 - vision works
 - reasoning controls work where supported
 - structured output works where supported
-- OpenRouter works
-- OpenAI API works
+- standard OpenAI-compatible endpoints work, including the OpenAI API and
+  self-hosted compatible servers
 - OpenAI Codex subscription works through ChatGPT OAuth
-- Nous Portal works through OAuth
-- Gemini works
-- xAI works
-- Anthropic works
 - local Ollama works
-- arbitrary OpenAI-compatible providers work
+- a configured self-hosted Laya model can classify `smart` requests
 - the smart router classifies requests
 - hard capabilities are enforced
 - context window is considered
@@ -3872,30 +3881,21 @@ Do not spend quota implementing every provider before this works.
 
 ---
 
-### Phase C — Parallelizable providers
+### Phase C — Version 1 providers
 
-After the reference path is stable, provider adapters can be divided among agents.
+After the reference path is stable, complete standard OpenAI-compatible endpoint
+support and the separate ChatGPT Codex subscription transport. Local Ollama is
+the reference implementation. Do not implement the Version 2 adapters as part
+of this phase.
 
 For example:
 
 ```text
 Agent/session 1:
-OpenRouter
+standard OpenAI-compatible endpoints and normal OpenAI API profile
 
 Agent/session 2:
-OpenAI API
-
-Agent/session 3:
-Gemini + xAI
-
-Agent/session 4:
-Anthropic
-
-Agent/session 5:
 OpenAI Codex
-
-Agent/session 6:
-Nous Portal
 ```
 
 Provider work should include tests in the same task, plus documentation when
@@ -3909,13 +3909,14 @@ design decisions, or reusable development procedures.
 Classifiers can likewise be distributed:
 
 ```text
-Jev direct
-Jev via provider
+self-hosted Laya classifier
 embedding classifier
 connected-model classifier
 ```
 
 All must conform to the same fixed `Classification` contract.
+Jev classifiers and provider-specific OpenRouter, Gemini, xAI, Anthropic, and
+Nous work belong to Version 2.
 
 ---
 

@@ -295,330 +295,247 @@ Completed:
 
 ## TODO — Ordered Version 1 roadmap
 
-Each numbered item below is one implementation milestone and should produce one
-focused commit. Tasks are ordered by dependency; a task may start only after
-all IDs in its `Depends on` field are done. Every task must add focused tests,
-run the repository checks, update this file, and update durable documentation
-when public behavior or architecture changes. Provider tasks must first update
-`docs/provider-notes.md` with dated, primary-source protocol findings. Optional
-upstream metadata must not block the transparent gateway path.
+Version 1 is intentionally limited to local Ollama, standard OpenAI-compatible
+endpoints (including the normal OpenAI API), and ChatGPT Codex subscription
+access. Dedicated OpenRouter, Nous Portal, Gemini, xAI, and Anthropic adapters,
+along with Jev classifiers, are tracked in the Version 2 backlog below.
 
-### Foundation and complete public API
+Each numbered item is one focused implementation milestone. Tasks are ordered
+by dependency and must include focused tests, repository checks, task updates,
+and durable documentation updates. Provider and classifier protocol work must
+first add dated findings from primary sources to `docs/provider-notes.md`.
 
 #### TASK-012 — Add configurable generic OpenAI-compatible providers
 
 **Depends on:** TASK-011
 
-Extend strict configuration and the registry for arbitrary compatible
-endpoints. Support optional bearer API-key secret references and explicit
-no-auth mode; arbitrary literal or secret-backed request headers; custom CA
-bundles and an explicit TLS-verification toggle; startup model discovery or a
-static model list; `auto`, `chat_completions`, and `responses` transport
-selection; configured upstream model-name rewriting; and separate request and
-connect timeouts. Make `auto` probe conservatively instead of inferring a
-transport from model names. Reuse the transparent transport where selected,
-bind credentials and secret headers to the configured origin, reject unsafe
-URL, header, and TLS configuration, and do not silently discard features that
-the selected transport cannot represent.
+Extend configuration and the provider registry for arbitrary standard
+OpenAI-compatible endpoints, including local self-hosted servers. Support
+optional bearer secrets or no auth, safe custom headers and TLS configuration,
+static or discovered models, transport selection, model-name rewriting, and
+separate connection/request timeouts. Preserve unknown request fields and bind
+all credentials to their configured origin. Add fake-server, isolation,
+streaming, and configuration tests.
 
-Test multiple providers, authenticated and no-auth operation, literal and
-secret-backed headers, nested and rewritten model IDs, static catalogs and
-discovery failures, transport selection and conservative `auto` probing,
-custom-CA trust and disabled-verification modes, independent connect/request
-timeouts (without imposing a streaming response deadline), credential and
-secret-header isolation across origins, unsupported-feature errors, and
-byte-preserving streaming through compatible transports.
-
-### Provider verification and adapters
-
-#### TASK-013 — Verify and implement OpenRouter
+##### TASK-014 — Verify the normal OpenAI API profile
 
 **Depends on:** TASK-012
 
-Document current official model, inference, pricing, capability, credit/quota,
-and error behavior; then add strict configuration, authentication, discovery,
-metadata ingestion, transparent endpoint support, and fake-server contract
-tests. Treat OpenRouter as one provider and do not reproduce its internal
-provider selection.
+Document current official OpenAI API behavior and provide a tested `openai`
+configuration/profile over the standard compatible provider. Keep API-key
+credentials, endpoints, and clients strictly separate from Codex subscription
+OAuth credentials.
 
-#### TASK-014 — Verify and implement the OpenAI API provider
+#### 2. Build the Codex subscription path
 
-**Depends on:** TASK-012
-
-Document current official behavior and implement the API-key-backed `openai`
-namespace with discovery and supported transparent endpoints. Keep its client,
-credentials, and configuration distinct from Codex subscription access and add
-credential-isolation and contract tests.
-
-#### TASK-015 — Verify and implement the Gemini API provider
-
-**Depends on:** TASK-012
-
-Verify Gemini's current OpenAI-compatible surface, authentication, catalog,
-capabilities, streaming, quota, and pricing. Implement compatible operations
-through the transparent path, explicitly reject unsupported operations or
-features, ingest verified metadata, and add contract tests.
-
-#### TASK-016 — Verify and implement the xAI provider
-
-**Depends on:** TASK-012
-
-Verify xAI's current OpenAI-compatible surface, authentication, catalog,
-capabilities, streaming, quota, and pricing. Implement the supported transparent
-operations with explicit unsupported-feature errors and contract tests.
-
-#### TASK-017 — Define the canonical translated request/response model
+##### TASK-017 — Define the canonical translated request/response model
 
 **Depends on:** TASK-010
 
-Add the translation-only canonical representation for instructions, multimodal
-messages, tools/calls/results, structured output, reasoning controls, token
-limits, usage, finish reasons, and streaming deltas. Define capability checks
-and lossless/error rules so adapters never silently discard a feature. Add
-round-trip fixtures and streaming state-machine tests without routing compatible
-traffic through this layer.
+Add the translation-only representation needed by Codex for instructions,
+multimodal messages, tools and results, structured output, reasoning controls,
+usage, finish reasons, and streaming deltas. Define lossless/error rules and
+round-trip tests; compatible traffic must continue to bypass translation.
 
-#### TASK-018 — Verify and implement Anthropic
-
-**Depends on:** TASK-011, TASK-017
-
-Document current official Messages API authentication, models, capabilities,
-streaming events, errors, quota, and pricing. Implement OpenAI-to-Anthropic
-translation for supported public endpoints, including tools, vision, structured
-output where supported, reasoning, usage, and SSE; explicitly reject every
-untranslatable feature and add fixture/fake-server contract tests.
-
-### Subscription authentication and providers
-
-#### TASK-019 — Add secure persistent credential storage
+##### TASK-019 — Add secure persistent credential storage
 
 **Depends on:** TASK-010
 
-Implement provider-scoped JSON credential files beneath `state.directory/auth`
-using restrictive permissions, atomic replacement, corruption-safe reads, and
-secret-safe errors/logging. Define a small credential-store interface for tests
-and future migration; test permissions, interrupted writes, malformed files,
-and cross-provider isolation.
+Store provider-scoped credentials below `state.directory/auth` with restrictive
+permissions, atomic replacement, corruption-safe reads, and secret-safe errors.
+Test restart and cross-provider isolation behavior.
 
-#### TASK-020 — Add authentication administration CLI
+##### TASK-020 — Add authentication administration CLI
 
 **Depends on:** TASK-019
 
-Implement `gateway config validate`, `gateway auth login <provider>`, `logout`,
-and `status` with the same config/state resolution as `serve`. Make commands
-non-interactive where flags/stdin are supplied, never print tokens, use useful
-exit codes, and add command tests. Implement `gateway models` after the registry
-can be constructed without serving.
+Implement config validation plus provider login, logout, and status commands.
+Support non-interactive operation, never print tokens, and test exit behavior.
 
-#### TASK-021 — Verify and implement OpenAI Codex subscription authentication
+##### TASK-021 — Verify and implement ChatGPT Codex subscription authentication
 
 **Depends on:** TASK-019, TASK-020
 
-Document the current official/observed ChatGPT OAuth flow, refresh lifecycle,
-account identifiers, scopes, and persisted fields. Implement PKCE/device or
-other verified login flow, refresh with atomic persistence, logout/status, and
-strict endpoint/audience binding. Test expiry, refresh races, invalid grants,
-restart persistence, and prove API keys and OAuth tokens cannot cross endpoints.
+Document the current verified ChatGPT OAuth flow, refresh lifecycle, audience,
+account identifiers, and persisted fields. Implement the supported login and
+refresh flow with endpoint binding and tests proving API keys and OAuth tokens
+cannot cross endpoints.
 
-#### TASK-022 — Implement the OpenAI Codex subscription transport
+##### TASK-022 — Implement the ChatGPT Codex subscription transport
 
 **Depends on:** TASK-017, TASK-021
 
-Document and implement the verified Codex Responses protocol and model catalog,
-translate supported OpenAI requests and streaming events, preserve tools,
-reasoning, usage, and errors, and explicitly reject unsupported features. Add
-recorded fixtures, fake-server tests, opt-in live tests, and ensure the public
-namespace is `openai-codex`.
+Implement the verified Codex Responses protocol and catalog, translate supported
+public requests and streams, preserve tools/reasoning/usage/errors, reject
+unsupported features explicitly, and expose `openai-codex/<model>` IDs. Add
+fixtures, fake-server tests, and opt-in live tests.
 
-#### TASK-023 — Verify and implement Nous Portal
+#### 3. Implement classification and smart selection
 
-**Depends on:** TASK-017, TASK-019, TASK-020
-
-Document current OAuth/API-key, refresh, inference-token, catalog, inference,
-streaming, quota, and pricing behavior. Implement verified login persistence,
-refresh, model discovery, and transparent or translated transport as required,
-with contract tests, opt-in live tests, and provider-scoped credentials.
-
-### Classification and smart selection
-
-#### TASK-024 — Implement request requirements and classifier contracts
+##### TASK-024 — Implement request requirements and classifier contracts
 
 **Depends on:** TASK-011, TASK-017
 
-Define objective request requirements independently of semantic classification,
-the fixed classification schema, classifier interface, validation, recursion
-prevention, timeouts, and configured failure policies. Extract hard endpoint,
-modality, tool, structured-output, reasoning, and context requirements without
-losing unknown request fields; add exhaustive validation tests.
+Define objective request requirements, the fixed classification schema,
+classifier interface, validation, recursion prevention, timeouts, and failure
+policies. Extract hard requirements without losing unknown request fields.
 
-#### TASK-025 — Implement the connected-model classifier
+##### TASK-025 — Implement the generic connected-model classifier
 
 **Depends on:** TASK-024
 
-Invoke one configured physical model through the provider registry, require and
+Invoke a configured physical model through the provider registry, require and
 validate structured classification output, prevent `smart` recursion, bound the
-call, and implement configured fallback behavior. Add malformed output,
-timeout, cancellation, and provider-failure tests.
+call, and test malformed output, cancellation, and fallback behavior.
 
-#### TASK-026 — Verify and implement Jev classifiers
+##### TASK-026 — Verify and implement the self-hosted Laya classifier
+
+**Depends on:** TASK-012, TASK-024
+
+Document the Laya model's current input/output contract from primary sources.
+Run a configured provider-qualified Laya model through local Ollama or a
+self-hosted standard OpenAI-compatible endpoint; do not add a separate cloud
+provider or credential path. Validate output against the common schema, forbid
+`smart` recursion, and test malformed output, timeouts, cancellation, and
+failure policy with a fake local endpoint.
+
+##### TASK-027 — Implement the Ollama embedding classifier
 
 **Depends on:** TASK-024
 
-Verify and document the current Jev API/schema. Implement direct Jev and
-provider-transport Jev modes, strict output validation, timeout/cancellation,
-recursion prevention, and failure policy with fake-server tests.
+Add deterministic in-memory prototype similarity over a configured physical
+Ollama embedding model. Validate vector shape and finite values and test
+thresholds, cancellation, and stability.
 
-#### TASK-027 — Implement the Ollama embedding classifier
-
-**Depends on:** TASK-024
-
-Define the bundled labels/reference embeddings and deterministic similarity
-algorithm, call the configured physical Ollama embedding model, validate vector
-shape and finite values, and test malformed vectors, cancellation, thresholds,
-and classification stability.
-
-#### TASK-028 — Implement deterministic model selection
+##### TASK-028 — Implement deterministic model selection
 
 **Depends on:** TASK-011, TASK-024
 
-Implement the selector as a pure policy component: hard-capability and endpoint
-filtering, context headroom, quality thresholds, paid/free policy, known-price
-rules, estimated input/output cost, quota eligibility, local/cloud preference,
-latency EWMA, and stable tie-breaking. Return structured debug reasons and add
-table/fuzz tests for every stage, including no-eligible-model errors.
+Implement pure selection policy: capability and endpoint filtering, context
+headroom, quality, paid/free and known-price rules, estimated cost, quota, local
+preference, latency, and stable tie-breaking. Return structured debug reasons
+and add table/fuzz tests.
 
-#### TASK-029 — Expose and route the `smart` virtual model
+##### TASK-029 — Expose and route the `smart` virtual model
 
 **Depends on:** TASK-025, TASK-026, TASK-027, TASK-028
 
-Add configured `smart` catalog/list/retrieval behavior and orchestration from
-requirements through classification and selection to exactly one physical
-model. Explicit model requests must bypass classification and substitution.
-Keep explanations in debug logs only, propagate cancellation, prevent recursive
-selection, and add end-to-end tests for deterministic choices and failure
-policies.
+Add `smart` catalog behavior and route requirements through classification and
+selection to one physical model. Explicit model requests must bypass semantic
+routing. Add end-to-end deterministic-choice and failure-policy tests.
 
-### Sessions, failure, quota, and usage
+#### 4. Add sessions, handoff, quota, and usage
 
-#### TASK-030 — Implement session identification
+##### TASK-030 — Implement session identification
 
 **Depends on:** TASK-029
 
-Resolve session identity in the documented precedence order from
-`X-Session-ID`, request metadata, OpenAI `user`, and a bounded deterministic
-conversation fingerprint. Validate and hash untrusted identifiers where needed,
-avoid logging raw identifiers/content, and test conflicts, stability, and
-fingerprint limits.
+Resolve bounded session identity from explicit header, metadata, `user`, then a
+conversation fingerprint; avoid logging raw identifiers or content.
 
-#### TASK-031 — Implement in-memory affinity lifecycle
+##### TASK-031 — Implement in-memory affinity lifecycle
 
 **Depends on:** TASK-030
 
-Add concurrency-safe session pinning, last-seen state, inactivity expiration,
-context-reset detection, background cleanup, and authenticated
-`DELETE /gateway/v1/sessions/{session_id}`. Bound memory and identifier sizes,
-make deletion idempotent, and test races, expiry, reset, shutdown, and explicit
-physical requests without requiring persistence.
+Add concurrency-safe pinning, expiry, context reset, cleanup, and authenticated
+session deletion with bounded memory and race coverage.
 
-#### TASK-032 — Preserve affinity through agent/tool loops
+##### TASK-032 — Preserve affinity through agent/tool loops
 
 **Depends on:** TASK-031
 
-Recognize assistant tool calls and matching tool results, keep a smart session
-on its pinned physical model across multi-turn loops, and avoid false resets
-while a tool exchange is active. Add realistic multi-turn, parallel-tool,
-missing-result, and context-boundary tests.
+Keep smart sessions pinned across assistant tool calls and results, including
+parallel and incomplete tool exchanges.
 
-#### TASK-033 — Implement typed provider failures and pre-stream handoff
+##### TASK-033 — Implement typed provider failures and pre-stream handoff
 
 **Depends on:** TASK-029, TASK-031
 
-Classify retryable failures, implement configured `fail` or `reroute` behavior,
-exclude the failed model when selecting a replacement, and retry only before
-any downstream bytes are committed. Preserve the complete request/tool context,
-add model-facing handoff notice and client-facing headers, cap attempts, and
-test cancellation, loops, explicit-model no-failover, and the no-mid-stream
-invariant.
+Classify retryable failures and support configured fail/reroute behavior only
+before downstream bytes are committed. Preserve request/tool context, cap
+attempts, and never substitute an explicit model.
 
-#### TASK-034 — Implement quota and allowance state
+##### TASK-034 — Implement quota and allowance state
 
 **Depends on:** TASK-011, TASK-019
 
-Define known/unknown quota semantics, configured local allowances, normalized
-provider quota snapshots, TTL caching, concurrency control, and exhausted-model
-filtering. Ingest verified provider queries and response headers when available,
-keep unknown quota neutral, and test stale data, refresh failures, clock edges,
-and concurrent refreshes.
+Add known/unknown quota semantics, local allowances, normalized snapshots, TTL
+caching, concurrency control, and exhausted-model filtering.
 
-#### TASK-035 — Persist minimal aggregate usage
+##### TASK-035 — Persist minimal aggregate usage
 
 **Depends on:** TASK-034
 
-Store only routing-required aggregate token/cost totals in
-`state.directory/usage.json` with versioning, restrictive permissions, atomic
-replacement, and corruption recovery. Capture non-streaming and terminal SSE
-usage without buffering streams; document estimation when upstream usage is
-absent and test restart recovery, concurrent updates, and malformed state.
+Persist only routing-required aggregate usage with versioning, restrictive
+permissions, atomic replacement, recovery, and streaming-safe collection.
 
-#### TASK-036 — Integrate quota, usage, cost, and latency with smart routing
+##### TASK-036 — Integrate quota, usage, cost, and latency with smart routing
 
 **Depends on:** TASK-028, TASK-033, TASK-034, TASK-035
 
-Feed fresh quota, aggregate usage/allowances, verified pricing, and latency EWMA
-into selection; enforce global paid disablement and known-zero-cost free mode;
-update state after success/failure without delaying streamed output. Add
-end-to-end selection tests for exhaustion, unknown quota/price, budget edges,
-local preference, and reroute replacement.
+Feed quota, aggregate usage, verified pricing, and latency into selection and
+test budget, unknown-data, local-preference, and reroute boundaries.
 
-### Product hardening and release
+#### 5. Harden and release Version 1
 
-#### TASK-037 — Complete configuration and operational CLI
+##### TASK-037 — Complete Version 1 configuration and operational CLI
 
-**Depends on:** TASK-013–TASK-036
+**Depends on:** TASK-012, TASK-014, TASK-022, TASK-024–TASK-036
 
-Finalize the strict v1 schema for providers, classifier, router, sessions,
-quota, selection, logging, and state; implement cross-field validation and safe
-defaults. Finish `gateway models`, add build/version output, validate usable
-provider/router combinations at startup, update `config.example.yaml`, and add
-configuration migration/error and CLI tests. Hot reload remains out of scope.
+Finalize the strict schema for only the Version 1 provider families and routing
+components, finish model/version commands, validate combinations, update the
+example configuration, and add migration/error tests.
 
-#### TASK-038 — Add compatibility, security, and agent-loop test suites
+##### TASK-038 — Add compatibility, security, and agent-loop suites
 
 **Depends on:** TASK-037
 
-Add reusable fake providers plus OpenAI SDK compatibility tests for every public
-endpoint, unknown fields, tools, vision, reasoning, structured output, SSE,
-errors, and cancellation. Add complete smart multi-turn tool-loop/handoff tests,
-credential-leak assertions across all providers, malformed-input/fuzz coverage,
-and opt-in live-provider tests that skip safely without credentials.
+Cover every public endpoint, compatible provider, Codex translation, self-hosted
+Laya classification, unknown fields, tools, multimodality, SSE, cancellation,
+credential isolation, malformed inputs, and multi-turn handoff.
 
-#### TASK-039 — Add the production container and shutdown hardening
+##### TASK-039 — Add the production container and shutdown hardening
 
 **Depends on:** TASK-037
 
-Create a reproducible multi-stage `linux/amd64` image containing one binary,
-run as non-root with read-only config and writable `/state`, add healthcheck and
-signal handling, and document volume/network/TLS-boundary operation. Test image
-build, non-root startup, read-only filesystem behavior, state persistence,
-health, cancellation, and graceful shutdown with active streams.
+Build a reproducible non-root `linux/amd64` image with read-only configuration,
+persistent `/state`, health checks, cancellation, and graceful shutdown tests.
 
-#### TASK-040 — Establish performance and resource baselines
+##### TASK-040 — Establish performance and resource baselines
 
 **Depends on:** TASK-038, TASK-039
 
-Benchmark startup, idle RSS, catalog size, transparent proxy allocations and
-throughput, time to first SSE byte, classification overhead, and concurrent
-session/catalog behavior. Record reproducible methodology and acceptance
-thresholds, fix regressions that violate project priorities, and add lightweight
-regression benchmarks suitable for development/CI where stable.
+Benchmark startup, idle RSS, catalogs, transparent proxy overhead, SSE first
+byte, classifier latency, and concurrent sessions using a reproducible method.
 
-#### TASK-041 — Validate and publish Version 1
+##### TASK-041 — Validate and publish Version 1
 
 **Depends on:** TASK-038, TASK-039, TASK-040
 
-Audit every item in the implementation plan's Version 1 definition of done;
-run formatting, tidy, vet, unit/race/integration/compatibility/security tests,
-build the release binary and container, and execute documented Ollama plus
-opt-in provider smoke tests. Resolve all gaps, update README/config/architecture/
-provider notes/decisions with final behavior and limitations, produce versioned
-artifacts/checksums and release notes, and only then label the product Version 1.
+Audit the narrowed Version 1 definition of done, run all formatting, tidy, vet,
+unit/race/integration/security checks, build artifacts, exercise documented
+Ollama and opt-in OpenAI/Codex/Laya smoke tests, and publish limitations and
+checksums only after all required behavior passes.
+
+---
+
+## Version 2 backlog (not required for Version 1)
+
+These tasks are deliberately unordered until Version 1 is complete. Before
+implementation, refresh their requirements and dependencies against current
+primary documentation.
+
+- **TASK-013 — OpenRouter adapter:** discovery, authentication, metadata,
+  quota/credit behavior, and contract tests without duplicating OpenRouter's
+  internal routing.
+- **TASK-015 — Gemini adapter:** verified compatible surface plus any required
+  provider-specific behavior.
+- **TASK-016 — xAI adapter:** verified compatible surface plus explicit
+  unsupported-feature behavior.
+- **TASK-018 — Anthropic adapter:** native Messages translation with tools,
+  vision, reasoning, usage, and streaming.
+- **TASK-023 — Nous Portal adapter:** verified subscription authentication,
+  refresh, catalog, inference, quota, and pricing behavior.
+- **Jev classifier adapters:** direct and provider-transport modes may be added
+  behind the Version 1 classifier contract; they must not replace or complicate
+  the self-hosted Laya path.

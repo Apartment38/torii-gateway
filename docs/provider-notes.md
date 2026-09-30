@@ -24,12 +24,19 @@ For each provider, record:
 
 Do not record credentials here.
 
-The repository is currently pre-v1. Provider research and implementation are
-scheduled as single-task milestones in `TASKS.md` (TASK-013 through TASK-018 and
-TASK-021 through TASK-023). Before changing an adapter, replace its placeholders
-with dated findings from primary documentation, identify which fields are
-verified versus inferred, and record unsupported behavior explicitly. A
-provider task is not complete until its notes and contract tests agree.
+The repository is currently pre-v1. Version 1 provider research is limited to
+local Ollama, standard OpenAI-compatible endpoints (including the normal OpenAI
+API), and ChatGPT Codex subscription access. OpenRouter, Nous Portal, Gemini,
+xAI, and Anthropic sections are retained for the Version 2 backlog. Before
+changing an adapter, replace its placeholders with dated findings from primary
+documentation, identify which fields are verified versus inferred, and record
+unsupported behavior explicitly. A provider task is not complete until its
+notes and contract tests agree.
+
+The Version 1 router may use a self-hosted Laya model through an already
+configured local physical provider. Laya protocol and schema findings belong in
+this document before TASK-026 is implemented; no dedicated hosted-Laya provider
+or credential flow is in scope. Jev classifier transports are Version 2 work.
 
 ---
 

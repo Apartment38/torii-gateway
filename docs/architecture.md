@@ -47,6 +47,9 @@ Current request flow:
     Client
       |
       v
+    Request ID and structured request logging
+      |
+      v
     API authentication
       |
       v
@@ -145,19 +148,24 @@ requests containing large message or image payloads.
 
 ## Model Catalog
 
-**Current:** model discovery is aggregated directly by the HTTP handler. Ollama
-models are read from the OpenAI-compatible model endpoint, prefixed, and
-returned; one provider failure fails the request. There is no capability merge,
-refresh cache, or partial result policy yet.
-
-**Version 1 target:** a catalog component combines:
+The model catalog discovers configured providers at startup and combines:
 
 1. provider-discovered metadata
 2. bundled capability metadata
 
 Live authoritative provider metadata takes precedence over bundled values.
+Configuration overrides take precedence over both. Published snapshots are
+sorted and immutable, and duplicate public model IDs reject the refresh.
 
 Unknown capability values remain unknown rather than being guessed.
+Endpoint and feature support use explicit supported, unsupported, and unknown
+states; descriptors also carry context, pricing, quality, locality,
+availability, staleness, and metadata provenance for later routing policy.
+
+Providers refresh independently. A failed provider retains its last-known-good
+entries marked stale, or uses matching bundled entries when no live snapshot
+has succeeded. Other providers remain visible. Startup fails only when no
+configured provider has a usable live, cached, or bundled catalog.
 
 
 ## Streaming
@@ -172,6 +180,23 @@ upstream request, so a disconnected client cancels upstream work.
 
 Once downstream response bytes have been emitted, the request cannot be
 rerouted to another model.
+
+## Errors, Request IDs, and Logging
+
+Internal component failures use a shared typed taxonomy, allowing the API to
+map client, authentication, routing, provider, quota, capability, classifier,
+and streaming failures without inspecting error-message text. Public failures
+use one OpenAI-style JSON envelope and deliberately omit internal error detail.
+
+Every request receives an `X-Request-ID`. A single safe client value (at most
+128 characters from a conservative ASCII alphabet) is retained; otherwise the
+gateway generates a cryptographically random value. The same value is returned
+to the client, carried in request context, and sent to the selected upstream.
+An upstream response cannot replace the gateway's correlation ID.
+
+The request middleware writes a structured `slog` completion record with the
+request ID, method, URL path, status, and duration. It does not log query
+values, headers, request or response bodies, prompts, tokens, or secrets.
 
 ## Smart Routing
 

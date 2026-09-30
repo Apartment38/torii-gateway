@@ -1,14 +1,19 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
+	"github.com/Apartment38/torii-router/internal/catalog"
+	"github.com/Apartment38/torii-router/internal/fault"
 	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-router/internal/requestid"
 	"github.com/Apartment38/torii-router/internal/transport"
 )
 
@@ -16,8 +21,10 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
-	providers []provider.OpenAIProvider
 	byID      map[string]provider.OpenAIProvider
+	catalog   *catalog.Catalog
+	refreshMu sync.Mutex
+	ready     bool
 }
 
 func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, error) {
@@ -31,7 +38,41 @@ func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, erro
 		}
 		registered[p.ID()] = p
 	}
-	return &OpenAIHandler{providers: append([]provider.OpenAIProvider(nil), providers...), byID: registered}, nil
+	discovery := make([]provider.Provider, len(providers))
+	for i := range providers {
+		discovery[i] = providers[i]
+	}
+	modelCatalog, err := catalog.New(discovery, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &OpenAIHandler{byID: registered, catalog: modelCatalog}, nil
+}
+
+// RefreshCatalog discovers all providers and atomically publishes a new model
+// snapshot. It is called during startup; lazy refresh keeps standalone handler
+// construction useful in tests and embedded deployments.
+func (h *OpenAIHandler) RefreshCatalog(ctx context.Context) error {
+	h.refreshMu.Lock()
+	defer h.refreshMu.Unlock()
+	if err := h.catalog.Refresh(ctx); err != nil {
+		return err
+	}
+	h.ready = true
+	return nil
+}
+
+func (h *OpenAIHandler) ensureCatalog(ctx context.Context) error {
+	h.refreshMu.Lock()
+	defer h.refreshMu.Unlock()
+	if h.ready {
+		return nil
+	}
+	if err := h.catalog.Refresh(ctx); err != nil {
+		return err
+	}
+	h.ready = true
+	return nil
 }
 
 func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -54,14 +95,14 @@ func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
-	models := make([]provider.Model, 0)
-	for _, p := range h.providers {
-		discovered, err := p.Models(r.Context())
-		if err != nil {
-			writeAPIError(w, http.StatusBadGateway, "Failed to discover upstream models", "api_error", "upstream_error")
-			return
-		}
-		models = append(models, discovered...)
+	if err := h.ensureCatalog(r.Context()); err != nil {
+		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
+		return
+	}
+	descriptors := h.catalog.Models()
+	models := make([]provider.Model, len(descriptors))
+	for i, descriptor := range descriptors {
+		models[i] = provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy}
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Object string           `json:"object"`
@@ -72,21 +113,19 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
 	providerID, _, err := provider.ParseModelID(publicID)
 	if err != nil || h.byID[providerID] == nil {
-		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
+		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
-	models, err := h.byID[providerID].Models(r.Context())
-	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, "Failed to discover upstream models", "api_error", "upstream_error")
+	if err := h.ensureCatalog(r.Context()); err != nil {
+		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
 		return
 	}
-	for _, model := range models {
-		if model.ID == publicID {
-			writeJSON(w, http.StatusOK, model)
-			return
-		}
+	descriptor, ok := h.catalog.Model(publicID)
+	if ok {
+		writeJSON(w, http.StatusOK, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
+		return
 	}
-	writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
+	writeError(w, fault.New(fault.ModelNotFound, "model"))
 }
 
 func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +133,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeAPIError(w, http.StatusRequestEntityTooLarge, "Request body exceeds the maximum allowed size", "invalid_request_error", "request_too_large")
+			writeError(w, fault.New(fault.ContextTooLarge, ""))
 			return
 		}
 		writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_json")
@@ -126,7 +165,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	providerID, modelID, err := provider.ParseModelID(fields.Model)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
-		writeAPIError(w, http.StatusNotFound, "The model does not exist", "invalid_request_error", "model_not_found")
+		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
 	response, err := upstream.Forward(r.Context(), r.URL.Path, body, modelID)
@@ -135,11 +174,14 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_request")
 			return
 		}
-		writeAPIError(w, http.StatusBadGateway, "Upstream request failed", "api_error", "upstream_error")
+		writeError(w, fault.Wrap(fault.ProviderUnavailable, "forward request", err))
 		return
 	}
 	defer response.Body.Close()
 	CopyResponseHeaders(w.Header(), response.Header)
+	if id, ok := requestid.FromContext(r.Context()); ok {
+		w.Header().Set(requestIDHeader, id)
+	}
 	w.WriteHeader(response.StatusCode)
 	if fields.Stream {
 		_ = relayStream(w, response.Body)
@@ -225,17 +267,10 @@ func writeAPIError(w http.ResponseWriter, status int, message, errorType, code s
 }
 
 func writeAPIErrorWithParam(w http.ResponseWriter, status int, message, errorType, code string, param *string) {
-	writeJSON(w, status, struct {
-		Error struct {
-			Message string  `json:"message"`
-			Type    string  `json:"type"`
-			Param   *string `json:"param"`
-			Code    string  `json:"code"`
-		} `json:"error"`
-	}{Error: struct {
-		Message string  `json:"message"`
-		Type    string  `json:"type"`
-		Param   *string `json:"param"`
-		Code    string  `json:"code"`
-	}{Message: message, Type: errorType, Param: param, Code: code}})
+	writeJSON(w, status, errorEnvelope{Error: errorBody{
+		Message: message,
+		Type:    errorType,
+		Param:   param,
+		Code:    code,
+	}})
 }

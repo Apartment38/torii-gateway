@@ -15,6 +15,56 @@ TODO list below and move only that task here while implementing it.
 
 ## DONE
 
+### TASK-011 — Build the model catalog and capability metadata core
+
+Goal:
+Build deterministic, immutable model snapshots without inventing unknown
+capabilities or making one unavailable provider hide every other provider.
+
+Completed:
+- added normalized model descriptors for endpoint support, capabilities,
+  context, price, quality, locality, availability, and provenance
+- represented capability knowledge explicitly as supported, unsupported, or
+  unknown and embedded the bundled JSON catalog in the binary
+- implemented deterministic live, bundled, and configuration override merging
+- added startup discovery, sorted list/retrieval views, collision detection,
+  partial-provider refresh, bundled fallback, and last-known-good caching
+- made startup fail when no provider or bundled fallback is usable while
+  allowing a partial catalog when at least one provider remains usable
+- added merge, ordering, immutability, collision, stale-cache, fallback, API,
+  and partial-provider tests
+
+Decisions:
+- the bundled catalog begins empty rather than guessing model capabilities;
+  verified provider work will add records as primary-source research lands
+- catalog snapshots contain value types and deep-copy optional numeric fields
+  so callers cannot mutate catalog state
+- public OpenAI model objects remain compatibility-focused while the richer
+  normalized descriptors remain the internal source for later smart routing
+
+### TASK-010 — Normalize public errors and request IDs
+
+Goal:
+Provide shared typed failures and safe request correlation across the public API.
+
+Completed:
+- added the shared OpenAI error envelope and typed internal failure taxonomy
+- mapped authentication, request, routing, provider, upstream, capability,
+  quota, classifier, and stream failures without matching error strings
+- accepted safe client request IDs or generated cryptographically random IDs
+- returned the gateway request ID on every response and propagated it to the
+  selected upstream while preventing an upstream ID from replacing it
+- added structured `slog` completion records containing request metadata only
+- tested status/code mappings, propagation, generated IDs, typed wrapping, and
+  log redaction invariants
+
+Decisions:
+- accept one request ID of at most 128 characters from a conservative ASCII
+  alphabet; replace missing, duplicate, or unsafe values
+- keep request IDs in a small context package so transports do not depend on
+  the HTTP API package
+- log method and URL path but never query values, headers, bodies, or credentials
+
 ### TASK-009 — Complete transparent OpenAI endpoint coverage
 
 Goal:
@@ -255,27 +305,7 @@ by dependency and must include focused tests, repository checks, task updates,
 and durable documentation updates. Provider and classifier protocol work must
 first add dated findings from primary sources to `docs/provider-notes.md`.
 
-### Next steps — Version 1
-
-#### 1. Stabilize the public API and catalog
-
-##### TASK-010 — Normalize public errors and request IDs
-
-**Depends on:** TASK-009
-
-Define shared OpenAI error envelopes and typed internal failures. Accept or
-generate request IDs, propagate them safely, and add secret-safe structured
-logging. Test mappings, propagation, and redaction.
-
-##### TASK-011 — Build the model catalog and capability metadata core
-
-**Depends on:** TASK-010
-
-Add immutable model descriptors, tri-state capabilities, deterministic metadata
-merging, refresh and last-known-good caching, collision detection, and partial
-provider availability. Unknown capabilities must remain unknown.
-
-##### TASK-012 — Add configurable standard OpenAI-compatible endpoints
+#### TASK-012 — Add configurable generic OpenAI-compatible providers
 
 **Depends on:** TASK-011
 

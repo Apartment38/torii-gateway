@@ -9,9 +9,10 @@ This document defines the initial architecture and implementation plan for a lig
 
 The intended audience is a coding agent implementing the project from scratch.
 
-**Current status (2026-09-28): pre-v1.** The repository currently implements
-an Ollama-backed transparent Chat Completions slice with authentication, model
-discovery, and SSE relay. It is not Version 1 because the required endpoint
+**Current status (2026-09-30): pre-v1.** The repository currently implements
+the authenticated Ollama-backed transparent endpoint set, normalized catalog
+metadata, partial-provider caching, request IDs, and SSE relay. It is not
+Version 1 because the required endpoint
 surface, providers, smart model, sessions, and quota/cost-aware routing are not
 complete. `TASKS.md` is the authoritative ordered execution roadmap; this
 document remains the Version 1 product and architecture contract. A build may

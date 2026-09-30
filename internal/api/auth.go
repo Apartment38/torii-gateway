@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/Apartment38/torii-router/internal/fault"
 )
 
 // ErrUnauthorized indicates that a request did not contain valid client
@@ -88,24 +89,6 @@ func AuthenticateMiddleware(authenticator ClientAuthenticator, next http.Handler
 }
 
 func writeUnauthorized(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", "Bearer")
-	w.WriteHeader(http.StatusUnauthorized)
-	_ = json.NewEncoder(w).Encode(struct {
-		Error struct {
-			Message string  `json:"message"`
-			Type    string  `json:"type"`
-			Param   *string `json:"param"`
-			Code    string  `json:"code"`
-		} `json:"error"`
-	}{Error: struct {
-		Message string  `json:"message"`
-		Type    string  `json:"type"`
-		Param   *string `json:"param"`
-		Code    string  `json:"code"`
-	}{
-		Message: "Invalid authentication credentials",
-		Type:    "invalid_request_error",
-		Code:    "invalid_api_key",
-	}})
+	writeError(w, fault.New(fault.AuthenticationFailure, ""))
 }

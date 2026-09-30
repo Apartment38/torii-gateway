@@ -9,7 +9,10 @@ Version 1 definition of done in `docs/implementation-plan.md`.
 ## IN PROGRESS
 
 No task is currently in progress. Start the first unblocked task in the ordered
-TODO list below and move only that task here while implementing it.
+TODO list below and move it here while implementing it. Completing a milestone
+does not require ending the development session: after recording and committing
+that milestone, continue with the next unblocked task when time and context
+allow.
 
 ---
 
@@ -295,15 +298,20 @@ Completed:
 
 ## TODO — Ordered Version 1 roadmap
 
-Version 1 is intentionally limited to local Ollama, standard OpenAI-compatible
-endpoints (including the normal OpenAI API), and ChatGPT Codex subscription
-access. Dedicated OpenRouter, Nous Portal, Gemini, xAI, and Anthropic adapters,
-along with Jev classifiers, are tracked in the Version 2 backlog below.
+Each numbered item below is one implementation milestone and should produce one
+focused commit. Tasks are ordered by dependency; a task may start only after
+all IDs in its `Depends on` field are done. Every task must add focused tests,
+run the repository checks, update this file, and update durable documentation
+when public behavior or architecture changes. Provider tasks must first update
+`docs/provider-notes.md` with dated, primary-source protocol findings. Optional
+upstream metadata must not block the transparent gateway path.
 
-Each numbered item is one focused implementation milestone. Tasks are ordered
-by dependency and must include focused tests, repository checks, task updates,
-and durable documentation updates. Provider and classifier protocol work must
-first add dated findings from primary sources to `docs/provider-notes.md`.
+Milestone boundaries organize tracking, review, and commits; they are not stop
+conditions. An agent may complete multiple milestones in one session by
+processing them sequentially, satisfying each task's dependencies and checks,
+and recording a focused commit for each before beginning the next.
+
+### Foundation and complete public API
 
 #### TASK-012 — Add configurable generic OpenAI-compatible providers
 

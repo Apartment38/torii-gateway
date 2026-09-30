@@ -3109,6 +3109,11 @@ list, rather than this section, owns detailed dependencies and acceptance
 criteria. The phases below define ordering and map the original architectural
 milestones to executable tasks:
 
+Single-task tracking does not impose a one-task limit on a development session.
+An agent may continue through multiple dependency-ready milestones
+sequentially, provided each milestone is independently tested, documented,
+recorded in `TASKS.md`, and committed before the next begins.
+
 | Phase | Tasks | Exit condition |
 | --- | --- | --- |
 | Current transparent foundation | TASK-001–TASK-008 (done) | Authenticated Ollama model discovery and Chat Completions, including SSE, work end to end. |
@@ -3500,7 +3505,8 @@ The `Result` and `Remaining issues` sections are particularly important for cros
 
 ## 68.4 Require Clean Handoffs
 
-Before an agent stops because of quota, context limit, or task completion, it should:
+When an agent stops—whether after one milestone, after several sequential
+milestones, or because of a quota or context limit—it should:
 
 1. ensure modified code is saved
 2. run the narrowest relevant tests

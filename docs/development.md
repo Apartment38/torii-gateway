@@ -198,8 +198,9 @@ Before beginning:
 
 1. Read `TASKS.md` and select the first unblocked TODO task unless another task
    is explicitly assigned.
-2. Move only that single-task milestone to `IN PROGRESS`; do not bundle later
-   roadmap tasks into the same change.
+2. Move the selected milestone to `IN PROGRESS`. Keep its tracking and commit
+   distinct from later milestones so its result remains independently
+   reviewable.
 3. Confirm all listed dependencies are in `DONE`.
 4. Inspect related implementation and tests.
 5. For provider work, update dated protocol findings in
@@ -217,6 +218,12 @@ Before finishing:
    durable project convention
 6. leave the repository in a buildable, resumable state with the next task and
    its dependencies clear
+
+Finishing those steps does not require stopping work. If time and context
+remain, select the next unblocked milestone and repeat the workflow in the same
+development session. Multiple sequential milestones are allowed; each should
+retain its own task transition, acceptance checks, documentation updates, and
+focused commit.
 
 ## Troubleshooting
 

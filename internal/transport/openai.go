@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/Apartment38/torii-router/internal/requestid"
 )
 
 // ErrInvalidRequest identifies malformed or unsupported client request data.
@@ -70,6 +72,9 @@ func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte,
 		return nil, fmt.Errorf("create upstream request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if id, ok := requestid.FromContext(ctx); ok {
+		req.Header.Set("X-Request-ID", id)
+	}
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	} else {

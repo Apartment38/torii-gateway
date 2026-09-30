@@ -100,6 +100,32 @@ func TestOpenAIHandlerForwardsTransparentEndpoints(t *testing.T) {
 	}
 }
 
+func TestOpenAIHandlerReturnsPartialDeterministicCatalog(t *testing.T) {
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[{"id":"z"},{"id":"a"}]}`)
+	}))
+	defer first.Close()
+	working, _ := provider.NewOllama("working", first.URL, first.Client())
+	handler, err := api.NewOpenAIHandler([]provider.OpenAIProvider{failingProvider{}, working})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Data []provider.Model `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Data) != 2 || envelope.Data[0].ID != "working/a" || envelope.Data[1].ID != "working/z" {
+		t.Fatalf("models = %#v", envelope.Data)
+	}
+}
+
 func TestOpenAIHandlerRejectsStatefulResponsesFields(t *testing.T) {
 	for _, parameter := range []string{"previous_response_id", "conversation"} {
 		t.Run(parameter, func(t *testing.T) {

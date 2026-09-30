@@ -1,0 +1,123 @@
+package catalog_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/Apartment38/torii-router/internal/catalog"
+	"github.com/Apartment38/torii-router/internal/provider"
+)
+
+type stubProvider struct {
+	id     string
+	models []provider.Model
+	err    error
+}
+
+func (p *stubProvider) ID() string { return p.id }
+func (p *stubProvider) Models(context.Context) ([]provider.Model, error) {
+	return append([]provider.Model(nil), p.models...), p.err
+}
+
+func boolPointer(value bool) *bool        { return &value }
+func intPointer(value int64) *int64       { return &value }
+func floatPointer(value float64) *float64 { return &value }
+
+func TestCatalogMergesDeterministicallyAndSorts(t *testing.T) {
+	local := &stubProvider{id: "local", models: []provider.Model{{ID: "local/z", Created: 3}, {ID: "local/a", OwnedBy: "owner"}}}
+	window := int64(8192)
+	bundled := []catalog.Descriptor{{
+		PublicID: "local/a", ContextWindow: &window,
+		Capabilities: catalog.ModelCapabilities{Tools: catalog.Supported},
+		Pricing:      catalog.Pricing{InputPerMillion: floatPointer(1)},
+	}}
+	overrides := []catalog.Descriptor{{
+		PublicID: "local/a", ContextWindow: intPointer(16384),
+		Capabilities: catalog.ModelCapabilities{Tools: catalog.Unsupported, Vision: catalog.Supported},
+		Local:        boolPointer(true),
+	}}
+	c, err := catalog.New([]provider.Provider{local}, bundled, overrides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	models := c.Models()
+	if len(models) != 2 || models[0].PublicID != "local/a" || models[1].PublicID != "local/z" {
+		t.Fatalf("models = %#v", models)
+	}
+	model := models[0]
+	if *model.ContextWindow != 16384 || model.Capabilities.Tools != catalog.Unsupported || model.Capabilities.Vision != catalog.Supported || model.Capabilities.Reasoning != catalog.Unknown {
+		t.Fatalf("merged model = %#v", model)
+	}
+	if model.Pricing.InputPerMillion == nil || *model.Pricing.InputPerMillion != 1 || model.Metadata.CapabilitySource != "config" {
+		t.Fatalf("merged metadata = %#v", model)
+	}
+}
+
+func TestCatalogPartialRefreshAndLastKnownGood(t *testing.T) {
+	good := &stubProvider{id: "good", models: []provider.Model{{ID: "good/model"}}}
+	flaky := &stubProvider{id: "flaky", models: []provider.Model{{ID: "flaky/model"}}}
+	c, err := catalog.New([]provider.Provider{good, flaky}, []catalog.Descriptor{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	flaky.err = errors.New("offline")
+	good.models = []provider.Model{{ID: "good/new"}}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	models := c.Models()
+	if len(models) != 2 || models[0].PublicID != "flaky/model" || !models[0].Availability.Stale || models[1].PublicID != "good/new" {
+		t.Fatalf("models after partial refresh = %#v", models)
+	}
+}
+
+func TestCatalogUsesBundledFallback(t *testing.T) {
+	offline := &stubProvider{id: "local", err: errors.New("offline")}
+	bundled := []catalog.Descriptor{{PublicID: "local/known", ProviderID: "local", UpstreamID: "known"}}
+	c, err := catalog.New([]provider.Provider{offline}, bundled, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	model, ok := c.Model("local/known")
+	if !ok || model.Metadata.CatalogSource != "bundled" || !model.Availability.Stale {
+		t.Fatalf("bundled fallback = %#v, %v", model, ok)
+	}
+}
+
+func TestCatalogRejectsCollisionsAndZeroUsableProviders(t *testing.T) {
+	t.Run("collision", func(t *testing.T) {
+		duplicate := &stubProvider{id: "local", models: []provider.Model{{ID: "local/a"}, {ID: "local/a"}}}
+		c, _ := catalog.New([]provider.Provider{duplicate}, []catalog.Descriptor{}, nil)
+		if err := c.Refresh(context.Background()); err == nil {
+			t.Fatal("Refresh() error = nil")
+		}
+	})
+	t.Run("zero usable", func(t *testing.T) {
+		c, _ := catalog.New([]provider.Provider{&stubProvider{id: "offline", err: errors.New("down")}}, []catalog.Descriptor{}, nil)
+		if err := c.Refresh(context.Background()); err == nil {
+			t.Fatal("Refresh() error = nil")
+		}
+	})
+}
+
+func TestCatalogSnapshotsAreImmutable(t *testing.T) {
+	c, _ := catalog.New([]provider.Provider{&stubProvider{id: "local", models: []provider.Model{{ID: "local/a"}}}}, []catalog.Descriptor{}, nil)
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first := c.Models()
+	first[0].PublicID = "changed"
+	if model, ok := c.Model("local/a"); !ok || model.PublicID != "local/a" {
+		t.Fatalf("catalog snapshot was mutated: %#v, %v", model, ok)
+	}
+}

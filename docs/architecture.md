@@ -144,19 +144,24 @@ requests containing large message or image payloads.
 
 ## Model Catalog
 
-**Current:** model discovery is aggregated directly by the HTTP handler. Ollama
-models are read from the OpenAI-compatible model endpoint, prefixed, and
-returned; one provider failure fails the request. There is no capability merge,
-refresh cache, or partial result policy yet.
-
-**Version 1 target:** a catalog component combines:
+The model catalog discovers configured providers at startup and combines:
 
 1. provider-discovered metadata
 2. bundled capability metadata
 
 Live authoritative provider metadata takes precedence over bundled values.
+Configuration overrides take precedence over both. Published snapshots are
+sorted and immutable, and duplicate public model IDs reject the refresh.
 
 Unknown capability values remain unknown rather than being guessed.
+Endpoint and feature support use explicit supported, unsupported, and unknown
+states; descriptors also carry context, pricing, quality, locality,
+availability, staleness, and metadata provenance for later routing policy.
+
+Providers refresh independently. A failed provider retains its last-known-good
+entries marked stale, or uses matching bundled entries when no live snapshot
+has succeeded. Other providers remain visible. Startup fails only when no
+configured provider has a usable live, cached, or bundled catalog.
 
 
 ## Streaming

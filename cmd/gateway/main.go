@@ -120,6 +120,9 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := openAI.RefreshCatalog(context.Background()); err != nil {
+		return nil, fmt.Errorf("initialize model catalog: %w", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {

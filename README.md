@@ -187,9 +187,10 @@ stateless: `previous_response_id` and `conversation` are rejected with an
 
 ## Operational notes
 
-- `GET /v1/models` queries every configured upstream. If any provider is
-  unavailable or returns an invalid catalog, the gateway returns an upstream
-  error rather than a partial model list.
+- Model discovery runs at startup. An unavailable provider does not hide models
+  from healthy providers; later refreshes retain its last-known-good entries as
+  stale. Startup fails when no configured provider has a usable live or bundled
+  catalog.
 - Inference request bodies are limited to 32 MiB.
 - Upstream inference has no gateway-imposed completion timeout. Client
   disconnects cancel the upstream request.

@@ -15,6 +15,33 @@ TODO list below and move only that task here while implementing it.
 
 ## DONE
 
+### TASK-011 — Build the model catalog and capability metadata core
+
+Goal:
+Build deterministic, immutable model snapshots without inventing unknown
+capabilities or making one unavailable provider hide every other provider.
+
+Completed:
+- added normalized model descriptors for endpoint support, capabilities,
+  context, price, quality, locality, availability, and provenance
+- represented capability knowledge explicitly as supported, unsupported, or
+  unknown and embedded the bundled JSON catalog in the binary
+- implemented deterministic live, bundled, and configuration override merging
+- added startup discovery, sorted list/retrieval views, collision detection,
+  partial-provider refresh, bundled fallback, and last-known-good caching
+- made startup fail when no provider or bundled fallback is usable while
+  allowing a partial catalog when at least one provider remains usable
+- added merge, ordering, immutability, collision, stale-cache, fallback, API,
+  and partial-provider tests
+
+Decisions:
+- the bundled catalog begins empty rather than guessing model capabilities;
+  verified provider work will add records as primary-source research lands
+- catalog snapshots contain value types and deep-copy optional numeric fields
+  so callers cannot mutate catalog state
+- public OpenAI model objects remain compatibility-focused while the richer
+  normalized descriptors remain the internal source for later smart routing
+
 ### TASK-010 — Normalize public errors and request IDs
 
 Goal:
@@ -277,17 +304,6 @@ when public behavior or architecture changes. Provider tasks must first update
 upstream metadata must not block the transparent gateway path.
 
 ### Foundation and complete public API
-
-#### TASK-011 — Build the model catalog and capability metadata core
-
-**Depends on:** TASK-010
-
-Introduce immutable model descriptors, tri-state capabilities, bundled
-capability data, deterministic live/bundled/config merge rules, catalog refresh
-and last-known-good caching, collision detection, and partial-provider refresh
-behavior. Include context, modalities, endpoints, tool/structured-output,
-reasoning, price, quality, and availability fields without guessing unknowns.
-Expose deterministic model list and retrieval views and test stale/partial data.
 
 #### TASK-012 — Add configurable generic OpenAI-compatible providers
 

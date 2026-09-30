@@ -1,13 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
+	"github.com/Apartment38/torii-router/internal/catalog"
 	"github.com/Apartment38/torii-router/internal/fault"
 	"github.com/Apartment38/torii-router/internal/provider"
 	"github.com/Apartment38/torii-router/internal/requestid"
@@ -18,8 +21,10 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
-	providers []provider.OpenAIProvider
 	byID      map[string]provider.OpenAIProvider
+	catalog   *catalog.Catalog
+	refreshMu sync.Mutex
+	ready     bool
 }
 
 func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, error) {
@@ -33,7 +38,41 @@ func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, erro
 		}
 		registered[p.ID()] = p
 	}
-	return &OpenAIHandler{providers: append([]provider.OpenAIProvider(nil), providers...), byID: registered}, nil
+	discovery := make([]provider.Provider, len(providers))
+	for i := range providers {
+		discovery[i] = providers[i]
+	}
+	modelCatalog, err := catalog.New(discovery, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &OpenAIHandler{byID: registered, catalog: modelCatalog}, nil
+}
+
+// RefreshCatalog discovers all providers and atomically publishes a new model
+// snapshot. It is called during startup; lazy refresh keeps standalone handler
+// construction useful in tests and embedded deployments.
+func (h *OpenAIHandler) RefreshCatalog(ctx context.Context) error {
+	h.refreshMu.Lock()
+	defer h.refreshMu.Unlock()
+	if err := h.catalog.Refresh(ctx); err != nil {
+		return err
+	}
+	h.ready = true
+	return nil
+}
+
+func (h *OpenAIHandler) ensureCatalog(ctx context.Context) error {
+	h.refreshMu.Lock()
+	defer h.refreshMu.Unlock()
+	if h.ready {
+		return nil
+	}
+	if err := h.catalog.Refresh(ctx); err != nil {
+		return err
+	}
+	h.ready = true
+	return nil
 }
 
 func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -56,14 +95,14 @@ func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
-	models := make([]provider.Model, 0)
-	for _, p := range h.providers {
-		discovered, err := p.Models(r.Context())
-		if err != nil {
-			writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
-			return
-		}
-		models = append(models, discovered...)
+	if err := h.ensureCatalog(r.Context()); err != nil {
+		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
+		return
+	}
+	descriptors := h.catalog.Models()
+	models := make([]provider.Model, len(descriptors))
+	for i, descriptor := range descriptors {
+		models[i] = provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy}
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Object string           `json:"object"`
@@ -77,16 +116,14 @@ func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicI
 		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
-	models, err := h.byID[providerID].Models(r.Context())
-	if err != nil {
+	if err := h.ensureCatalog(r.Context()); err != nil {
 		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
 		return
 	}
-	for _, model := range models {
-		if model.ID == publicID {
-			writeJSON(w, http.StatusOK, model)
-			return
-		}
+	descriptor, ok := h.catalog.Model(publicID)
+	if ok {
+		writeJSON(w, http.StatusOK, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
+		return
 	}
 	writeError(w, fault.New(fault.ModelNotFound, "model"))
 }

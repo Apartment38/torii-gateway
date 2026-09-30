@@ -3,9 +3,11 @@
 ## Purpose
 
 This document distinguishes the architecture currently implemented in the
-gateway from the approved Version 1 target. The repository is pre-v1: only the
-explicit Ollama Chat Completions path is currently usable. Sections labeled
-"planned" are contracts, not claims about the running product.
+gateway from the approved Version 1 target. Version 1 supports local Ollama,
+standard OpenAI-compatible endpoints, and ChatGPT Codex subscription access;
+dedicated integrations for other providers are Version 2 work. The repository
+is pre-v1: only the explicit Ollama-compatible path is currently usable.
+Sections labeled "planned" are contracts, not claims about the running product.
 
 For the complete target and ordered implementation work, see:
 
@@ -96,7 +98,9 @@ API.
 Examples may include:
 
 - OpenAI Codex Responses
-- Anthropic Messages
+
+Provider-specific translation such as Anthropic Messages is deferred to
+Version 2.
 
 Translation must be isolated from generic request routing.
 
@@ -172,7 +176,9 @@ rerouted to another model.
 ## Smart Routing
 
 **Not implemented.** The Version 1 smart model is delivered by TASK-024 through
-TASK-029 and consists of:
+TASK-029. Its semantic classifier may use a configured self-hosted Laya model
+through a physical Ollama or standard OpenAI-compatible provider; Laya never
+acts as the virtual model and cannot recursively select `smart`. The flow is:
 
     request requirements
         |

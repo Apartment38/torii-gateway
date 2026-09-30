@@ -29,7 +29,9 @@ ID.
 This pre-v1 milestone performs **explicit routing only**. It does not yet
 provide the Version 1 `smart` virtual model, automatic model selection, session
 affinity, quota/cost-aware routing, the full OpenAI endpoint set, or required
-non-Ollama providers. [`TASKS.md`](TASKS.md) is the ordered implementation
+standard OpenAI-compatible and ChatGPT Codex subscription providers. Dedicated
+OpenRouter, Nous, Gemini, xAI, and Anthropic integrations are deferred to
+Version 2. [`TASKS.md`](TASKS.md) is the ordered implementation
 roadmap, [`docs/implementation-plan.md`](docs/implementation-plan.md) defines
 the complete Version 1 contract, and [`docs/architecture.md`](docs/architecture.md)
 describes implemented versus planned behavior.

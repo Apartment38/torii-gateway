@@ -116,3 +116,53 @@ func TestValidateRejectsDuplicateProviderIDs(t *testing.T) {
 		t.Fatalf("Decode() error = %v, want duplicate-ID error", err)
 	}
 }
+
+func TestDecodeOpenAICompatibleProvider(t *testing.T) {
+	input := strings.Replace(validConfig, `  - id: ollama-local
+    type: ollama
+    base_url: http://localhost:11434`, `  - id: private
+    type: openai_compatible
+    base_url: https://inference.example.test/api
+    bearer_token:
+      env: PROVIDER_TOKEN
+    headers:
+      X-Tenant:
+        file: /run/secrets/tenant
+    discover_models: false
+    models: [vendor/model]
+    model_rewrites:
+      friendly: vendor/model
+    transport: openai_compatible
+    connect_timeout: 2s
+    request_timeout: 5m
+    discovery_timeout: 5s
+    tls:
+      ca_file: /run/secrets/ca.pem
+      server_name: inference.example.test`, 1)
+	cfg, err := config.Decode(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Providers[0].BearerToken.Env != "PROVIDER_TOKEN" || cfg.Providers[0].Models[0] != "vendor/model" {
+		t.Fatalf("provider = %#v", cfg.Providers[0])
+	}
+}
+
+func TestDecodeRejectsUnsafeCompatibleProviderConfiguration(t *testing.T) {
+	base := strings.Replace(validConfig, "type: ollama", "type: openai_compatible", 1)
+	tests := []struct{ name, extra, want string }{
+		{"inline unknown field", "    api_key: secret\n", "field api_key not found"},
+		{"unsafe authorization header", "    headers:\n      Authorization:\n        env: TOKEN\n", "unsafe"},
+		{"no model source", "    discover_models: false\n", "models are required"},
+		{"invalid timeout", "    connect_timeout: forever\n", "positive duration"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := base + tt.extra
+			_, err := config.Decode(strings.NewReader(input))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}

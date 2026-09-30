@@ -34,10 +34,18 @@ type RequestFields struct {
 type OpenAICompatible struct {
 	baseURL *url.URL
 	client  *http.Client
+	headers http.Header
 }
 
 // NewOpenAICompatible constructs a transparent OpenAI-compatible transport.
 func NewOpenAICompatible(baseURL string, client *http.Client) (*OpenAICompatible, error) {
+	return NewOpenAICompatibleWithHeaders(baseURL, client, nil)
+}
+
+// NewOpenAICompatibleWithHeaders constructs a transport with provider-scoped
+// headers. Headers are copied and attached only to requests made by this
+// transport.
+func NewOpenAICompatibleWithHeaders(baseURL string, client *http.Client, headers http.Header) (*OpenAICompatible, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse upstream base URL: %w", err)
@@ -48,7 +56,7 @@ func NewOpenAICompatible(baseURL string, client *http.Client) (*OpenAICompatible
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &OpenAICompatible{baseURL: u, client: client}, nil
+	return &OpenAICompatible{baseURL: u, client: client, headers: headers.Clone()}, nil
 }
 
 // Do sends a JSON request after replacing only the top-level model field.
@@ -72,6 +80,11 @@ func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte,
 		return nil, fmt.Errorf("create upstream request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for name, values := range t.headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
 	if id, ok := requestid.FromContext(ctx); ok {
 		req.Header.Set("X-Request-ID", id)
 	}

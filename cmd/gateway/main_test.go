@@ -175,6 +175,92 @@ providers:
 	}
 }
 
+func TestBuildCompatibleProviderResolvesAndIsolatesCredentials(t *testing.T) {
+	t.Setenv("UPSTREAM_TOKEN", "upstream-secret")
+	received := make(chan http.Header, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.Header.Clone()
+		_, _ = io.WriteString(w, `{"data":[{"id":"model"}]}`)
+	}))
+	defer upstream.Close()
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("redirect target received credentials: %#v", r.Header)
+	}))
+	defer redirectTarget.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", redirectTarget.URL)
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	defer redirecting.Close()
+
+	secret := config.SecretRef{Env: "UPSTREAM_TOKEN"}
+	p, err := buildProvider(config.ProviderConfig{ID: "generic", Type: "openai_compatible", BaseURL: upstream.URL, BearerToken: &secret, Headers: map[string]config.SecretRef{"X-Provider-Key": secret}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	headers := <-received
+	if headers.Get("Authorization") != "Bearer upstream-secret" || headers.Get("X-Provider-Key") != "upstream-secret" {
+		t.Fatalf("headers = %#v", headers)
+	}
+
+	p, err = buildProvider(config.ProviderConfig{ID: "redirect", Type: "openai_compatible", BaseURL: redirecting.URL, BearerToken: &secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Models(context.Background()); err == nil || !strings.Contains(err.Error(), "307") {
+		t.Fatalf("redirect discovery error = %v", err)
+	}
+}
+
+func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.yaml")
+	configuration := fmt.Sprintf("server:\n  listen: 127.0.0.1:0\nstate:\n  directory: %s\nproviders:\n  - id: openai\n    type: openai_compatible\n    base_url: https://api.example.test\n    discover_models: false\n    models: [model]\n", directory)
+	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI_ACCESS_TOKEN", "access-secret-never-print")
+	t.Setenv("CLI_REFRESH_TOKEN", "refresh-secret-never-print")
+	var output strings.Builder
+	if err := runWithIO(context.Background(), []string{"auth", "login", "openai", "--config", configPath, "--access-token-env", "CLI_ACCESS_TOKEN", "--refresh-token-env", "CLI_REFRESH_TOKEN", "--expires-at", "2099-01-01T00:00:00Z"}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "secret") || !strings.Contains(output.String(), "logged in") {
+		t.Fatalf("login output=%q", output.String())
+	}
+	output.Reset()
+	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--config", configPath}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "provider openai: logged in\n" {
+		t.Fatalf("status output=%q", output.String())
+	}
+	output.Reset()
+	if err := runWithIO(context.Background(), []string{"auth", "logout", "openai", "--config", configPath}, &output); err != nil {
+		t.Fatal(err)
+	}
+	output.Reset()
+	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--config", configPath}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "provider openai: logged out\n" {
+		t.Fatalf("status output=%q", output.String())
+	}
+}
+
+func TestAuthCLIValidatesConfigurationAndProvider(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(path, []byte("unknown: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithIO(context.Background(), []string{"auth", "status", "missing", "--config", path}, io.Discard); err == nil {
+		t.Fatal("invalid configuration accepted")
+	}
+}
+
 func unusedAddress(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

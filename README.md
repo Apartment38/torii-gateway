@@ -1,16 +1,16 @@
 # Torii Router
 
 Torii Router is a lightweight, resource-efficient LLM gateway written in Go.
-It presents an OpenAI-compatible HTTP API in front of one or more Ollama
-servers and gives every upstream model a provider-qualified name such as
+It presents an OpenAI-compatible HTTP API in front of one or more Ollama servers or standard OpenAI-compatible
+endpoints and gives every upstream model a provider-qualified name such as
 `local/llama3.2`. The current build is a **pre-v1 milestone**: it is a usable
-Ollama-backed OpenAI-compatible gateway, but it does not yet meet the repository's
+OpenAI-compatible gateway, but it does not yet meet the repository's
 Version 1 scope. It needs no database, Redis instance, queue, sidecar, or web
 interface.
 
 The gateway is designed for clients that already support the OpenAI API. It
 rewrites only the requested model name and otherwise
-passes the JSON request through to Ollama, preserving unknown fields. Both
+passes the JSON request through to the selected upstream, preserving unknown fields. Both
 ordinary JSON responses and streamed SSE responses are relayed where supported,
 and explicit model requests are always sent to the provider named in the model
 ID.
@@ -20,6 +20,8 @@ ID.
 - OpenAI-compatible model, Chat Completions, Completions, Embeddings, and
   stateless Responses endpoints
 - multiple Ollama upstreams with `provider/model` public model IDs
+- configurable OpenAI-compatible upstreams with static or discovered models,
+  provider-scoped credentials, TLS, timeouts, custom headers, and model aliases
 - transparent request forwarding, including fields the gateway does not know
 - low-overhead, byte-for-byte SSE streaming
 - bearer authentication for every API endpoint except `GET /healthz`
@@ -29,8 +31,7 @@ ID.
 
 This pre-v1 milestone performs **explicit routing only**. It does not yet
 provide the Version 1 `smart` virtual model, automatic model selection, session
-affinity, quota/cost-aware routing, the full OpenAI endpoint set, or required
-standard OpenAI-compatible and ChatGPT Codex subscription providers. Dedicated
+affinity, quota/cost-aware routing, the full OpenAI endpoint set, the normal OpenAI profile, or the required ChatGPT Codex subscription provider. Dedicated
 OpenRouter, Nous, Gemini, xAI, and Anthropic integrations are deferred to
 Version 2. [`TASKS.md`](TASKS.md) is the ordered implementation
 roadmap, [`docs/implementation-plan.md`](docs/implementation-plan.md) defines
@@ -40,9 +41,9 @@ describes implemented versus planned behavior.
 ## Requirements
 
 - Go 1.25.1 or newer (to build from source)
-- one or more reachable [Ollama](https://ollama.com/) servers with their
-  OpenAI-compatible API enabled
-- an Ollama model already installed, for example `ollama pull llama3.2`
+- one or more reachable OpenAI-compatible upstreams
+- for Ollama, its OpenAI-compatible API and an installed model (for example,
+  `ollama pull llama3.2`)
 
 ## Set up from source
 
@@ -130,7 +131,7 @@ accepts these fields:
 | Field | Description |
 | --- | --- |
 | `id` | Unique lowercase namespace matching `[a-z0-9][a-z0-9._-]*`. This becomes the prefix in public model IDs. |
-| `type` | Must currently be `ollama`. |
+| `type` | `ollama` or `openai_compatible`. |
 | `base_url` | Ollama's HTTP or HTTPS base URL. Credentials, query strings, and fragments are rejected. A path prefix is allowed. |
 
 For multiple Ollama servers, add more entries with unique IDs:
@@ -148,6 +149,30 @@ providers:
 If both servers expose `llama3.2`, clients see `local/llama3.2` and
 `lab/llama3.2`. A request for either name goes only to the named server. Torii
 Router never falls back to a different provider after a request starts.
+
+Generic `openai_compatible` providers additionally support `bearer_token`,
+secret-reference-valued `headers`, `tls.ca_file`, `tls.server_name`, `models`,
+`discover_models`, `model_rewrites`, and separate `connect_timeout`,
+`request_timeout`, and `discovery_timeout` duration values. For example:
+
+```yaml
+providers:
+  - id: private
+    type: openai_compatible
+    base_url: https://inference.example.com
+    bearer_token:
+      env: PRIVATE_PROVIDER_TOKEN
+    discover_models: false
+    models: [production-model]
+    model_rewrites:
+      assistant: production-model
+    connect_timeout: 5s
+    request_timeout: 10m
+```
+
+This exposes `private/assistant` while sending `production-model` upstream.
+Provider credentials are never accepted inline, are isolated in a dedicated
+HTTP client, and are not forwarded across redirects.
 
 ## Verify the installation
 
@@ -186,6 +211,23 @@ The same transparent forwarding is available at `POST /v1/completions`,
 `POST /v1/embeddings`, and `POST /v1/responses`. Responses requests are
 stateless: `previous_response_id` and `conversation` are rejected with an
 `unsupported_parameter` error rather than being ignored or stored.
+
+## Provider authentication administration
+
+Provider credentials that require persistent state can be imported without
+placing token values in arguments or YAML:
+
+```sh
+export PROVIDER_ACCESS_TOKEN="..."
+gateway auth login <provider-id> --config ./config.yaml \
+  --access-token-env PROVIDER_ACCESS_TOKEN
+gateway auth status <provider-id> --config ./config.yaml
+gateway auth logout <provider-id> --config ./config.yaml
+```
+
+`login` also accepts `--access-token-file`, optional refresh-token environment
+or file flags, an RFC3339 `--expires-at`, and account/principal identifiers.
+Command output reports state only and never prints stored token values.
 
 ## Operational notes
 

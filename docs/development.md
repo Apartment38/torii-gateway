@@ -117,6 +117,10 @@ Update this command if the CLI differs.
 
     podman build -t gateway:dev .
 
+The production image targets `linux/amd64`, runs as the non-root
+`nonroot:nonroot` user, stores persistent state under `/state`, and includes a
+healthcheck that invokes `gateway healthcheck` against `/healthz`.
+
 Run:
 
     podman run --rm \

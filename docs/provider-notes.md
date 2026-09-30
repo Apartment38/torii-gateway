@@ -24,7 +24,7 @@ For each provider, record:
 
 Do not record credentials here.
 
-The repository is currently pre-v1. Version 1 provider research is limited to
+The repository's Version 1 provider research is limited to
 local Ollama, standard OpenAI-compatible endpoints (including the normal OpenAI
 API), and ChatGPT Codex subscription access. OpenRouter, Nous Portal, Gemini,
 xAI, and Anthropic sections are retained for the Version 2 backlog. Before
@@ -35,8 +35,26 @@ notes and contract tests agree.
 
 The Version 1 router may use a self-hosted Laya model through an already
 configured local physical provider. Laya protocol and schema findings belong in
-this document before TASK-026 is implemented; no dedicated hosted-Laya provider
+this document; no dedicated hosted-Laya provider
 or credential flow is in scope. Jev classifier transports are Version 2 work.
+
+## Self-hosted Laya classifier
+
+### Status
+
+Implementation status: complete through the standard OpenAI-compatible
+transport. The classifier is a configured physical `provider/model` selected by
+`router.classifier.type: laya`; it does not introduce a hosted Laya endpoint,
+credential flow, or provider-specific wire protocol. Its response is required
+to match the shared strict classification schema, and `smart` recursion is
+rejected.
+
+Last verified: 2026-09-30
+
+This deliberately documents the supported gateway contract rather than
+claiming a particular self-hosted Laya distribution's private prompt or model
+behavior. The configured local server remains responsible for serving the
+standard Chat Completions contract.
 
 ---
 
@@ -108,23 +126,62 @@ Add implementation-relevant behavior here.
 
 ### Status
 
-Research status: TODO
-Implementation status: TODO
-Last verified: YYYY-MM-DD
+Research status: verified from official API reference
+Implementation status: complete for the transparent Version 1 endpoint set
+Last verified: 2026-09-30
 
 ### Authentication
 
-OpenAI API key.
+OpenAI API keys are sent as `Authorization: Bearer <key>`. The configured
+profile is bound to `https://api.openai.com` and never reads the credential
+store used by the Codex subscription provider.
 
 This provider must remain separate from OpenAI Codex subscription auth.
 
 ### Notes
 
-...
+- Model listing is `GET https://api.openai.com/v1/models`.
+- The gateway transparently forwards Chat Completions, Completions,
+  Embeddings, and stateless Responses requests and preserves SSE bytes.
+- Optional `OpenAI-Organization` and `OpenAI-Project` headers are configured
+  as non-secret values on the profile; arbitrary headers and model rewrites are
+  rejected.
+- Redirects are returned rather than followed by the isolated HTTP client.
+
+### Sources
+
+- https://platform.openai.com/docs/api-reference/authentication
+- https://platform.openai.com/docs/api-reference/models
+- https://platform.openai.com/docs/api-reference/chat
+- https://platform.openai.com/docs/api-reference/responses
+- https://platform.openai.com/docs/api-reference/embeddings
 
 ---
 
 ## OpenAI Codex Subscription
+
+### Status
+
+Implemented as an endpoint-bound provider using the configured ChatGPT Codex
+backend and the existing flat-file credential store. The current transport
+supports static model catalogs, Chat/Responses request translation, response
+translation for non-streaming Chat Completions, SSE event adaptation, and
+refreshes credentials near expiry. Device-code login is the default CLI flow;
+browser authorization-code + PKCE is available with `--browser`.
+
+Last verified: 2026-09-30
+
+Official implementation findings used here: the OpenAI Codex repository uses
+`https://auth.openai.com/oauth/token` for refresh, the client identifier
+`app_EMoamEEZ73f0CkXaXp7hrann`, stores access/refresh/id-token data with an
+account identifier, and targets `https://chatgpt.com/backend-api/codex/responses`.
+These are observed implementation details, not a public API guarantee.
+
+Sources:
+
+- https://github.com/openai/codex/blob/main/codex-rs/login/src/auth/manager.rs
+- https://github.com/openai/codex/blob/main/codex-rs/login/src/device_code_auth.rs
+- https://github.com/openai/codex/blob/main/codex-rs/cli/src/doctor.rs
 
 ### Status
 

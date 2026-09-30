@@ -9,14 +9,12 @@ This document defines the initial architecture and implementation plan for a lig
 
 The intended audience is a coding agent implementing the project from scratch.
 
-**Current status (2026-09-30): pre-v1.** The repository currently implements
-the authenticated Ollama-backed transparent endpoint set, normalized catalog
-metadata, partial-provider caching, request IDs, and SSE relay. It is not
-Version 1 because the required endpoint
-surface, providers, smart model, sessions, and quota/cost-aware routing are not
-complete. `TASKS.md` is the authoritative ordered execution roadmap; this
-document remains the Version 1 product and architecture contract. A build may
-be called Version 1 only after TASK-041 verifies the definition of done.
+**Current status (2026-09-30): Version 1 implementation complete.** The
+repository implements the authenticated transparent endpoint set, normalized
+catalog metadata, Codex OAuth transport, smart selection, sessions, quota and
+usage integration, operational CLI, container definition, and release checks.
+`TASKS.md` records the implementation and the remaining environment-dependent
+live smoke/image checks.
 
 ### Version 1 scope boundary
 

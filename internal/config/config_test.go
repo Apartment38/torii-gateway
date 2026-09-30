@@ -166,3 +166,64 @@ func TestDecodeRejectsUnsafeCompatibleProviderConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeOpenAIProfile(t *testing.T) {
+	input := strings.Replace(validConfig, "type: ollama\n    base_url: http://localhost:11434", "type: openai\n    base_url: https://api.openai.com\n    bearer_token:\n      env: OPENAI_API_KEY\n    organization: org_example\n    project: proj_example", 1)
+	cfg, err := config.Decode(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Providers[0].Type != "openai" || cfg.Providers[0].BearerToken.Env != "OPENAI_API_KEY" {
+		t.Fatalf("provider = %#v", cfg.Providers[0])
+	}
+}
+
+func TestDecodeOpenAIProfileRejectsCrossOriginAndGenericOptions(t *testing.T) {
+	base := strings.Replace(validConfig, "type: ollama\n    base_url: http://localhost:11434", "type: openai\n    base_url: https://api.openai.com\n    bearer_token:\n      env: OPENAI_API_KEY", 1)
+	tests := []struct {
+		name, input, want string
+	}{
+		{name: "wrong origin", input: strings.Replace(base, "https://api.openai.com", "http://proxy.example", 1), want: "origin"},
+		{name: "missing key", input: strings.Replace(base, "    bearer_token:\n      env: OPENAI_API_KEY", "", 1), want: "bearer_token is required"},
+		{name: "model rewrites", input: base + "\n    model_rewrites: {alias: upstream}\n", want: "model rewrites"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Decode(strings.NewReader(tt.input))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecodeRouterAndCodexConfiguration(t *testing.T) {
+	input := validConfig + `
+  - id: openai-codex
+    type: openai-codex
+    base_url: https://chatgpt.com/backend-api/codex
+    models: [gpt-test]
+router:
+  model_name: smart
+  allow_paid_models: false
+  classifier:
+    type: model
+    model: local/laya
+    on_failure: capability_fallback
+  sessions:
+    inactivity_timeout: 30m
+  quota:
+    cache_ttl: 60s
+  selection:
+    context_utilization_limit: 0.85
+    default_expected_output_tokens: 512
+    location_preference: local
+`
+	cfg, err := config.Decode(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Router.Classifier.Model != "local/laya" || cfg.Providers[1].Type != "openai-codex" {
+		t.Fatalf("config = %#v", cfg)
+	}
+}

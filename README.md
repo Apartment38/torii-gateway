@@ -3,10 +3,8 @@
 Torii Router is a lightweight, resource-efficient LLM gateway written in Go.
 It presents an OpenAI-compatible HTTP API in front of one or more Ollama servers or standard OpenAI-compatible
 endpoints and gives every upstream model a provider-qualified name such as
-`local/llama3.2`. The current build is a **pre-v1 milestone**: it is a usable
-OpenAI-compatible gateway, but it does not yet meet the repository's
-Version 1 scope. It needs no database, Redis instance, queue, sidecar, or web
-interface.
+`local/llama3.2`. The current build implements the repository's Version 1
+scope. It needs no database, Redis instance, queue, sidecar, or web interface.
 
 The gateway is designed for clients that already support the OpenAI API. It
 rewrites only the requested model name and otherwise
@@ -29,11 +27,13 @@ ID.
 - strict configuration validation and graceful shutdown
 - request IDs, typed OpenAI-style errors, and secret-safe structured logging
 
-This pre-v1 milestone performs **explicit routing only**. It does not yet
-provide the Version 1 `smart` virtual model, automatic model selection, session
-affinity, quota/cost-aware routing, the full OpenAI endpoint set, the normal OpenAI profile, or the required ChatGPT Codex subscription provider. Dedicated
-OpenRouter, Nous, Gemini, xAI, and Anthropic integrations are deferred to
-Version 2. [`TASKS.md`](TASKS.md) is the ordered implementation
+The Version 1 build also includes a `smart` virtual model with classifier-backed
+deterministic selection, quota/cost-aware routing, in-memory session affinity,
+pre-stream rerouting, endpoint-bound Codex OAuth transport, aggregate usage
+state, and a non-root production container definition. Live provider smoke
+tests and registry-backed image builds are release-environment checks.
+Dedicated OpenRouter, Nous, Gemini, xAI, and Anthropic integrations are
+deferred to Version 2. [`TASKS.md`](TASKS.md) is the ordered implementation
 roadmap, [`docs/implementation-plan.md`](docs/implementation-plan.md) defines
 the complete Version 1 contract, and [`docs/architecture.md`](docs/architecture.md)
 describes implemented versus planned behavior.
@@ -118,20 +118,19 @@ newline safe to use. Do not put the secret value itself in YAML.
 ### State
 
 `state.directory` is required and reserves the location for gateway state.
-Use a writable, persistent path such as `/state` for deployments. The current
-explicit-routing milestone does not write state, but keeping the path stable
-allows future stateful features to be enabled without restructuring the
-deployment.
+Use a writable, persistent path such as `/state` for deployments. Version 1
+uses it for endpoint-bound credentials and aggregate usage; session affinity is
+intentionally in memory.
 
 ### Providers
 
-`providers` must contain at least one provider. The current pre-v1 build
+`providers` must contain at least one provider. The Version 1 build
 accepts these fields:
 
 | Field | Description |
 | --- | --- |
 | `id` | Unique lowercase namespace matching `[a-z0-9][a-z0-9._-]*`. This becomes the prefix in public model IDs. |
-| `type` | `ollama` or `openai_compatible`. |
+| `type` | `ollama`, `openai`, or `openai_compatible`. The `openai` profile is locked to `https://api.openai.com` and uses an API key, while `openai_compatible` is for other standard-compatible origins. |
 | `base_url` | Ollama's HTTP or HTTPS base URL. Credentials, query strings, and fragments are rejected. A path prefix is allowed. |
 
 For multiple Ollama servers, add more entries with unique IDs:
@@ -173,6 +172,28 @@ providers:
 This exposes `private/assistant` while sending `production-model` upstream.
 Provider credentials are never accepted inline, are isolated in a dedicated
 HTTP client, and are not forwarded across redirects.
+
+The normal OpenAI API can be enabled with its origin-locked profile:
+
+```yaml
+  - id: openai
+    type: openai
+    base_url: https://api.openai.com
+    bearer_token:
+      env: OPENAI_API_KEY
+    project: proj_example       # optional
+    organization: org_example   # optional
+```
+
+The profile exposes models as `openai/<model>`, sends only the configured API
+key and optional OpenAI project/organization headers, and does not use the
+gateway's persistent OAuth credential store.
+
+The gateway also accepts an endpoint-bound `openai-codex` provider with
+static model IDs. Import credentials with `gateway auth login openai-codex`;
+the provider refreshes near-expiry OAuth credentials against the configured
+Codex issuer and never sends them to the normal OpenAI API origin. Use
+`gateway models --config ./config.yaml` to inspect the configured catalog.
 
 ## Verify the installation
 

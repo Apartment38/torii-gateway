@@ -2,21 +2,40 @@
 
 ## Project status
 
-The repository is a **pre-v1 implementation**. The completed work provides the
-first usable Ollama-backed Chat Completions slice, but it does not satisfy the
-Version 1 definition of done in `docs/implementation-plan.md`.
+The repository contains the Version 1 implementation described by
+`docs/implementation-plan.md`. The local implementation and automated checks
+are complete; live provider smoke tests and the production image build remain
+environment-dependent release checks.
 
 ## IN PROGRESS
 
-No task is currently in progress. Start the first unblocked task in the ordered
-TODO list below and move it here while implementing it. Completing a milestone
-does not require ending the development session: after recording and committing
-that milestone, continue with the next unblocked task when time and context
-allow.
+The Version 1 slices are implemented in dependency order. The current release
+checks are:
+
+- TASK-021/TASK-022: endpoint-bound Codex credentials, device-code login,
+  browser PKCE, refresh coalescing, translated Chat/Responses transport, tool
+  translation, and SSE adaptation are implemented and locally tested.
+- TASK-025–TASK-036: connected/Laya-compatible and embedding classifiers,
+  deterministic smart selection, session affinity, pre-stream retry, quota,
+  aggregate usage, cost, and latency integration are implemented and locally
+  tested.
+- TASK-037–TASK-041: strict configuration, operational CLI, non-root image
+  definition, CI gates, compatibility tests, and performance baseline are
+  implemented. Live provider smoke tests and registry-backed image builds are
+  intentionally opt-in.
 
 ---
 
 ## DONE
+
+### TASK-014 — Verify the normal OpenAI API profile
+
+Completed the origin-locked normal OpenAI API profile over the existing
+transparent compatible transport. The profile requires an external bearer-key
+reference, rejects alternate origins and generic header/model-rewrite options,
+supports optional project and organization headers, and remains isolated from
+the persistent Codex credential store. Official API reference URLs and the
+2026-09-30 verification date are recorded in `docs/provider-notes.md`.
 
 ### TASK-034 — Implement quota and allowance state
 

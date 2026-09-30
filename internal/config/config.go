@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +24,37 @@ type Config struct {
 	Server    ServerConfig     `yaml:"server"`
 	State     StateConfig      `yaml:"state"`
 	Providers []ProviderConfig `yaml:"providers"`
+	Router    RouterConfig     `yaml:"router,omitempty"`
+}
+
+type RouterConfig struct {
+	ModelName       string           `yaml:"model_name,omitempty"`
+	AllowPaidModels *bool            `yaml:"allow_paid_models,omitempty"`
+	Classifier      ClassifierConfig `yaml:"classifier,omitempty"`
+	Sessions        SessionConfig    `yaml:"sessions,omitempty"`
+	Quota           QuotaConfig      `yaml:"quota,omitempty"`
+	Selection       SelectionConfig  `yaml:"selection,omitempty"`
+}
+
+type ClassifierConfig struct {
+	Type      string `yaml:"type,omitempty"`
+	Model     string `yaml:"model,omitempty"`
+	Provider  string `yaml:"provider,omitempty"`
+	OnFailure string `yaml:"on_failure,omitempty"`
+}
+type SessionConfig struct {
+	InactivityTimeout string `yaml:"inactivity_timeout,omitempty"`
+	OnModelFailure    string `yaml:"on_model_failure,omitempty"`
+}
+type QuotaConfig struct {
+	CacheTTL   string             `yaml:"cache_ttl,omitempty"`
+	Allowances map[string]float64 `yaml:"allowances,omitempty"`
+}
+type SelectionConfig struct {
+	ContextUtilizationLimit     float64            `yaml:"context_utilization_limit,omitempty"`
+	DefaultExpectedOutputTokens int64              `yaml:"default_expected_output_tokens,omitempty"`
+	LocationPreference          string             `yaml:"location_preference,omitempty"`
+	MinimumQuality              map[string]float64 `yaml:"minimum_quality,omitempty"`
 }
 
 // ServerConfig controls the gateway listener.
@@ -53,6 +85,8 @@ type ProviderConfig struct {
 	Models           []string             `yaml:"models,omitempty"`
 	DiscoverModels   *bool                `yaml:"discover_models,omitempty"`
 	Transport        string               `yaml:"transport,omitempty"`
+	Organization     string               `yaml:"organization,omitempty"`
+	Project          string               `yaml:"project,omitempty"`
 	ModelRewrites    map[string]string    `yaml:"model_rewrites,omitempty"`
 	ConnectTimeout   string               `yaml:"connect_timeout,omitempty"`
 	RequestTimeout   string               `yaml:"request_timeout,omitempty"`
@@ -143,13 +177,13 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" {
+		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" {
 			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
 			return fmt.Errorf("%s.base_url: %w", field, err)
 		}
-		if providerConfig.Type == "ollama" && (providerConfig.BearerToken != nil || len(providerConfig.Headers) > 0 || providerConfig.TLS != nil || len(providerConfig.Models) > 0 || providerConfig.DiscoverModels != nil || providerConfig.Transport != "" || len(providerConfig.ModelRewrites) > 0 || providerConfig.ConnectTimeout != "" || providerConfig.RequestTimeout != "" || providerConfig.DiscoveryTimeout != "") {
+		if providerConfig.Type == "ollama" && (providerConfig.BearerToken != nil || len(providerConfig.Headers) > 0 || providerConfig.TLS != nil || len(providerConfig.Models) > 0 || providerConfig.DiscoverModels != nil || providerConfig.Transport != "" || providerConfig.Organization != "" || providerConfig.Project != "" || len(providerConfig.ModelRewrites) > 0 || providerConfig.ConnectTimeout != "" || providerConfig.RequestTimeout != "" || providerConfig.DiscoveryTimeout != "") {
 			return fmt.Errorf("%s: generic provider options require type openai_compatible", field)
 		}
 		if providerConfig.Type == "openai_compatible" {
@@ -157,8 +191,136 @@ func (c Config) Validate() error {
 				return fmt.Errorf("%s: %w", field, err)
 			}
 		}
+		if providerConfig.Type == "openai" {
+			if err := validateOpenAIProvider(providerConfig); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+		}
+		if providerConfig.Type == "openai-codex" {
+			if err := validateCodexProvider(providerConfig); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+		}
 	}
+	if err := c.Router.Validate(); err != nil {
+		return fmt.Errorf("router: %w", err)
+	}
+	return nil
+}
 
+func (r RouterConfig) Validate() error {
+	if r.ModelName != "" && r.ModelName != "smart" {
+		return errors.New("model_name must be smart")
+	}
+	if r.Classifier.Type != "" && r.Classifier.Type != "model" && r.Classifier.Type != "laya" && r.Classifier.Type != "embedding" {
+		return fmt.Errorf("classifier.type %q is unsupported", r.Classifier.Type)
+	}
+	if r.Classifier.Type == "model" || r.Classifier.Type == "laya" {
+		if r.Classifier.Model == "" || r.Classifier.Model == "smart" {
+			return errors.New("classifier.model must be a physical provider/model")
+		}
+	}
+	if r.Classifier.Type == "embedding" && (r.Classifier.Provider == "" || r.Classifier.Model == "") {
+		return errors.New("embedding classifier requires provider and model")
+	}
+	if r.Classifier.OnFailure != "" && r.Classifier.OnFailure != "fail" && r.Classifier.OnFailure != "capability_fallback" {
+		return fmt.Errorf("classifier.on_failure %q is unsupported", r.Classifier.OnFailure)
+	}
+	if r.Sessions.InactivityTimeout != "" {
+		if d, err := time.ParseDuration(r.Sessions.InactivityTimeout); err != nil || d <= 0 {
+			return errors.New("sessions.inactivity_timeout must be positive")
+		}
+	}
+	if r.Quota.CacheTTL != "" {
+		if d, err := time.ParseDuration(r.Quota.CacheTTL); err != nil || d <= 0 {
+			return errors.New("quota.cache_ttl must be positive")
+		}
+	}
+	for model, allowance := range r.Quota.Allowances {
+		if strings.TrimSpace(model) == "" || allowance < 0 || math.IsNaN(allowance) || math.IsInf(allowance, 0) {
+			return errors.New("quota.allowances must contain finite non-negative model limits")
+		}
+	}
+	if r.Selection.LocationPreference != "" && r.Selection.LocationPreference != "neutral" && r.Selection.LocationPreference != "local" && r.Selection.LocationPreference != "cloud" {
+		return errors.New("selection.location_preference is invalid")
+	}
+	if r.Sessions.OnModelFailure != "" && r.Sessions.OnModelFailure != "fail" && r.Sessions.OnModelFailure != "reroute" {
+		return errors.New("sessions.on_model_failure is invalid")
+	}
+	for name, value := range r.Selection.MinimumQuality {
+		if value < 0 || value > 1 || math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("selection.minimum_quality.%s must be finite and between zero and one", name)
+		}
+	}
+	if r.Selection.ContextUtilizationLimit < 0 || r.Selection.ContextUtilizationLimit > 1 {
+		return errors.New("selection.context_utilization_limit must be between zero and one")
+	}
+	return nil
+}
+
+func validateCodexProvider(p ProviderConfig) error {
+	if p.BearerToken != nil || len(p.Headers) > 0 || p.TLS != nil {
+		return errors.New("openai-codex credentials are managed by state, not provider headers")
+	}
+	if p.BaseURL == "" {
+		return errors.New("base_url is required")
+	}
+	if err := validateBaseURL(p.BaseURL); err != nil {
+		return fmt.Errorf("base_url: %w", err)
+	}
+	parsed, _ := url.Parse(p.BaseURL)
+	if parsed.Scheme != "https" {
+		return errors.New("base_url must use HTTPS")
+	}
+	if len(p.Models) == 0 {
+		return errors.New("models are required until Codex catalog discovery is configured")
+	}
+	if p.DiscoverModels != nil && *p.DiscoverModels {
+		return errors.New("discover_models is not supported for openai-codex")
+	}
+	return nil
+}
+
+func validateOpenAIProvider(p ProviderConfig) error {
+	parsed, err := url.Parse(p.BaseURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host != "api.openai.com" || parsed.Path != "" {
+		return errors.New("type openai has an unsupported origin; base_url must be https://api.openai.com")
+	}
+	if p.BearerToken == nil {
+		return errors.New("bearer_token is required")
+	}
+	if err := p.BearerToken.Validate(); err != nil {
+		return fmt.Errorf("bearer_token: %w", err)
+	}
+	if len(p.Headers) != 0 {
+		return errors.New("headers are not configurable for type openai; use organization or project")
+	}
+	if p.TLS != nil || len(p.ModelRewrites) != 0 || p.Transport != "" {
+		return errors.New("TLS, model rewrites, and transport are not configurable for type openai")
+	}
+	if p.DiscoverModels != nil && !*p.DiscoverModels {
+		return errors.New("discover_models must remain enabled for type openai")
+	}
+	if len(p.Models) != 0 {
+		return errors.New("models are not configurable for type openai")
+	}
+	for name, value := range map[string]string{"organization": p.Organization, "project": p.Project} {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("%s contains a newline", name)
+		}
+	}
+	return validatePositiveDurations(p.ConnectTimeout, p.RequestTimeout, p.DiscoveryTimeout)
+}
+
+func validatePositiveDurations(values ...string) error {
+	for _, raw := range values {
+		if raw == "" {
+			continue
+		}
+		if d, err := time.ParseDuration(raw); err != nil || d <= 0 {
+			return errors.New("timeouts must be positive durations")
+		}
+	}
 	return nil
 }
 

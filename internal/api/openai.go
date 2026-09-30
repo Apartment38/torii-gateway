@@ -7,24 +7,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Apartment38/torii-router/internal/catalog"
+	"github.com/Apartment38/torii-router/internal/classifier"
 	"github.com/Apartment38/torii-router/internal/fault"
 	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-router/internal/quota"
 	"github.com/Apartment38/torii-router/internal/requestid"
+	"github.com/Apartment38/torii-router/internal/router"
+	"github.com/Apartment38/torii-router/internal/session"
 	"github.com/Apartment38/torii-router/internal/transport"
+	"github.com/Apartment38/torii-router/internal/usage"
 )
 
 const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
-	byID      map[string]provider.OpenAIProvider
-	catalog   *catalog.Catalog
-	refreshMu sync.Mutex
-	ready     bool
+	byID             map[string]provider.OpenAIProvider
+	catalog          *catalog.Catalog
+	refreshMu        sync.Mutex
+	ready            bool
+	sessions         *session.Manager
+	classifier       classifier.Runner
+	policy           router.SelectionPolicy
+	usage            *usage.Store
+	quota            *quota.Cache
+	latencyMu        sync.Mutex
+	latency          map[string]time.Duration
+	rerouteOnFailure bool
 }
 
 func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, error) {
@@ -46,8 +61,25 @@ func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, erro
 	if err != nil {
 		return nil, err
 	}
-	return &OpenAIHandler{byID: registered, catalog: modelCatalog}, nil
+	return &OpenAIHandler{byID: registered, catalog: modelCatalog, sessions: session.NewManager(30*time.Minute, session.MaxSessions), policy: router.DefaultSelectionPolicy(), latency: make(map[string]time.Duration), rerouteOnFailure: true}, nil
 }
+
+// SetClassifier configures the bounded semantic classifier used by smart.
+// Leaving it unset selects using objective requirements and deterministic
+// capability fallback.
+func (h *OpenAIHandler) SetClassifier(runner classifier.Runner) { h.classifier = runner }
+
+func (h *OpenAIHandler) SetSelectionPolicy(policy router.SelectionPolicy) { h.policy = policy }
+
+func (h *OpenAIHandler) SetUsageStore(store *usage.Store) { h.usage = store }
+
+func (h *OpenAIHandler) SetQuotaCache(cache *quota.Cache) { h.quota = cache }
+
+func (h *OpenAIHandler) SetSessionTimeout(timeout time.Duration) {
+	h.sessions = session.NewManager(timeout, session.MaxSessions)
+}
+
+func (h *OpenAIHandler) SetModelFailurePolicy(policy string) { h.rerouteOnFailure = policy != "fail" }
 
 // RefreshCatalog discovers all providers and atomically publishes a new model
 // snapshot. It is called during startup; lazy refresh keeps standalone handler
@@ -89,9 +121,20 @@ func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.forward(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/responses":
 		h.forward(w, r)
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/gateway/v1/sessions/"):
+		h.deleteSession(w, r, strings.TrimPrefix(r.URL.Path, "/gateway/v1/sessions/"))
 	default:
 		writeAPIError(w, http.StatusNotFound, "Not found", "invalid_request_error", "not_found")
 	}
+}
+
+func (h *OpenAIHandler) deleteSession(w http.ResponseWriter, _ *http.Request, id string) {
+	if id == "" || strings.Contains(id, "/") || len(id) > session.MaxIDLength {
+		writeAPIError(w, http.StatusBadRequest, "A valid session ID is required", "invalid_request_error", "invalid_session")
+		return
+	}
+	h.sessions.Delete(id)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
@@ -100,10 +143,11 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	descriptors := h.catalog.Models()
-	models := make([]provider.Model, len(descriptors))
-	for i, descriptor := range descriptors {
-		models[i] = provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy}
+	models := make([]provider.Model, 0, len(descriptors)+1)
+	for _, descriptor := range descriptors {
+		models = append(models, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
 	}
+	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii-router"})
 	writeJSON(w, http.StatusOK, struct {
 		Object string           `json:"object"`
 		Data   []provider.Model `json:"data"`
@@ -111,6 +155,10 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
+	if publicID == "smart" {
+		writeJSON(w, http.StatusOK, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii-router"})
+		return
+	}
 	providerID, _, err := provider.ParseModelID(publicID)
 	if err != nil || h.byID[providerID] == nil {
 		writeError(w, fault.New(fault.ModelNotFound, "model"))
@@ -162,13 +210,40 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	providerID, modelID, err := provider.ParseModelID(fields.Model)
+	requestedModel := fields.Model
+	if requestedModel == "smart" {
+		var resolveErr error
+		requestedModel, resolveErr = h.resolveSmartModel(r, body)
+		if resolveErr != nil {
+			writeError(w, fault.Wrap(fault.ClassifierFailure, "resolve smart model", resolveErr))
+			return
+		}
+		if requestedModel == "" {
+			writeError(w, fault.New(fault.ModelUnavailable, "smart"))
+			return
+		}
+	}
+	providerID, modelID, err := provider.ParseModelID(requestedModel)
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
 		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
+	started := time.Now()
 	response, err := upstream.Forward(r.Context(), r.URL.Path, body, modelID)
+	if fields.Model == "smart" && h.rerouteOnFailure && (err != nil || (response != nil && response.StatusCode >= 500)) {
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		if alternate := h.nextSmartModel(r, body, requestedModel); alternate != "" {
+			if alternateProvider, alternateModel, parseErr := provider.ParseModelID(alternate); parseErr == nil && h.byID[alternateProvider] != nil {
+				requestedModel, providerID, modelID = alternate, alternateProvider, alternateModel
+				upstream = h.byID[providerID]
+				response, err = upstream.Forward(r.Context(), r.URL.Path, body, modelID)
+			}
+		}
+	}
+	h.recordLatency(requestedModel, time.Since(started))
 	if err != nil {
 		if errors.Is(err, transport.ErrInvalidRequest) {
 			writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_request")
@@ -176,6 +251,12 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, fault.Wrap(fault.ProviderUnavailable, "forward request", err))
 		return
+	}
+	h.recordQuotaHeaders(requestedModel, response.Header)
+	if fields.Model == "smart" {
+		if identity := smartIdentityInfo(r, body, r.URL.Path); identity.ID != "" {
+			_ = h.sessions.Put(session.Record{ID: identity.ID, Model: requestedModel, ContextSignature: identity.Signature})
+		}
 	}
 	defer response.Body.Close()
 	CopyResponseHeaders(w.Header(), response.Header)
@@ -187,7 +268,243 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		_ = relayStream(w, response.Body)
 		return
 	}
+	if h.usage != nil {
+		data, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<20))
+		if readErr == nil {
+			if input, output, ok := usage.ExtractResponseUsage(data); ok {
+				_ = h.usage.Add(requestedModel, input, output, h.actualCost(requestedModel, input, output))
+			}
+			_, _ = w.Write(data)
+			return
+		}
+	}
 	_, _ = io.Copy(w, response.Body)
+}
+
+func (h *OpenAIHandler) actualCost(model string, input, output uint64) float64 {
+	descriptor, ok := h.catalog.Model(model)
+	if !ok || (descriptor.Local != nil && *descriptor.Local) {
+		return 0
+	}
+	if descriptor.Pricing.InputPerMillion == nil || descriptor.Pricing.OutputPerMillion == nil {
+		return 0
+	}
+	return (float64(input)*(*descriptor.Pricing.InputPerMillion) + float64(output)*(*descriptor.Pricing.OutputPerMillion)) / 1_000_000
+}
+
+func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
+	if h.quota == nil {
+		return
+	}
+	limit := firstHeaderNumber(headers, "X-RateLimit-Limit-Requests", "X-RateLimit-Limit-Tokens")
+	remaining := firstHeaderNumber(headers, "X-RateLimit-Remaining-Requests", "X-RateLimit-Remaining-Tokens")
+	if limit == nil || remaining == nil || *limit < 0 || *remaining < 0 {
+		return
+	}
+	if *remaining > *limit {
+		*remaining = *limit
+	}
+	_ = h.quota.SetLocal(model, *limit, *limit-*remaining)
+}
+
+func firstHeaderNumber(headers http.Header, names ...string) *float64 {
+	for _, name := range names {
+		raw := strings.TrimSpace(strings.Split(headers.Get(name), ",")[0])
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.ParseFloat(raw, 64)
+		if err == nil {
+			return &value
+		}
+	}
+	return nil
+}
+
+func (h *OpenAIHandler) resolveSmartModel(r *http.Request, body []byte) (string, error) {
+	if err := h.ensureCatalog(r.Context()); err != nil {
+		return "", err
+	}
+	identity := smartIdentityInfo(r, body, r.URL.Path)
+	if identity.ID != "" {
+		if pinned, ok := h.sessions.GetWithSignature(identity.ID, identity.Signature); ok && pinned.Model != "" {
+			if _, exists := h.catalog.Model(pinned.Model); exists {
+				return pinned.Model, nil
+			}
+		}
+	}
+	models := h.catalog.Models()
+	if len(models) == 0 {
+		return "", errors.New("smart model has no physical candidates")
+	}
+	endpoint := router.EndpointChat
+	switch r.URL.Path {
+	case "/v1/completions":
+		endpoint = router.EndpointCompletions
+	case "/v1/responses":
+		endpoint = router.EndpointResponses
+	case "/v1/embeddings":
+		endpoint = router.EndpointEmbeddings
+	}
+	requirements, err := router.ExtractRequirements(endpoint, body)
+	if err == nil {
+		complexity := "medium"
+		if h.classifier.Classifier != nil {
+			classification, classifyErr := h.classifier.Classify(r.Context(), classifier.ClassificationRequest{Model: "smart", Text: smartText(body), Requirements: requirements})
+			if classifyErr != nil {
+				return "", classifyErr
+			}
+			complexity = string(classification.Complexity)
+			requirements.Tools = classification.Requirements.Tools
+			requirements.Vision = classification.Requirements.Vision
+			requirements.Reasoning = classification.Requirements.Reasoning
+			requirements.StructuredOutput = classification.Requirements.StructuredOutput
+		}
+		candidates := make([]router.Candidate, 0, len(models))
+		for _, model := range models {
+			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID)}
+			if h.quota != nil {
+				if status, quotaErr := h.quota.Get(r.Context(), model.PublicID); quotaErr == nil {
+					candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted
+				}
+			}
+			candidates = append(candidates, candidate)
+		}
+		policy := h.policy
+		if policy.MinimumQuality == nil {
+			policy = router.DefaultSelectionPolicy()
+		}
+		if decision, selectErr := router.Select(candidates, requirements, complexity, policy); selectErr == nil {
+			return decision.Model.PublicID, nil
+		}
+		if requirements.Tools || requirements.Vision || requirements.StructuredOutput || requirements.Reasoning || requirements.Streaming {
+			return "", errors.New("no candidate has verified support for the requested capabilities")
+		}
+	}
+	// Unknown provider metadata is intentionally not treated as verified
+	// capability support. The deterministic fallback still gives smart a useful
+	// route when no metadata-backed candidate is available.
+	for _, model := range models {
+		if model.Availability.Available {
+			return model.PublicID, nil
+		}
+	}
+	return models[0].PublicID, nil
+}
+
+func (h *OpenAIHandler) recordLatency(model string, value time.Duration) {
+	h.latencyMu.Lock()
+	defer h.latencyMu.Unlock()
+	previous := h.latency[model]
+	if previous == 0 {
+		h.latency[model] = value
+	} else {
+		h.latency[model] = (previous*4 + value) / 5
+	}
+}
+func (h *OpenAIHandler) getLatency(model string) time.Duration {
+	h.latencyMu.Lock()
+	defer h.latencyMu.Unlock()
+	return h.latency[model]
+}
+
+func (h *OpenAIHandler) nextSmartModel(r *http.Request, body []byte, excluded string) string {
+	if err := h.ensureCatalog(r.Context()); err != nil {
+		return ""
+	}
+	endpoint := router.EndpointChat
+	switch r.URL.Path {
+	case "/v1/completions":
+		endpoint = router.EndpointCompletions
+	case "/v1/responses":
+		endpoint = router.EndpointResponses
+	case "/v1/embeddings":
+		endpoint = router.EndpointEmbeddings
+	}
+	if requirements, extractErr := router.ExtractRequirements(endpoint, body); extractErr == nil {
+		candidates := make([]router.Candidate, 0)
+		for _, model := range h.catalog.Models() {
+			if model.PublicID == excluded {
+				continue
+			}
+			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID)}
+			if h.quota != nil {
+				if status, quotaErr := h.quota.Get(r.Context(), model.PublicID); quotaErr == nil {
+					candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted
+				}
+			}
+			candidates = append(candidates, candidate)
+		}
+		policy := h.policy
+		if policy.MinimumQuality == nil {
+			policy = router.DefaultSelectionPolicy()
+		}
+		if decision, selectErr := router.Select(candidates, requirements, "medium", policy); selectErr == nil {
+			return decision.Model.PublicID
+		}
+		if requirements.Tools || requirements.Vision || requirements.StructuredOutput || requirements.Reasoning || requirements.Streaming {
+			return ""
+		}
+	}
+	for _, model := range h.catalog.Models() {
+		if model.PublicID == excluded || !model.Availability.Available {
+			continue
+		}
+		return model.PublicID
+	}
+	_ = body
+	return ""
+}
+
+func smartText(body []byte) string {
+	var root map[string]any
+	if json.Unmarshal(body, &root) != nil {
+		return ""
+	}
+	if input, ok := root["input"].(string); ok {
+		return input
+	}
+	if messages, ok := root["messages"].([]any); ok {
+		for _, raw := range messages {
+			message, _ := raw.(map[string]any)
+			role, _ := message["role"].(string)
+			if role == "user" {
+				if content, ok := message["content"].(string); ok {
+					return content
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func smartIdentity(r *http.Request, body []byte, endpoint string) string {
+	return smartIdentityInfo(r, body, endpoint).ID
+}
+
+func smartIdentityInfo(r *http.Request, body []byte, endpoint string) session.Identity {
+	var root map[string]any
+	if json.Unmarshal(body, &root) != nil {
+		return session.Identity{}
+	}
+	metadata, _ := root["metadata"].(map[string]any)
+	user, _ := root["user"].(string)
+	var system, first string
+	if messages, ok := root["messages"].([]any); ok {
+		for _, raw := range messages {
+			message, _ := raw.(map[string]any)
+			role, _ := message["role"].(string)
+			content, _ := message["content"].(string)
+			if role == "system" || role == "developer" {
+				system += content
+			}
+			if role == "user" && first == "" {
+				first = content
+			}
+		}
+	}
+	headers := map[string]string{"X-Session-ID": r.Header.Get("X-Session-ID"), "X-Conversation-ID": r.Header.Get("X-Conversation-ID")}
+	return session.Identify(headers, metadata, user, endpoint, system, first)
 }
 
 func writeUnsupportedParameter(w http.ResponseWriter, parameter string) {

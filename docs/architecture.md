@@ -6,7 +6,8 @@ This document distinguishes the architecture currently implemented in the
 gateway from the approved Version 1 target. Version 1 supports local Ollama,
 standard OpenAI-compatible endpoints, and ChatGPT Codex subscription access;
 dedicated integrations for other providers are Version 2 work. The repository
-is pre-v1: only the explicit Ollama-compatible path is currently usable.
+implements the Version 1 route, including semantic selection, quota-aware
+ranking, session affinity, and endpoint-bound Codex transport.
 Sections labeled "planned" are contracts, not claims about the running product.
 
 For the complete target and ordered implementation work, see:
@@ -71,9 +72,11 @@ Current request flow:
       v
     Upstream provider
 
-The request-requirement and classification contracts are implemented; the remaining Version 1 path inserts session resolution, deterministic selection, quota/cost policy, and failure handling between authentication and the provider registry. `smart`
-requests use that path; explicit `provider/model` requests continue to resolve
-directly and can never be substituted.
+The request-requirement and classification contracts feed session resolution,
+deterministic selection, quota/cost policy, and pre-stream failure handling
+between authentication and the provider registry. `smart` requests use that
+path; explicit `provider/model` requests continue to resolve directly and can
+never be substituted.
 
 ## Transport Model
 
@@ -224,8 +227,8 @@ values, headers, request or response bodies, prompts, tokens, or secrets.
 
 ## Smart Routing
 
-**Not implemented.** The Version 1 smart model is delivered by TASK-024 through
-TASK-029. Its semantic classifier may use a configured self-hosted Laya model
+The Version 1 smart model has deterministic capability fallback and may use a
+configured semantic classifier. Its classifier may use a self-hosted Laya model
 through a physical Ollama or standard OpenAI-compatible provider; Laya never
 acts as the virtual model and cannot recursively select `smart`. The flow is:
 
@@ -250,14 +253,15 @@ Classification and model selection are separate concerns.
 
 ## Session State
 
-**Not implemented.** TASK-030 through TASK-033 add identification, bounded
-in-memory affinity, tool-loop pinning, and pre-stream failure handoff. Version 1
-session state is stored in memory only and is deliberately lost on restart.
+Session identification and bounded in-memory affinity are implemented. Tool-loop
+pinning and pre-stream failure handoff are supported for smart requests; session
+state is stored in memory only and is deliberately lost on restart. Full
+multi-turn compatibility coverage remains part of the release audit.
 
 ## Persistent State
 
-**Current:** `state.directory` is validated and reserved, but the gateway does
-not write persistent state.
+The gateway persists endpoint-bound credentials and aggregate usage beneath
+`state.directory`.
 
 **Version 1 target:** persistent state lives beneath the configured state
 directory (normally `/state`). Expected state includes:
@@ -273,12 +277,12 @@ Configuration is loaded from one YAML document at startup. Unknown fields,
 duplicate provider IDs, malformed listener addresses, invalid provider URLs,
 and unsupported provider types cause loading to fail. The currently
 implemented schema supports the server listener and optional API-key secret
-reference, state directory, and the common fields required for Ollama
-providers. Secret references select exactly one environment variable or file;
+reference, state directory, configured providers, and routing controls. Secret
+references select exactly one environment variable or file;
 file values are trimmed of surrounding whitespace when resolved. API keys
 containing whitespace are rejected at startup because they cannot be represented
-by the supported Bearer syntax. Configuration for later providers and
-subsystems is intentionally rejected until implemented.
+by the supported Bearer syntax. Unsupported provider families and unknown
+configuration fields remain rejected.
 
 ## Security Invariants
 

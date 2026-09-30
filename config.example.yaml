@@ -19,3 +19,39 @@ providers:
   - id: local
     type: ollama
     base_url: http://127.0.0.1:11434
+
+  # The normal OpenAI API profile is origin-locked and uses an external key.
+  # Uncomment to expose OpenAI models as openai/<model>.
+  # - id: openai
+  #   type: openai
+  #   base_url: https://api.openai.com
+  #   bearer_token:
+  #     env: OPENAI_API_KEY
+
+  # Codex subscription access is endpoint-bound and uses gateway auth login.
+  # Configure the model IDs exposed by the subscription backend.
+  # - id: openai-codex
+  #   type: openai-codex
+  #   base_url: https://chatgpt.com/backend-api/codex
+  #   models: [gpt-5.5]
+
+# Optional routing controls. Explicit provider/model requests continue to
+# bypass smart routing.
+# router:
+#   model_name: smart
+#   allow_paid_models: true
+#   classifier:
+#     type: model
+#     model: local/laya
+#     on_failure: capability_fallback
+#   sessions:
+#     inactivity_timeout: 30m
+#     on_model_failure: reroute
+#   quota:
+#     cache_ttl: 60s
+#     allowances:
+#       openai/gpt-5: 25
+#   selection:
+#     context_utilization_limit: 0.85
+#     default_expected_output_tokens: 1024
+#     location_preference: neutral

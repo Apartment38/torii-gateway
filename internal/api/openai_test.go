@@ -121,8 +121,40 @@ func TestOpenAIHandlerReturnsPartialDeterministicCatalog(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Data) != 2 || envelope.Data[0].ID != "working/a" || envelope.Data[1].ID != "working/z" {
+	if len(envelope.Data) != 3 || envelope.Data[0].ID != "working/a" || envelope.Data[1].ID != "working/z" || envelope.Data[2].ID != "smart" {
 		t.Fatalf("models = %#v", envelope.Data)
+	}
+}
+
+func TestOpenAIHandlerSmartRoutesAndSessionDeletion(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_, _ = io.WriteString(w, `{"data":[{"id":"model"}]}`)
+			return
+		}
+		if r.URL.Path == "/v1/chat/completions" {
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"smart"}}]}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+	physical, _ := provider.NewOllama("local", upstream.URL, upstream.Client())
+	handler, err := api.NewOpenAIHandler([]provider.OpenAIProvider{physical})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"smart","user":"agent","messages":[{"role":"user","content":"hi"}]}`))
+	request.Header.Set("X-Session-ID", "session-1")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"smart"`) {
+		t.Fatalf("smart response = %d %s", response.Code, response.Body.String())
+	}
+	deleted := httptest.NewRecorder()
+	handler.ServeHTTP(deleted, httptest.NewRequest(http.MethodDelete, "/gateway/v1/sessions/session-1", nil))
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d", deleted.Code)
 	}
 }
 

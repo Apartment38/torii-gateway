@@ -661,16 +661,25 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 
 func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Request) {
 	var request struct {
-		Provider   config.ProviderConfig `json:"provider" yaml:"provider"`
-		ProviderID string                `json:"provider_id" yaml:"provider_id"`
+		Provider   yaml.Node `json:"provider" yaml:"provider"`
+		ProviderID string    `json:"provider_id" yaml:"provider_id"`
 	}
 	if err := yaml.NewDecoder(io.LimitReader(req.Body, 64<<10)).Decode(&request); err != nil {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode login request: %w", err))
 		return
 	}
-	providerID := request.Provider.ID
-	if providerID == "" {
-		providerID = request.ProviderID
+	var providerConfig config.ProviderConfig
+	providerID := request.ProviderID
+	if request.Provider.Kind == yaml.ScalarNode {
+		providerID = request.Provider.Value
+	} else if request.Provider.Kind != 0 {
+		if err := request.Provider.Decode(&providerConfig); err != nil {
+			writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode provider: %w", err))
+			return
+		}
+		if providerID == "" {
+			providerID = providerConfig.ID
+		}
 	}
 	if providerID == "" {
 		writeConfigError(w, http.StatusBadRequest, errors.New("provider is required"))
@@ -681,7 +690,6 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
 		return
 	}
-	providerConfig := request.Provider
 	if providerConfig.ID == "" {
 		for i := range current.Providers {
 			if current.Providers[i].ID == providerID {

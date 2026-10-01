@@ -15,13 +15,24 @@ const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
 let serverAPIKeyReference: Record<string, string> | null = null;
-const providerDefaults = { id: "openai", type: "openai_compatible", api_url: "", api_key_env: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
+const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key_env: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
 
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider: Record<string, string | boolean>, key: string): string { return provider[key] === false ? "" : "checked"; }
 function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex" || provider.type === "nous"; }
+const knownProviderIDs: Record<string, string> = { openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous" };
+function knownProviderID(type: string, index: number): string {
+  const base = knownProviderIDs[type];
+  if (!base) return "";
+  const used = providers.filter((provider, providerIndex) => providerIndex !== index && String(provider.id || "").startsWith(base)).map(provider => String(provider.id));
+  if (!used.includes(base)) return base;
+  let suffix = 2;
+  while (used.includes(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+function isKnownProvider(provider: Record<string, string | boolean>): boolean { return Boolean(knownProviderIDs[String(provider.type)]); }
 function initializeTooltips(): void {
   document.querySelectorAll<HTMLLabelElement>("label[data-tooltip]").forEach(label => {
     if (label.querySelector(".tooltip-trigger")) return;
@@ -47,12 +58,13 @@ function initializeTooltips(): void {
 }
 
 function renderProviders(): void {
+  providers.forEach((provider, index) => { if (!provider.id && isKnownProvider(provider)) provider.id = knownProviderID(String(provider.type), index); });
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
       <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions">${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : `<button class="test-provider button secondary" type="button" data-test="${index}">Test connection</button>`}${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite"></div>
-      ${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. It must be unique among providers.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are stored in the gateway state directory.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
-        <label data-tooltip="The stable ID used as the prefix of public model names. It must be unique among providers.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label>
+      ${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are stored in the gateway state directory.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+        <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. The selected type controls authentication and request behavior.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
         <label data-tooltip="The environment variable containing the upstream API key. The key itself is never written to this provider form.">API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
@@ -92,11 +104,15 @@ function updateProvider(event: Event): void {
     if (title) title.textContent = control.value || `Provider ${index + 1}`;
   }
   if (key === "type") {
+    const previousID = String(providers[index].id || "");
+    const previousBase = knownProviderIDs[String(providers[index].type)] || "";
+    if (previousBase && (previousID === previousBase || /^.+-\d+$/.test(previousID))) providers[index].id = "";
     if (control.value === "openai-codex" && !providers[index].api_url) {
       providers[index].api_url = "https://chatgpt.com/backend-api/codex";
       providers[index].models = "gpt-5.5";
     }
     if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
+    if (knownProviderIDs[control.value]) providers[index].id = knownProviderID(control.value, index);
     renderProviders();
   }
   markDirty();
@@ -234,7 +250,7 @@ function testAllProviders(): void {
 }
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
-document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults, id: `provider-${providers.length + 1}` }); renderProviders(); markDirty(); });
+document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); markDirty(); });
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });

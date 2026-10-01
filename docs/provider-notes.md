@@ -210,10 +210,11 @@ This provider must remain separate from OpenAI Codex subscription auth.
 
 Implemented as an endpoint-bound provider using the configured ChatGPT Codex
 backend and the existing flat-file credential store. The current transport
-supports static model catalogs, Chat/Responses request translation, response
-translation for non-streaming Chat Completions, SSE event adaptation, and
-refreshes credentials near expiry. Device-code login is the default CLI flow;
-browser authorization-code + PKCE is available with `--browser`.
+discovers the authenticated subscription model catalog from the Codex backend,
+supports Chat/Responses request translation, response translation for
+non-streaming Chat Completions, SSE event adaptation, and refreshes credentials
+near expiry. Device-code login is the default CLI flow; browser
+authorization-code + PKCE is available with `--browser`.
 
 Last verified: 2026-09-30
 
@@ -228,6 +229,13 @@ Sources:
 - https://github.com/openai/codex/blob/main/codex-rs/login/src/auth/manager.rs
 - https://github.com/openai/codex/blob/main/codex-rs/login/src/device_code_auth.rs
 - https://github.com/openai/codex/blob/main/codex-rs/cli/src/doctor.rs
+
+The authenticated model catalog is requested from the Codex backend's
+`/models` endpoint. Torii exposes entries whose visibility is `list` and whose
+`supported_in_api` flag is true. If the account is not logged in or discovery
+is temporarily unavailable, the configured fallback model list remains
+available; a successful login refreshes the live catalog without restarting
+the gateway.
 
 ## Nous Portal
 

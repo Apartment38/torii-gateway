@@ -67,12 +67,62 @@ func (c *Codex) ConfigureRefresh(issuer string, save func(string, CodexCredentia
 	c.save = save
 }
 func (c *Codex) ID() string { return c.id }
-func (c *Codex) Models(context.Context) ([]Model, error) {
+func (c *Codex) Models(ctx context.Context) ([]Model, error) {
+	credential, err := c.load(c.id)
+	if err != nil || credential.AccessToken == "" {
+		return c.staticModels(), nil
+	}
+	requestURL := *c.base
+	requestURL.Path = strings.TrimRight(requestURL.Path, "/") + "/models"
+	query := requestURL.Query()
+	query.Set("client_version", "torii-gateway")
+	requestURL.RawQuery = query.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build Codex model discovery request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+credential.AccessToken)
+	if credential.AccountID != "" {
+		request.Header.Set("ChatGPT-Account-ID", credential.AccountID)
+	}
+	request.Header.Set("originator", "codex_cli_rs")
+	response, err := c.client.Do(request)
+	if err != nil {
+		return c.staticModels(), nil
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return c.staticModels(), nil
+	}
+	var envelope struct {
+		Models []struct {
+			Slug           string `json:"slug"`
+			Visibility     string `json:"visibility"`
+			SupportedInAPI bool   `json:"supported_in_api"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil {
+		return c.staticModels(), nil
+	}
+	models := make([]Model, 0, len(envelope.Models))
+	for _, model := range envelope.Models {
+		if strings.TrimSpace(model.Slug) == "" || model.Visibility != "list" || !model.SupportedInAPI {
+			continue
+		}
+		models = append(models, Model{ID: c.id + "/" + model.Slug, Object: "model", OwnedBy: c.id})
+	}
+	if len(models) == 0 {
+		return c.staticModels(), nil
+	}
+	return models, nil
+}
+
+func (c *Codex) staticModels() []Model {
 	result := make([]Model, 0, len(c.models))
 	for _, id := range c.models {
 		result = append(result, Model{ID: c.id + "/" + id, Object: "model", OwnedBy: c.id})
 	}
-	return result, nil
+	return result
 }
 
 func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {

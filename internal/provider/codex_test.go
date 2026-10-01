@@ -59,6 +59,29 @@ func TestCodexUsesDefaultModelForBootstrapPlaceholder(t *testing.T) {
 	}
 }
 
+func TestCodexDiscoversAuthenticatedSubscriptionModels(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" || r.URL.Query().Get("client_version") == "" || r.Header.Get("Authorization") != "Bearer access" || r.Header.Get("ChatGPT-Account-ID") != "account" {
+			t.Fatalf("discovery request = %s auth=%q account=%q", r.URL.String(), r.Header.Get("Authorization"), r.Header.Get("ChatGPT-Account-ID"))
+		}
+		_, _ = io.WriteString(w, `{"models":[{"slug":"gpt-a","visibility":"list","supported_in_api":true},{"slug":"hidden","visibility":"hide","supported_in_api":true},{"slug":"unsupported","visibility":"list","supported_in_api":false}]}`)
+	}))
+	defer server.Close()
+	codex, err := NewCodex("openai-codex", server.URL, []string{"fallback"}, func(string) (CodexCredential, error) {
+		return CodexCredential{AccessToken: "access", AccountID: "account"}, nil
+	}, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := codex.Models(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].ID != "openai-codex/gpt-a" {
+		t.Fatalf("models = %+v, want only the supported listed model", models)
+	}
+}
+
 func TestCodexRejectsCredentialBoundToOtherOrigin(t *testing.T) {
 	server := httptest.NewTLSServer(http.NotFoundHandler())
 	defer server.Close()

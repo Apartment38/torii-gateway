@@ -415,13 +415,15 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
-	mu            sync.RWMutex
-	handler       http.Handler
-	configPath    string
-	loginMu       sync.Mutex
-	logins        map[string]providerLogin
-	loginFlows    map[string]providerLoginFlow
-	loginSessions map[string]providerLoginSession
+	mu             sync.RWMutex
+	handler        http.Handler
+	configPath     string
+	catalogMu      sync.Mutex
+	catalogRefresh func(context.Context) error
+	loginMu        sync.Mutex
+	logins         map[string]providerLogin
+	loginFlows     map[string]providerLoginFlow
+	loginSessions  map[string]providerLoginSession
 }
 
 type providerLogin struct {
@@ -468,6 +470,32 @@ func (r *handlerRuntime) swap(handler http.Handler) {
 	r.mu.Unlock()
 }
 
+func (r *handlerRuntime) setCatalogRefresh(refresh func(context.Context) error) {
+	r.catalogMu.Lock()
+	r.catalogRefresh = refresh
+	r.catalogMu.Unlock()
+}
+
+func (r *handlerRuntime) refreshCatalog(ctx context.Context) error {
+	r.catalogMu.Lock()
+	defer r.catalogMu.Unlock()
+	if r.catalogRefresh == nil {
+		return nil
+	}
+	return r.catalogRefresh(ctx)
+}
+
+func (r *handlerRuntime) setLoginSuccess(providerID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	err := r.refreshCatalog(ctx)
+	cancel()
+	message := "Provider login complete"
+	if err != nil {
+		message += "; model discovery will retry on the next refresh"
+	}
+	r.setProviderLogin(providerID, providerLogin{Status: "success", Message: message})
+}
+
 func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *handlerRuntime) (http.Handler, error) {
 	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
 	if cfg.Server.Authentication != nil {
@@ -500,6 +528,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	if err := openAI.RefreshCatalog(context.Background()); err != nil {
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
+	}
+	if runtime != nil {
+		runtime.setCatalogRefresh(openAI.RefreshCatalog)
 	}
 	var configuredClassifier classifier.Classifier
 	if cfg.Router.Classifier.Type == "jev" {
@@ -800,9 +831,6 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		if providerConfig.BaseURL == "" {
 			providerConfig.BaseURL = "https://chatgpt.com/backend-api/codex"
 		}
-		if len(providerConfig.Models) == 0 {
-			providerConfig.Models = []string{"gpt-5.5"}
-		}
 	}
 	if providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
 		writeConfigError(w, http.StatusBadRequest, errors.New("browser login is supported only for openai-codex and nous providers"))
@@ -994,7 +1022,7 @@ func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Re
 		r.loginSessions[session.TokenHash] = current
 	}
 	r.loginMu.Unlock()
-	r.setProviderLogin(session.Provider.ID, providerLogin{Status: "success", Message: "Provider login complete"})
+	r.setLoginSuccess(session.Provider.ID)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "imported", "provider_id": session.Provider.ID})
 }
 
@@ -1128,7 +1156,7 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 		http.Error(w, "Authorization failed. You may close this window.", http.StatusBadGateway)
 		return
 	}
-	r.setProviderLogin(flow.Provider.ID, providerLogin{Status: "success", Message: "Provider login complete"})
+	r.setLoginSuccess(flow.Provider.ID)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, "<html><body><h1>Torii Gateway login complete</h1><p>You may close this window and return to the console.</p></body></html>")
 }
@@ -1172,7 +1200,7 @@ func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderCon
 			return
 		}
 	}
-	r.setProviderLogin(providerConfig.ID, providerLogin{Status: "success", Message: "Provider login complete"})
+	r.setLoginSuccess(providerConfig.ID)
 }
 
 func (r *handlerRuntime) setProviderLogin(providerID string, status providerLogin) {

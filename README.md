@@ -113,13 +113,14 @@ podman compose down
 Keep `.env` private; it is ignored by Git. If authentication is omitted from
 `config.yaml`, the API key environment variable is not required.
 
-The compose file mounts the host `config.yaml` as a writable Podman bind mount
-with `rw,Z,U`. The `U` option adjusts ownership for the container’s non-root
-user, so Podman may change the host file’s ownership. The web console saves and
-reloads directly to the host `config.yaml` using an atomic replacement. The
-named state volume is mounted with `Z,U` as well, so the non-root gateway user
-can create its runtime directories there; Podman may adjust that volume’s
-ownership on first use.
+The compose file mounts the host project directory at `/config` as a writable
+Podman bind mount with `rw,Z,U`; `config.yaml` is read from
+`/config/config.yaml`. The directory mount is required because the web console
+creates a temporary file beside the configuration before atomically replacing
+it. The `U` option adjusts ownership for the container’s non-root user, so
+Podman may change the host files’ ownership. The named state volume is mounted
+with `Z,U` as well, so the non-root gateway user can create its runtime
+directories there.
 
 The console is divided into Overview, Server, Providers, Routing, and State &
 Quota pages. **Save & reload** sends the validated configuration to
@@ -226,7 +227,7 @@ state directory during an application update.
 
 ### Podman Compose container
 
-The Compose workflow preserves the bind-mounted `config.yaml` and named
+The Compose workflow preserves the bind-mounted project directory and named
 `torii_gateway_state` volume while rebuilding the image:
 
 ```sh

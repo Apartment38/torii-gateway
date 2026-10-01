@@ -174,6 +174,13 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 			}
 			d := unknownDescriptor(model.ID, p.ID(), upstream)
 			d.Created, d.OwnedBy = model.Created, model.OwnedBy
+			d.ContextWindow = copyInt(model.ContextWindow)
+			d.Pricing.InputPerMillion = copyFloat(model.InputPerMillion)
+			d.Pricing.OutputPerMillion = copyFloat(model.OutputPerMillion)
+			if model.Subscription {
+				zero := float64(0)
+				d.Pricing.InputPerMillion, d.Pricing.OutputPerMillion = &zero, &zero
+			}
 			d.Availability = Availability{Available: true, CheckedAt: now}
 			d.Metadata.CatalogSource = "live"
 			d = mergeMatching(d, c.bundled, "bundled")

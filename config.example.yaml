@@ -35,6 +35,14 @@ providers:
   #   base_url: https://chatgpt.com/backend-api/codex
   #   models: [gpt-5.5]
 
+  # Nous Portal subscription access uses gateway auth login and a separate
+  # Portal refresh-token flow. The inference URL intentionally includes /v1.
+  # - id: nous
+  #   type: nous
+  #   base_url: https://inference-api.nousresearch.com/v1
+  #   portal_url: https://portal.nousresearch.com
+  #   discover_models: true
+
 # Optional routing controls. Explicit provider/model requests continue to
 # bypass smart routing.
 # router:
@@ -44,6 +52,17 @@ providers:
 #     type: model
 #     model: local/laya
 #     on_failure: capability_fallback
+#   # Alternatively, use the hosted typed-decision Jev classifier:
+#   # type: jev
+#   # model: jev-latest
+#   # base_url: https://jevmodel.org
+#   # api_key:
+#   #   env: JEVMODEL_API_KEY
+#   # Or route Jev through a configured OpenAI-compatible provider such as
+#   # OpenRouter (the provider supplies the API key and origin):
+#   # transport: provider
+#   # provider: openrouter
+#   # model: typesafe/jev-1.13
 #   sessions:
 #     inactivity_timeout: 30m
 #     on_model_failure: reroute

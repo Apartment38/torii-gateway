@@ -37,10 +37,13 @@ type RouterConfig struct {
 }
 
 type ClassifierConfig struct {
-	Type      string `yaml:"type,omitempty"`
-	Model     string `yaml:"model,omitempty"`
-	Provider  string `yaml:"provider,omitempty"`
-	OnFailure string `yaml:"on_failure,omitempty"`
+	Type      string     `yaml:"type,omitempty"`
+	Model     string     `yaml:"model,omitempty"`
+	Provider  string     `yaml:"provider,omitempty"`
+	OnFailure string     `yaml:"on_failure,omitempty"`
+	BaseURL   string     `yaml:"base_url,omitempty"`
+	APIKey    *SecretRef `yaml:"api_key,omitempty"`
+	Transport string     `yaml:"transport,omitempty"`
 }
 type SessionConfig struct {
 	InactivityTimeout string `yaml:"inactivity_timeout,omitempty"`
@@ -79,6 +82,8 @@ type ProviderConfig struct {
 	ID               string               `yaml:"id"`
 	Type             string               `yaml:"type"`
 	BaseURL          string               `yaml:"base_url"`
+	PortalURL        string               `yaml:"portal_url,omitempty"`
+	ClientID         string               `yaml:"client_id,omitempty"`
 	BearerToken      *SecretRef           `yaml:"bearer_token,omitempty"`
 	Headers          map[string]SecretRef `yaml:"headers,omitempty"`
 	TLS              *TLSConfig           `yaml:"tls,omitempty"`
@@ -177,7 +182,7 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" {
+		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
 			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
@@ -201,9 +206,39 @@ func (c Config) Validate() error {
 				return fmt.Errorf("%s: %w", field, err)
 			}
 		}
+		if providerConfig.Type == "nous" {
+			if err := validateNousProvider(providerConfig); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+		} else if providerConfig.PortalURL != "" || providerConfig.ClientID != "" {
+			return fmt.Errorf("%s: portal_url and client_id require type nous", field)
+		}
 	}
 	if err := c.Router.Validate(); err != nil {
 		return fmt.Errorf("router: %w", err)
+	}
+	return nil
+}
+
+func validateNousProvider(p ProviderConfig) error {
+	if p.BearerToken != nil || len(p.Headers) > 0 || p.TLS != nil || p.Transport != "" || p.Organization != "" || p.Project != "" || len(p.ModelRewrites) > 0 {
+		return errors.New("Nous credentials and transport are managed by the provider")
+	}
+	if p.BaseURL == "" {
+		return errors.New("base_url is required")
+	}
+	parsed, _ := url.Parse(p.BaseURL)
+	if parsed.Scheme != "https" {
+		return errors.New("base_url must use HTTPS")
+	}
+	if p.PortalURL != "" {
+		portal, err := url.Parse(p.PortalURL)
+		if err != nil || portal.Scheme != "https" || portal.Host == "" || portal.User != nil || portal.RawQuery != "" || portal.Fragment != "" {
+			return errors.New("portal_url must be an HTTPS URL without credentials, query, or fragment")
+		}
+	}
+	if p.DiscoverModels != nil && !*p.DiscoverModels && len(p.Models) == 0 {
+		return errors.New("models are required when discover_models is false")
 	}
 	return nil
 }
@@ -212,7 +247,7 @@ func (r RouterConfig) Validate() error {
 	if r.ModelName != "" && r.ModelName != "smart" {
 		return errors.New("model_name must be smart")
 	}
-	if r.Classifier.Type != "" && r.Classifier.Type != "model" && r.Classifier.Type != "laya" && r.Classifier.Type != "embedding" {
+	if r.Classifier.Type != "" && r.Classifier.Type != "model" && r.Classifier.Type != "laya" && r.Classifier.Type != "embedding" && r.Classifier.Type != "jev" {
 		return fmt.Errorf("classifier.type %q is unsupported", r.Classifier.Type)
 	}
 	if r.Classifier.Type == "model" || r.Classifier.Type == "laya" {
@@ -222,6 +257,29 @@ func (r RouterConfig) Validate() error {
 	}
 	if r.Classifier.Type == "embedding" && (r.Classifier.Provider == "" || r.Classifier.Model == "") {
 		return errors.New("embedding classifier requires provider and model")
+	}
+	if r.Classifier.Type == "jev" {
+		if r.Classifier.Transport == "" || r.Classifier.Transport == "direct" {
+			if r.Classifier.APIKey == nil || r.Classifier.BaseURL == "" {
+				return errors.New("direct Jev classifier requires base_url and api_key")
+			}
+			if err := validateBaseURL(r.Classifier.BaseURL); err != nil {
+				return fmt.Errorf("classifier.base_url: %w", err)
+			}
+			parsed, _ := url.Parse(r.Classifier.BaseURL)
+			if parsed.Scheme != "https" {
+				return errors.New("classifier.base_url must use HTTPS")
+			}
+		} else if r.Classifier.Transport == "provider" {
+			if r.Classifier.Provider == "" {
+				return errors.New("Jev provider transport requires classifier.provider")
+			}
+			if r.Classifier.APIKey != nil || r.Classifier.BaseURL != "" {
+				return errors.New("Jev provider transport uses the configured provider credentials")
+			}
+		} else {
+			return fmt.Errorf("classifier.transport %q is unsupported", r.Classifier.Transport)
+		}
 	}
 	if r.Classifier.OnFailure != "" && r.Classifier.OnFailure != "fail" && r.Classifier.OnFailure != "capability_fallback" {
 		return fmt.Errorf("classifier.on_failure %q is unsupported", r.Classifier.OnFailure)

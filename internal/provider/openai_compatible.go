@@ -169,3 +169,23 @@ func (p *Compatible) Forward(ctx context.Context, endpoint string, body []byte, 
 	}
 	return p.transport.Do(ctx, endpoint, body, model)
 }
+
+// ForwardDecision forwards a Jev/System One request through the provider's
+// configured origin and credentials. The provider must explicitly opt into
+// this transport by implementing DecisionProvider.
+func (p *Compatible) ForwardDecision(ctx context.Context, body []byte) (*http.Response, error) {
+	return p.transport.Do(ctx, "/v1/systemone/", body, modelFromBody(body))
+}
+
+func modelFromBody(body []byte) string {
+	var request struct {
+		Model string `json:"model"`
+	}
+	if json.Unmarshal(body, &request) != nil {
+		return "jev-latest"
+	}
+	if request.Model == "" {
+		return "jev-latest"
+	}
+	return request.Model
+}

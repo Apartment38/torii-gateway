@@ -196,6 +196,28 @@ func runAuth(args []string, output io.Writer) error {
 	}
 	switch action {
 	case "login":
+		if providerConfig.Type == "nous" && *accessEnv == "" && *accessFile == "" && *refreshEnv == "" && *refreshFile == "" {
+			portalURL := providerConfig.PortalURL
+			if portalURL == "" {
+				portalURL = provider.DefaultNousPortalURL
+			}
+			clientID := providerConfig.ClientID
+			if clientID == "" {
+				clientID = provider.DefaultNousClientID
+			}
+			credential, loginErr := provider.NousDeviceCodeLogin(context.Background(), portalURL, clientID, "inference:invoke", &http.Client{}, func(url, code string) {
+				_, _ = fmt.Fprintf(output, "open %s and enter code %s\n", url, code)
+			})
+			if loginErr != nil {
+				return loginErr
+			}
+			credential.Endpoint = strings.TrimRight(providerConfig.BaseURL, "/")
+			if err := store.Save(providerID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: credential.Endpoint, TokenType: "Bearer"}); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintf(output, "provider %s: logged in\n", providerID)
+			return err
+		}
 		if providerConfig.Type == "openai-codex" && *accessEnv == "" && *accessFile == "" && *refreshEnv == "" && *refreshFile == "" {
 			var credential provider.CodexCredential
 			var loginErr error
@@ -342,7 +364,35 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
 	}
 	var configuredClassifier classifier.Classifier
-	if classifierModel := cfg.Router.Classifier.Model; classifierModel != "" && cfg.Router.Classifier.Type != "embedding" {
+	if cfg.Router.Classifier.Type == "jev" {
+		if cfg.Router.Classifier.Transport == "provider" {
+			var selected provider.OpenAIProvider
+			for _, candidate := range providers {
+				if candidate.ID() == cfg.Router.Classifier.Provider {
+					selected = candidate
+					break
+				}
+			}
+			decisionProvider, ok := selected.(provider.DecisionProvider)
+			if !ok {
+				return nil, fmt.Errorf("initialize Jev classifier: provider %q does not support decision transport", cfg.Router.Classifier.Provider)
+			}
+			configuredClassifier, err = classifier.NewJevTransport(decisionProvider, cfg.Router.Classifier.Model)
+			if err != nil {
+				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
+			}
+		} else {
+			apiKey, resolveErr := cfg.Router.Classifier.APIKey.Resolve()
+			if resolveErr != nil {
+				return nil, fmt.Errorf("resolve Jev API key: %w", resolveErr)
+			}
+			configuredClassifier, err = classifier.NewJev(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, nil)
+			if err != nil {
+				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
+			}
+		}
+	}
+	if classifierModel := cfg.Router.Classifier.Model; classifierModel != "" && cfg.Router.Classifier.Type != "embedding" && cfg.Router.Classifier.Type != "jev" {
 		connected, classifierErr := classifier.NewConnectedModel(classifierModel, providers)
 		if classifierErr != nil {
 			return nil, fmt.Errorf("initialize classifier: %w", classifierErr)
@@ -437,6 +487,30 @@ func buildProvider(cfg config.ProviderConfig) (provider.OpenAIProvider, error) {
 func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (provider.OpenAIProvider, error) {
 	if cfg.Type == "ollama" {
 		return provider.NewOllama(cfg.ID, cfg.BaseURL, &http.Client{})
+	}
+	if cfg.Type == "nous" {
+		if stateDirectory == "" {
+			return nil, errors.New("state directory is required for nous")
+		}
+		credentialStore, err := state.NewFlatFileCredentialStore(stateDirectory)
+		if err != nil {
+			return nil, err
+		}
+		loader := func(id string) (provider.NousCredential, error) {
+			credential, loadErr := credentialStore.Load(id)
+			if loadErr != nil {
+				return provider.NousCredential{}, loadErr
+			}
+			return provider.NousCredential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, Endpoint: credential.Endpoint, ExpiresAt: credential.ExpiresAt}, nil
+		}
+		saver := func(id string, value provider.NousCredential) error {
+			return credentialStore.Save(id, &state.Credential{AccessToken: value.AccessToken, RefreshToken: value.RefreshToken, ExpiresAt: value.ExpiresAt, Endpoint: value.Endpoint, TokenType: "Bearer"})
+		}
+		discover := true
+		if cfg.DiscoverModels != nil {
+			discover = *cfg.DiscoverModels
+		}
+		return provider.NewNous(cfg.ID, cfg.BaseURL, cfg.PortalURL, cfg.ClientID, cfg.Models, discover, loader, saver, &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
 	}
 	headers := make(http.Header, len(cfg.Headers)+1)
 	if cfg.BearerToken != nil {

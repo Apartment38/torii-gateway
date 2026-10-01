@@ -62,9 +62,9 @@ standard Chat Completions contract.
 
 ### Status
 
-Research status: TODO
+Research status: verified from OpenRouter documentation
 Implementation status: TODO
-Last verified: YYYY-MM-DD
+Last verified: 2026-09-30
 
 ### Authentication
 
@@ -76,13 +76,17 @@ API key:
 
 Base URL:
 
-    <verified URL>
+    https://openrouter.ai/api/v1
+
+The documented inference surface is OpenAI-compatible. Chat Completions is
+available at `/chat/completions`; the model catalog is available at
+`GET /models`.
 
 ### Model Discovery
 
 Endpoint:
 
-    <endpoint>
+    GET /models
 
 Record:
 
@@ -92,10 +96,22 @@ Record:
 - pricing fields
 - provider metadata
 
+The model response includes architecture/modalities, context length, pricing,
+per-request limits, and a details link for endpoint-level information. Model
+IDs may contain `/`, so the gateway must preserve the complete upstream ID
+after the `openrouter/` public namespace.
+
 ### Quotas
 
 Document whether remaining credits/quota can be queried and through which
 endpoint or headers.
+
+`GET /credits` returns total credits purchased and total usage, and requires a
+management key according to the current documentation. Ordinary inference
+keys are bearer keys for inference and must not be assumed to authorize
+management operations. Per-key limits and usage are exposed through the
+management-key API. Treat quota as optional metadata and fail open to normal
+provider errors when it is unavailable.
 
 ### OpenAI Compatibility
 
@@ -113,12 +129,19 @@ Document support for:
 
 ### Known Quirks
 
-Add implementation-relevant behavior here.
+- OpenRouter performs its own provider selection and fallback; Torii must not
+  duplicate that routing.
+- Optional `HTTP-Referer` and `X-OpenRouter-Title` headers are attribution
+  headers, not credentials.
+- The OpenAI compatibility layer is the documented path, but provider-specific
+  features and parameters may not be uniform across models.
 
 ### Sources
 
-- <source>
-- <source>
+- https://openrouter.ai/docs/quickstart
+- https://openrouter.ai/docs/api/api-reference/models/get-models
+- https://openrouter.ai/docs/api/api-reference/credits/get-credits
+- https://openrouter.ai/docs/guides/overview/auth/management-api-keys
 
 ---
 
@@ -233,9 +256,10 @@ Do not assume the normal OpenAI API model catalog is equivalent.
 
 ### Status
 
-Research status: TODO
+Research status: partially verified from Nous-maintained Hermes documentation
+and adapter source; public API definition unavailable during this review
 Implementation status: TODO
-Last verified: YYYY-MM-DD
+Last verified: 2026-09-30
 
 ### Authentication
 
@@ -246,27 +270,225 @@ Verify:
 - short-lived inference tokens
 - API-key availability, if any
 
+The maintained Hermes integration documents a browser OAuth login against
+`portal.nousresearch.com`, stores a refresh token separately from configuration,
+and obtains short-lived runtime credentials for the inference API. The current
+implementation uses the Portal OAuth token endpoint
+`https://portal.nousresearch.com/api/oauth/token`; the runtime inference base
+is `https://inference-api.nousresearch.com/v1`. The maintained adapter uses
+bearer credentials and refreshes them lazily, retrying once after a 401.
+
+The current source also documents rotating refresh tokens and a device-code to
+runtime-credential path for inference. Token values must remain outside YAML
+and must be persisted atomically in the gateway credential store.
+
 ### Model Discovery
 
-...
+The maintained proxy exposes `GET /models`, but the public Portal API
+definition was not retrievable on 2026-09-30. Do not infer catalog shape,
+pricing, or quota semantics from the subscription marketing page. Before
+implementation, capture a real authenticated response and document model IDs,
+capabilities, context limits, pricing, and subscription/quota fields.
+
+The inference adapter currently allows `/chat/completions`, `/completions`,
+`/embeddings`, and `/models`; a maintained issue reports that the upstream
+also serves `/responses`, so Responses support should be verified and added or
+explicitly rejected in the Torii adapter.
+
+The live `/v1/models` response is the pricing source when it includes
+`pricing.prompt` and `pricing.completion` values. Torii converts those values
+from per-token dollars to its per-million-token catalog units. Rows marked
+`billing_mode: subscription` are represented as zero marginal cost for routing
+purposes. The maintained Hermes implementation also treats the Portal account
+as subscription-billed and uses live model pricing for paid/free-tier display.
+
+No stable Portal quota-balance endpoint was found. Portal tier RPM/TPM limits
+apply across the bearer and are surfaced through inference response headers or
+provider errors; Torii therefore records standard rate-limit headers through
+its existing quota cache and treats absent headers as unknown rather than
+inventing a balance.
 
 ### Sources
 
-...
+- https://github.com/NousResearch/hermes-agent/blob/main/website/docs/integrations/nous-portal.md
+- https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/proxy/adapters/nous_portal.py
+- https://github.com/NousResearch/hermes-agent/blob/main/plugins/dashboard_auth/nous/__init__.py
+- https://portal.nousresearch.com/api-docs (definition failed to load during review)
+- https://github.com/NousResearch/hermes-agent/issues/104505
+- https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/model-catalog.md
+- https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/models.py
 
 ---
 
 ## Google Gemini
 
-...
+### Status
+
+Research status: verified from Google AI for Developers documentation
+Implementation status: TODO
+Last verified: 2026-09-30
+
+### Authentication and API
+
+Use a Gemini API key. The documented OpenAI-compatible base URL is:
+
+    https://generativelanguage.googleapis.com/v1beta/openai/
+
+The compatibility surface supports `GET /models`, model retrieval, and Chat
+Completions. The public namespace is `gemini/<model>` and the existing
+transparent transport can be reused for compatible requests.
+
+### Capabilities and limitations
+
+Gemini supports multimodal content, tools/function calling, streaming, and
+thinking controls. OpenAI `reasoning_effort` is mapped to Gemini thinking
+settings for supported models; Gemini-specific thinking settings can be sent
+through the documented extension fields. The compatibility layer is beta and
+does not expose all Gemini features, notably some server-side tools such as
+Google Search grounding and File API workflows. Unsupported combinations must
+be rejected or routed through a future native Gemini transport rather than
+silently discarded.
+
+Pricing and rate limits are model/project dependent. Catalog ingestion should
+retain model lifecycle state (stable, preview, experimental, deprecated) and
+pricing where available, but must not treat aliases such as `latest` as
+immutable model identities.
+
+### Sources
+
+- https://ai.google.dev/gemini-api/docs/openai
+- https://ai.google.dev/gemini-api/docs/models
+- https://ai.google.dev/gemini-api/docs/partner-integration
+- https://ai.google.dev/gemini-api/docs/pricing
+- https://ai.google.dev/gemini-api/docs/rate-limits
 
 ## xAI
 
-...
+### Status
+
+Research status: verified from xAI REST API documentation
+Implementation status: TODO
+Last verified: 2026-09-30
+
+### Authentication and API
+
+xAI inference uses `Authorization: Bearer <xAI API key>` against the inference
+base `https://api.x.ai`. The REST API is OpenAI-compatible and documents
+Responses, Chat Completions, model listing, streaming, images, files, batches,
+and other resources. The public namespace is `xai/<model>`.
+
+Use the transparent transport for the documented Chat Completions and
+Responses paths. Model discovery should use the inference model-list endpoint
+and preserve the provider's model identifiers. Do not implement Management API
+operations as part of the inference adapter.
+
+### Capabilities and limitations
+
+The Chat Completions reference documents tool/function-call fields, streaming,
+usage including reasoning tokens, and multimodal request support where the
+selected model permits it. Capability metadata must therefore remain
+model-specific. xAI's compatibility statement does not make every OpenAI
+parameter universally supported; provider errors and documented unsupported
+features must be surfaced as capability errors. This task covers normal xAI
+API keys only, not SuperGrok or consumer-subscription OAuth.
+
+### Sources
+
+- https://docs.x.ai/developers/rest-api-reference/inference
+- https://docs.x.ai/developers/rest-api-reference/inference/chat-completions
+- https://docs.x.ai/developers/rest-api-reference/inference/models
 
 ## Anthropic
 
-...
+### Status
+
+Research status: verified from Anthropic Claude Platform documentation
+Implementation status: TODO
+Last verified: 2026-09-30
+
+### Authentication and API
+
+Use an Anthropic API key in `x-api-key` and the required `anthropic-version`
+header. The native endpoint is:
+
+    POST https://api.anthropic.com/v1/messages
+
+The public namespace is `anthropic/<model>`. This provider requires an
+explicit canonical-to-Messages translation; it must not be treated as a
+transparent OpenAI-compatible endpoint.
+
+### Request translation
+
+Translate system instructions to the top-level `system` field and preserve
+user/assistant turns as Messages content blocks. Map text, base64/URL/file
+images, tool definitions (`input_schema`), tool calls (`tool_use`), and tool
+results (`tool_result`). Preserve max token controls and model-specific
+thinking/reasoning controls. Client tools return `stop_reason: tool_use` and
+the next request carries the assistant content plus a user `tool_result`.
+
+### Responses, streaming, and limits
+
+Anthropic streaming is an SSE event protocol with message/content-block
+events, not OpenAI chat-delta bytes. The adapter must translate text deltas,
+tool-input deltas, thinking blocks, stop reasons, and usage into the gateway's
+canonical stream. Non-streaming usage must retain input/output token counts;
+tool schemas and tool results contribute to input usage. Vision accepts base64,
+URL, or Files API image sources on the direct API.
+
+Anthropic's current thinking model families use model-dependent adaptive or
+extended thinking controls. Unsupported combinations of thinking, tools,
+structured output, or content types must return a capability error instead of
+being dropped. Server-side Anthropic tools are a separate capability and must
+not be confused with client-defined gateway tools.
+
+### Sources
+
+- https://platform.claude.com/docs/en/api/messages
+- https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview
+- https://platform.claude.com/docs/en/build-with-claude/vision
+- https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+- https://platform.claude.com/docs/en/about-claude/models/overview
+
+## Jev classifier adapters
+
+### Status
+
+Research status: verified from Jev API documentation
+Implementation status: direct and provider-transport classifiers implemented
+Last verified: 2026-09-30
+
+Jev is a typed-decision API, not a chat-generation provider. The direct
+classifier sends one state plus typed `choice` and `noul` questions to
+`POST https://jevmodel.org/v1/systemone/` with a bearer API key. Torii maps
+the returned task-type and complexity choices plus boolean noul probabilities
+into the existing classifier contract. The request asks seven questions,
+within Jev's documented eight-question limit.
+
+The gateway configuration is:
+
+    router:
+      classifier:
+        type: jev
+        model: jev-latest
+        base_url: https://jevmodel.org
+        api_key:
+          env: JEVMODEL_API_KEY
+
+The implementation also supports provider transport for gateways that expose
+the Jev System One contract at their own origin. For example, OpenRouter
+documents `POST /api/v1/systemone`; configure a provider-backed classifier with
+`transport: provider`, `provider: openrouter`, and model
+`typesafe/jev-1.13`. The provider owns the origin and bearer credential, while
+the classifier owns only the typed-decision request/response mapping.
+
+Jev's documented limits include an 8,000-character serialized state, up to
+eight questions, and 120 requests per minute per key. The API bills input
+tokens only.
+
+### Sources
+
+- https://jevmodel.org/docs/
+- https://openrouter.ai/blog/insights/what-is-jev/
 
 ## Ollama
 

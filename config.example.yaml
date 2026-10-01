@@ -43,6 +43,33 @@ providers:
   #   portal_url: https://portal.nousresearch.com
   #   discover_models: true
 
+  # OpenAI-compatible hosted providers have dedicated profiles so their
+  # compatibility roots and credentials are explicit.
+  # - id: openrouter
+  #   type: openrouter
+  #   base_url: https://openrouter.ai/api
+  #   bearer_token:
+  #     env: OPENROUTER_API_KEY
+  #   discover_models: true
+  # - id: gemini
+  #   type: gemini
+  #   base_url: https://generativelanguage.googleapis.com
+  #   bearer_token:
+  #     env: GEMINI_API_KEY
+  #   discover_models: true
+  # - id: xai
+  #   type: xai
+  #   base_url: https://api.x.ai
+  #   bearer_token:
+  #     env: XAI_API_KEY
+  #   discover_models: true
+  # - id: anthropic
+  #   type: anthropic
+  #   base_url: https://api.anthropic.com
+  #   bearer_token:
+  #     env: ANTHROPIC_API_KEY
+  #   models: [claude-sonnet-4-5]
+
 # Optional routing controls. Explicit provider/model requests continue to
 # bypass smart routing.
 # router:

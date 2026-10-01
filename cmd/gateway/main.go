@@ -512,6 +512,18 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		}
 		return provider.NewNous(cfg.ID, cfg.BaseURL, cfg.PortalURL, cfg.ClientID, cfg.Models, discover, loader, saver, &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
 	}
+	if cfg.Type == "anthropic" {
+		key, err := cfg.BearerToken.Resolve()
+		if err != nil {
+			return nil, fmt.Errorf("resolve Anthropic API key: %w", err)
+		}
+		discover := true
+		if cfg.DiscoverModels != nil {
+			discover = *cfg.DiscoverModels
+		}
+		requestTimeout, _ := time.ParseDuration(cfg.RequestTimeout)
+		return provider.NewAnthropic(cfg.ID, cfg.BaseURL, key, cfg.Models, discover, &http.Client{Timeout: requestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
+	}
 	headers := make(http.Header, len(cfg.Headers)+1)
 	if cfg.BearerToken != nil {
 		token, err := cfg.BearerToken.Resolve()
@@ -595,5 +607,14 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 	}
 	discoveryTimeout, _ := time.ParseDuration(cfg.DiscoveryTimeout)
 	requestTimeout, _ := time.ParseDuration(cfg.RequestTimeout)
-	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+	apiPath := cfg.APIPath
+	if apiPath == "" {
+		switch cfg.Type {
+		case "gemini":
+			apiPath = "/v1beta/openai"
+		default:
+			apiPath = "/v1"
+		}
+	}
+	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
 }

@@ -82,6 +82,7 @@ type ProviderConfig struct {
 	ID               string               `yaml:"id"`
 	Type             string               `yaml:"type"`
 	BaseURL          string               `yaml:"base_url"`
+	APIPath          string               `yaml:"api_path,omitempty"`
 	PortalURL        string               `yaml:"portal_url,omitempty"`
 	ClientID         string               `yaml:"client_id,omitempty"`
 	BearerToken      *SecretRef           `yaml:"bearer_token,omitempty"`
@@ -182,7 +183,7 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
+		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" {
 			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
@@ -193,6 +194,19 @@ func (c Config) Validate() error {
 		}
 		if providerConfig.Type == "openai_compatible" {
 			if err := validateCompatibleProvider(providerConfig); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+		}
+		if providerConfig.Type == "openrouter" || providerConfig.Type == "gemini" || providerConfig.Type == "xai" {
+			if err := validateCompatibleProvider(providerConfig); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+			if providerConfig.BearerToken == nil {
+				return fmt.Errorf("%s: bearer_token is required", field)
+			}
+		}
+		if providerConfig.Type == "anthropic" {
+			if err := validateAnthropicProvider(providerConfig); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
 			}
 		}
@@ -370,6 +384,26 @@ func validateOpenAIProvider(p ProviderConfig) error {
 	return validatePositiveDurations(p.ConnectTimeout, p.RequestTimeout, p.DiscoveryTimeout)
 }
 
+func validateAnthropicProvider(p ProviderConfig) error {
+	parsed, err := url.Parse(p.BaseURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host != "api.anthropic.com" || parsed.Path != "" {
+		return errors.New("type anthropic has an unsupported origin; base_url must be https://api.anthropic.com")
+	}
+	if p.BearerToken == nil {
+		return errors.New("bearer_token is required")
+	}
+	if err := p.BearerToken.Validate(); err != nil {
+		return fmt.Errorf("bearer_token: %w", err)
+	}
+	if len(p.Headers) != 0 || p.TLS != nil || p.APIPath != "" || p.Transport != "" || p.Organization != "" || p.Project != "" || len(p.ModelRewrites) != 0 {
+		return errors.New("headers, TLS, api_path, transport, organization, project, and model rewrites are not configurable for type anthropic")
+	}
+	if p.DiscoverModels != nil && !*p.DiscoverModels && len(p.Models) == 0 {
+		return errors.New("models are required when discover_models is false")
+	}
+	return validatePositiveDurations(p.ConnectTimeout, p.RequestTimeout, p.DiscoveryTimeout)
+}
+
 func validatePositiveDurations(values ...string) error {
 	for _, raw := range values {
 		if raw == "" {
@@ -383,6 +417,12 @@ func validatePositiveDurations(values ...string) error {
 }
 
 func validateCompatibleProvider(p ProviderConfig) error {
+	if p.APIPath != "" {
+		parsed, err := url.Parse(p.APIPath)
+		if err != nil || !strings.HasPrefix(p.APIPath, "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return errors.New("api_path must be an absolute path without query or fragment")
+		}
+	}
 	if p.Transport != "" && p.Transport != "openai_compatible" {
 		return fmt.Errorf("transport %q is unsupported", p.Transport)
 	}

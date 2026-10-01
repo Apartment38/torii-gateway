@@ -27,6 +27,10 @@ type OpenAICompatibleConfig struct {
 	ModelRewrites    map[string]string
 	DiscoveryTimeout time.Duration
 	RequestTimeout   time.Duration
+	// APIPath identifies the upstream OpenAI-compatible API root relative to
+	// BaseURL. The default is /v1; providers such as Gemini use a different
+	// compatibility root.
+	APIPath string
 }
 
 // Compatible is a generic transparent OpenAI-compatible provider.
@@ -39,6 +43,7 @@ type Compatible struct {
 	static      []string
 	rewrites    map[string]string
 	discoveryTO time.Duration
+	apiPath     string
 }
 
 func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error) {
@@ -63,12 +68,16 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	if cfg.DiscoveryTimeout <= 0 {
 		cfg.DiscoveryTimeout = modelDiscoveryTimeout
 	}
+	if cfg.APIPath == "" {
+		cfg.APIPath = "/v1"
+	}
+	cfg.APIPath = "/" + strings.Trim(strings.TrimSpace(cfg.APIPath), "/")
 	static := append([]string(nil), cfg.StaticModels...)
 	rewrites := make(map[string]string, len(cfg.ModelRewrites))
 	for k, v := range cfg.ModelRewrites {
 		rewrites[k] = v
 	}
-	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout}, nil
+	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath}, nil
 }
 
 func (p *Compatible) ID() string { return p.id }
@@ -101,7 +110,7 @@ func (p *Compatible) Models(ctx context.Context) ([]Model, error) {
 	}
 
 	u, _ := url.Parse(p.baseURL)
-	escaped := strings.TrimRight(u.EscapedPath(), "/") + "/v1/models"
+	escaped := strings.TrimRight(u.EscapedPath(), "/") + p.apiPath + "/models"
 	path, err := url.PathUnescape(escaped)
 	if err != nil {
 		return nil, err
@@ -167,7 +176,8 @@ func (p *Compatible) Forward(ctx context.Context, endpoint string, body []byte, 
 	if rewritten, ok := p.rewrites[model]; ok {
 		model = rewritten
 	}
-	return p.transport.Do(ctx, endpoint, body, model)
+	upstreamEndpoint := p.apiPath + strings.TrimPrefix(endpoint, "/v1")
+	return p.transport.Do(ctx, upstreamEndpoint, body, model)
 }
 
 // ForwardDecision forwards a Jev/System One request through the provider's

@@ -24,14 +24,35 @@ For each provider, record:
 
 Do not record credentials here.
 
-The repository's Version 1 provider research is limited to
-local Ollama, standard OpenAI-compatible endpoints (including the normal OpenAI
-API), and ChatGPT Codex subscription access. OpenRouter, Nous Portal, Gemini,
-xAI, and Anthropic sections are retained for the Version 2 backlog. Before
-changing an adapter, replace its placeholders with dated findings from primary
-documentation, identify which fields are verified versus inferred, and record
-unsupported behavior explicitly. A provider task is not complete until its
-notes and contract tests agree.
+The repository's provider research covers local Ollama, standard
+OpenAI-compatible endpoints, ChatGPT Codex subscription access, Nous Portal,
+Jev, Gemini, xAI, and Anthropic. Before changing an adapter, record dated
+findings from primary documentation, identify which fields are verified versus
+inferred, and record unsupported behavior explicitly. A provider task is not
+complete until its notes and contract tests agree.
+
+## Bundled core-model catalog
+
+The embedded `internal/catalog/capabilities.json` contains the active core
+text models verified on 2026-09-30 for the configured provider IDs
+`openai-codex`, `anthropic`, `gemini`, and `xai`. Specialized media, audio,
+embedding, moderation, and retired models are excluded. The records describe
+what Torii's current adapters expose, not every capability available through a
+provider's native API.
+
+Quality scores are intentionally absent. Provider documentation does not
+provide a comparable normalized benchmark scale, so the selector treats these
+models as unknown-quality candidates until benchmark-backed data is added.
+
+Catalog sources:
+
+- https://developers.openai.com/api/docs/models/gpt-5.3-codex
+- https://platform.claude.com/docs/en/models/overview
+- https://platform.claude.com/docs/en/about-claude/pricing
+- https://ai.google.dev/gemini-api/docs/models
+- https://ai.google.dev/gemini-api/docs/pricing
+- https://docs.x.ai/developers/models
+- https://docs.x.ai/developers/pricing
 
 The Version 1 router may use a self-hosted Laya model through an already
 configured local physical provider. Laya protocol and schema findings belong in
@@ -63,7 +84,9 @@ standard Chat Completions contract.
 ### Status
 
 Research status: verified from OpenRouter documentation
-Implementation status: TODO
+Implementation status: complete through the dedicated OpenAI-compatible
+provider profile. OpenRouter uses the transparent transport, model discovery,
+model rewrites, and provider-scoped bearer credentials.
 Last verified: 2026-09-30
 
 ### Authentication
@@ -206,59 +229,16 @@ Sources:
 - https://github.com/openai/codex/blob/main/codex-rs/login/src/device_code_auth.rs
 - https://github.com/openai/codex/blob/main/codex-rs/cli/src/doctor.rs
 
-### Status
-
-Research status: TODO
-Implementation status: TODO
-Last verified: YYYY-MM-DD
-
-### Authentication
-
-ChatGPT/Codex OAuth.
-
-Investigate and document:
-
-- device-code flow
-- authorization-code + PKCE
-- refresh behavior
-- persisted credential structure
-- account identifiers required by requests
-
-### Transport
-
-Document the current Codex Responses protocol.
-
-Hermes Agent and Codex may be used as implementation references.
-
-### Important Security Constraint
-
-Never send:
-
-    OPENAI_API_KEY
-
-to the Codex subscription endpoint.
-
-Never send Codex OAuth credentials to the normal OpenAI API endpoint.
-
-### Model Discovery
-
-Document how Codex-accessible models are discovered.
-
-Do not assume the normal OpenAI API model catalog is equivalent.
-
-### Sources
-
-...
-
----
-
 ## Nous Portal
 
 ### Status
 
 Research status: partially verified from Nous-maintained Hermes documentation
 and adapter source; public API definition unavailable during this review
-Implementation status: TODO
+Implementation status: complete through the Portal device-code login,
+endpoint-bound refresh flow, subscription-aware model metadata, and standard
+OpenAI-compatible inference transport. Quota is learned from gateway response
+rate-limit headers; no stable public balance endpoint was found.
 Last verified: 2026-09-30
 
 ### Authentication
@@ -325,7 +305,9 @@ inventing a balance.
 ### Status
 
 Research status: verified from Google AI for Developers documentation
-Implementation status: TODO
+Implementation status: complete through the dedicated Gemini profile using
+the documented `/v1beta/openai` compatibility root and provider-scoped bearer
+credentials.
 Last verified: 2026-09-30
 
 ### Authentication and API
@@ -367,7 +349,9 @@ immutable model identities.
 ### Status
 
 Research status: verified from xAI REST API documentation
-Implementation status: TODO
+Implementation status: complete through the dedicated xAI profile using the
+documented OpenAI-compatible `/v1` surface and provider-scoped bearer
+credentials.
 Last verified: 2026-09-30
 
 ### Authentication and API
@@ -403,7 +387,10 @@ API keys only, not SuperGrok or consumer-subscription OAuth.
 ### Status
 
 Research status: verified from Anthropic Claude Platform documentation
-Implementation status: TODO
+Implementation status: complete through a native Messages API adapter for
+non-streaming Chat Completions, including system-message, usage, and finish-
+reason translation. Streaming, vision, and Responses translation remain
+explicit future extensions rather than being silently approximated.
 Last verified: 2026-09-30
 
 ### Authentication and API

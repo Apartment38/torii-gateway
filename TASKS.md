@@ -696,23 +696,25 @@ checksums only after all required behavior passes.
 
 ---
 
-## Version 2 backlog (not required for Version 1)
+## Version 2 backlog (core adapters implemented in the current tree)
 
 These tasks are deliberately unordered until Version 1 is complete. Before
 implementation, refresh their requirements and dependencies against current
 primary documentation.
 
-- **TASK-013 — OpenRouter adapter:** discovery, authentication, metadata,
-  quota/credit behavior, and contract tests without duplicating OpenRouter's
-  internal routing.
-- **TASK-015 — Gemini adapter:** verified compatible surface plus any required
-  provider-specific behavior.
-- **TASK-016 — xAI adapter:** verified compatible surface plus explicit
-  unsupported-feature behavior.
-- **TASK-018 — Anthropic adapter:** native Messages translation with tools,
-  vision, reasoning, usage, and streaming.
-- **TASK-023 — Nous Portal adapter:** verified subscription authentication,
-  refresh, catalog, inference, quota, and pricing behavior.
-- **Jev classifier adapters:** direct and provider-transport modes may be added
+- **TASK-013 — OpenRouter adapter:** implemented discovery, authentication,
+  model metadata, transparent inference, and response-header quota capture.
+  A separate credits/balance API is not used because the gateway has no stable
+  provider-credit fetch contract.
+- **TASK-015 — Gemini adapter:** implemented through the verified
+  `/v1beta/openai` compatibility surface.
+- **TASK-016 — xAI adapter:** implemented through the verified OpenAI-compatible
+  `/v1` surface with provider-scoped credentials.
+- **TASK-018 — Anthropic adapter:** implemented native Messages translation
+  for non-streaming Chat Completions, tools, usage, and finish reasons;
+  streaming, vision, reasoning, and Responses translation remain follow-ups.
+- **TASK-023 — Nous Portal adapter:** implemented subscription authentication,
+  refresh, catalog pricing, inference, and response-header quota behavior.
+- **Jev classifier adapters:** direct and provider-transport modes are implemented
   behind the Version 1 classifier contract; they must not replace or complicate
   the self-hosted Laya path.

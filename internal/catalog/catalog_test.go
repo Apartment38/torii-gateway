@@ -57,6 +57,39 @@ func TestCatalogMergesDeterministicallyAndSorts(t *testing.T) {
 	}
 }
 
+func TestBundledCatalogHasCurrentCoreModels(t *testing.T) {
+	records, err := catalog.Bundled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) == 0 {
+		t.Fatal("bundled catalog is empty")
+	}
+	seen := make(map[string]bool, len(records))
+	for _, record := range records {
+		if record.PublicID == "" || record.ProviderID == "" || record.UpstreamID == "" {
+			t.Fatalf("record has incomplete identity: %#v", record)
+		}
+		if seen[record.PublicID] {
+			t.Fatalf("duplicate bundled model %q", record.PublicID)
+		}
+		seen[record.PublicID] = true
+		if record.Quality.General != nil || record.Quality.Tools != nil || record.Quality.Reasoning != nil {
+			t.Fatalf("bundled model %q contains an unverified quality score", record.PublicID)
+		}
+	}
+	for _, want := range []string{
+		"openai-codex/gpt-5.3-codex",
+		"anthropic/claude-opus-5-5",
+		"gemini/gemini-3.8-flash",
+		"xai/grok-4.7",
+	} {
+		if !seen[want] {
+			t.Fatalf("bundled catalog is missing %q", want)
+		}
+	}
+}
+
 func TestCatalogPartialRefreshAndLastKnownGood(t *testing.T) {
 	good := &stubProvider{id: "good", models: []provider.Model{{ID: "good/model"}}}
 	flaky := &stubProvider{id: "flaky", models: []provider.Model{{ID: "flaky/model"}}}

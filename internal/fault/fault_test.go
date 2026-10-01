@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/fault"
+	"github.com/Apartment38/torii-gateway/internal/fault"
 )
 
 func TestTypedFaultWrapsCause(t *testing.T) {

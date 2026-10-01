@@ -2,7 +2,7 @@ package quota_test
 
 import (
 	"context"
-	"github.com/Apartment38/torii-router/internal/quota"
+	"github.com/Apartment38/torii-gateway/internal/quota"
 	"sync"
 	"sync/atomic"
 	"testing"

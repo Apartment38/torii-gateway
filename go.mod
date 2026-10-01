@@ -1,4 +1,4 @@
-module github.com/Apartment38/torii-router
+module github.com/Apartment38/torii-gateway
 
 go 1.25.1
 

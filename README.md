@@ -1,6 +1,6 @@
-# Torii Router
+# Torii Gateway
 
-Torii Router is a lightweight, resource-efficient LLM gateway written in Go.
+Torii Gateway is a lightweight, resource-efficient LLM gateway written in Go.
 It presents an OpenAI-compatible HTTP API in front of one or more Ollama servers or standard OpenAI-compatible
 endpoints and gives every upstream model a provider-qualified name such as
 `local/llama3.2`. The current build implements the repository's Version 1
@@ -50,8 +50,8 @@ describes implemented versus planned behavior.
 Clone the repository and build the gateway:
 
 ```sh
-git clone https://github.com/Apartment38/torii-router.git
-cd torii-router
+git clone https://github.com/Apartment38/torii-gateway.git
+cd torii-gateway
 mkdir -p bin
 go build -o ./bin/gateway ./cmd/gateway
 ```
@@ -65,14 +65,14 @@ export TORII_API_KEY="replace-with-a-long-random-secret"
 ./bin/gateway serve --config ./config.yaml
 ```
 
-The `--config` flag defaults to `/config/config.yaml`. Torii Router validates
+The `--config` flag defaults to `/config/config.yaml`. Torii Gateway validates
 the complete configuration and resolves its API-key secret before opening the
 listener, so configuration or secret errors cause startup to fail rather than
 leaving a partially configured service running.
 
 ## Configuration
 
-Torii Router reads exactly one YAML document. Unknown fields are rejected to
+Torii Gateway reads exactly one YAML document. Unknown fields are rejected to
 catch spelling mistakes and configuration intended for unsupported features.
 The included [`config.example.yaml`](config.example.yaml) is a complete
 starting point:
@@ -294,4 +294,4 @@ and [`AGENTS.md`](AGENTS.md) for project constraints.
 
 ## License
 
-Torii Router is available under the [MIT License](LICENSE).
+Torii Gateway is available under the [MIT License](LICENSE).

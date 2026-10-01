@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/transport"
+	"github.com/Apartment38/torii-gateway/internal/transport"
 )
 
 func TestCanonicalRequestRoundTripPreservesTranslationFeatures(t *testing.T) {

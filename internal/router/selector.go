@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/catalog"
 )
 
 type LocationPreference string

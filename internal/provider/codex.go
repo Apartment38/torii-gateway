@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/requestid"
+	"github.com/Apartment38/torii-gateway/internal/requestid"
 )
 
 // Codex is the endpoint-bound ChatGPT subscription provider. Its credential

@@ -1,4 +1,4 @@
-# Torii Router
+# Torii Gateway
 A Personal Lightweight Intelligent LLM Gateway & Router.
 
 ## Version 1 Implementation Plan

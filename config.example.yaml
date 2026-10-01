@@ -1,4 +1,4 @@
-# Torii Router version 1 configuration.
+# Torii Gateway version 1 configuration.
 # Copy this file to config.yaml and set TORII_API_KEY before starting.
 server:
   # Use 0.0.0.0:8080 when the gateway must listen outside the local machine or

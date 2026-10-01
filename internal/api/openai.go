@@ -12,16 +12,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/catalog"
-	"github.com/Apartment38/torii-router/internal/classifier"
-	"github.com/Apartment38/torii-router/internal/fault"
-	"github.com/Apartment38/torii-router/internal/provider"
-	"github.com/Apartment38/torii-router/internal/quota"
-	"github.com/Apartment38/torii-router/internal/requestid"
-	"github.com/Apartment38/torii-router/internal/router"
-	"github.com/Apartment38/torii-router/internal/session"
-	"github.com/Apartment38/torii-router/internal/transport"
-	"github.com/Apartment38/torii-router/internal/usage"
+	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/classifier"
+	"github.com/Apartment38/torii-gateway/internal/fault"
+	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/quota"
+	"github.com/Apartment38/torii-gateway/internal/requestid"
+	"github.com/Apartment38/torii-gateway/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/session"
+	"github.com/Apartment38/torii-gateway/internal/transport"
+	"github.com/Apartment38/torii-gateway/internal/usage"
 )
 
 const maxRequestBody = 32 << 20
@@ -154,7 +154,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 	for _, descriptor := range descriptors {
 		models = append(models, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
 	}
-	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii-router"})
+	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
 	writeJSON(w, http.StatusOK, struct {
 		Object string           `json:"object"`
 		Data   []provider.Model `json:"data"`
@@ -163,7 +163,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
 	if publicID == "smart" {
-		writeJSON(w, http.StatusOK, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii-router"})
+		writeJSON(w, http.StatusOK, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
 		return
 	}
 	providerID, _, err := provider.ParseModelID(publicID)

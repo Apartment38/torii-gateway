@@ -50,9 +50,9 @@ jobs:
         run: go build ./...
 
       - name: Build production container
-        run: docker build --platform linux/amd64 -t torii-router:ci .
+        run: docker build --platform linux/amd64 -t torii-gateway:ci .
 
       - name: Check container metadata
         run: |
-          test "$(docker image inspect torii-router:ci --format '{{.Architecture}}')" = amd64
-          test "$(docker image inspect torii-router:ci --format '{{.Config.User}}')" = 'nonroot:nonroot'
+          test "$(docker image inspect torii-gateway:ci --format '{{.Architecture}}')" = amd64
+          test "$(docker image inspect torii-gateway:ci --format '{{.Config.User}}')" = 'nonroot:nonroot'

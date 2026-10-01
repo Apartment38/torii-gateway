@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/state"
+	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
 func TestFlatFileCredentialStorePersistsAcrossRestart(t *testing.T) {

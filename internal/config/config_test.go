@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/config"
 )
 
 const validConfig = `

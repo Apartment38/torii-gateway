@@ -8,7 +8,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/provider"
 )
 
 type Embedder interface {

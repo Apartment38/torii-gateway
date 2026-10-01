@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/requestid"
+	"github.com/Apartment38/torii-gateway/internal/requestid"
 )
 
 const requestIDHeader = "X-Request-ID"

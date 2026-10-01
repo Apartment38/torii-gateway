@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/api"
-	"github.com/Apartment38/torii-router/internal/provider"
-	"github.com/Apartment38/torii-router/internal/requestid"
+	"github.com/Apartment38/torii-gateway/internal/api"
+	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/requestid"
 )
 
 func TestRequestIDMiddlewareAcceptsAndGeneratesIDs(t *testing.T) {

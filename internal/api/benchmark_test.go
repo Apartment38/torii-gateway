@@ -2,8 +2,8 @@ package api_test
 
 import (
 	"context"
-	"github.com/Apartment38/torii-router/internal/api"
-	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/api"
+	"github.com/Apartment38/torii-gateway/internal/provider"
 	"net/http"
 	"strings"
 	"testing"

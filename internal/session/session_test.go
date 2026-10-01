@@ -1,7 +1,7 @@
 package session_test
 
 import (
-	"github.com/Apartment38/torii-router/internal/session"
+	"github.com/Apartment38/torii-gateway/internal/session"
 	"testing"
 	"time"
 )

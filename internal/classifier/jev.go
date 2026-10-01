@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/provider"
 )
 
 const maxJevResponseSize = 1 << 20

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/config"
 )
 
 func TestExampleConfigurationIsValid(t *testing.T) {

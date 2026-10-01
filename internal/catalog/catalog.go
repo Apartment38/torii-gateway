@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/provider"
 )
 
 // TriState represents verified support, verified non-support, or unknown.

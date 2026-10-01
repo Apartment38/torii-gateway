@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/quota"
-	"github.com/Apartment38/torii-router/internal/transport"
+	"github.com/Apartment38/torii-gateway/internal/quota"
+	"github.com/Apartment38/torii-gateway/internal/transport"
 )
 
 // OpenAICompatibleConfig configures an arbitrary standard OpenAI-compatible

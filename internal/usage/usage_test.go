@@ -1,7 +1,7 @@
 package usage_test
 
 import (
-	"github.com/Apartment38/torii-router/internal/usage"
+	"github.com/Apartment38/torii-gateway/internal/usage"
 	"testing"
 )
 

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/transport"
+	"github.com/Apartment38/torii-gateway/internal/transport"
 )
 
 const (

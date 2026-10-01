@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/transport"
+	"github.com/Apartment38/torii-gateway/internal/transport"
 )
 
 func TestOpenAICompatibleRewritesModelAndPreservesUnknownFields(t *testing.T) {

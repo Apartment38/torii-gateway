@@ -1,8 +1,8 @@
 package router_test
 
 import (
-	"github.com/Apartment38/torii-router/internal/catalog"
-	"github.com/Apartment38/torii-router/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/router"
 	"math/rand"
 	"reflect"
 	"testing"

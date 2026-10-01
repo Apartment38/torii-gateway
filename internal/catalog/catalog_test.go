@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/catalog"
-	"github.com/Apartment38/torii-router/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/provider"
 )
 
 type stubProvider struct {

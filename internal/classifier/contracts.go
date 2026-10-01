@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/router"
 )
 
 type TaskType string

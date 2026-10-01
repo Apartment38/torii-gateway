@@ -3,8 +3,8 @@ package classifier_test
 import (
 	"context"
 	"errors"
-	"github.com/Apartment38/torii-router/internal/classifier"
-	"github.com/Apartment38/torii-router/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/classifier"
+	"github.com/Apartment38/torii-gateway/internal/router"
 	"testing"
 	"time"
 )

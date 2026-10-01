@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/config"
 )
 
 func TestGatewayProcessServesAuthenticatedModels(t *testing.T) {

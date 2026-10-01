@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Apartment38/torii-router/internal/fault"
+	"github.com/Apartment38/torii-gateway/internal/fault"
 )
 
 type errorBody struct {

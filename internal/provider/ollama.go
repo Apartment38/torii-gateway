@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/transport"
+	"github.com/Apartment38/torii-gateway/internal/transport"
 )
 
 const modelDiscoveryTimeout = 10 * time.Second

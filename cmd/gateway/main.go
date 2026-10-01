@@ -1,4 +1,4 @@
-// Command gateway is the entry point for the Torii Router gateway.
+// Command gateway is the entry point for the Torii Gateway service.
 package main
 
 import (
@@ -19,15 +19,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Apartment38/torii-router/internal/api"
-	"github.com/Apartment38/torii-router/internal/catalog"
-	"github.com/Apartment38/torii-router/internal/classifier"
-	"github.com/Apartment38/torii-router/internal/config"
-	"github.com/Apartment38/torii-router/internal/provider"
-	"github.com/Apartment38/torii-router/internal/quota"
-	"github.com/Apartment38/torii-router/internal/router"
-	"github.com/Apartment38/torii-router/internal/state"
-	"github.com/Apartment38/torii-router/internal/usage"
+	"github.com/Apartment38/torii-gateway/internal/api"
+	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/classifier"
+	"github.com/Apartment38/torii-gateway/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/quota"
+	"github.com/Apartment38/torii-gateway/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/state"
+	"github.com/Apartment38/torii-gateway/internal/usage"
 )
 
 func main() {

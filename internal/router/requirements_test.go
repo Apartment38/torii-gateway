@@ -2,7 +2,7 @@ package router_test
 
 import (
 	"bytes"
-	"github.com/Apartment38/torii-router/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/router"
 	"testing"
 )
 

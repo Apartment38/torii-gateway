@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Apartment38/torii-router/internal/api"
+	"github.com/Apartment38/torii-gateway/internal/api"
 )
 
 type nilIdentityAuthenticator struct{}

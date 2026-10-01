@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Apartment38/torii-router/internal/requestid"
+	"github.com/Apartment38/torii-gateway/internal/requestid"
 )
 
 // ErrInvalidRequest identifies malformed or unsupported client request data.

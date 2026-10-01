@@ -61,7 +61,7 @@ func TestCodexUsesDefaultModelForBootstrapPlaceholder(t *testing.T) {
 
 func TestCodexDiscoversAuthenticatedSubscriptionModels(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/models" || r.URL.Query().Get("client_version") == "" || r.Header.Get("Authorization") != "Bearer access" || r.Header.Get("ChatGPT-Account-ID") != "account" {
+		if r.URL.Path != "/models" || r.URL.Query().Get("client_version") != codexClientVersion || r.Header.Get("Authorization") != "Bearer access" || r.Header.Get("ChatGPT-Account-ID") != "account" {
 			t.Fatalf("discovery request = %s auth=%q account=%q", r.URL.String(), r.Header.Get("Authorization"), r.Header.Get("ChatGPT-Account-ID"))
 		}
 		_, _ = io.WriteString(w, `{"models":[{"slug":"gpt-a","visibility":"list","supported_in_api":true},{"slug":"hidden","visibility":"hide","supported_in_api":true},{"slug":"unsupported","visibility":"list","supported_in_api":false}]}`)

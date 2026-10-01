@@ -34,6 +34,7 @@ type Codex struct {
 const (
 	DefaultCodexBaseURL = "https://chatgpt.com/backend-api/codex"
 	defaultCodexModel   = "gpt-5.3-codex"
+	codexClientVersion  = "0.144.5"
 )
 
 type CodexCredential struct {
@@ -78,7 +79,7 @@ func (c *Codex) Models(ctx context.Context) ([]Model, error) {
 	requestURL := *c.base
 	requestURL.Path = strings.TrimRight(requestURL.Path, "/") + "/models"
 	query := requestURL.Query()
-	query.Set("client_version", "torii-gateway")
+	query.Set("client_version", codexClientVersion)
 	requestURL.RawQuery = query.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
 	if err != nil {

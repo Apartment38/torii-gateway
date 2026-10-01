@@ -532,6 +532,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		mux.HandleFunc("GET /gateway/v1/config", runtime.getConfig)
 		mux.HandleFunc("PUT /gateway/v1/config", runtime.putConfig)
 		mux.HandleFunc("POST /gateway/v1/config", runtime.putConfig)
+		mux.HandleFunc("POST /gateway/v1/providers/test", runtime.testProvider)
 	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
@@ -601,6 +602,45 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 	r.swap(newHandler)
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = io.WriteString(w, `{"status":"saved","reloaded":true}`+"\n")
+}
+
+func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) {
+	decoder := yaml.NewDecoder(io.LimitReader(req.Body, 1<<20))
+	decoder.KnownFields(true)
+	var request struct {
+		Provider config.ProviderConfig `yaml:"provider"`
+	}
+	if err := decoder.Decode(&request); err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode provider: %w", err))
+		return
+	}
+	if request.Provider.ID == "" {
+		writeConfigError(w, http.StatusBadRequest, errors.New("provider.id is required"))
+		return
+	}
+	current, err := config.Load(r.configPath)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
+		return
+	}
+	if request.Provider.Type != "ollama" {
+		discover := true
+		request.Provider.DiscoverModels = &discover
+	}
+	upstream, err := buildProviderWithState(request.Provider, current.State.Directory)
+	if err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("initialize provider: %w", err))
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+	defer cancel()
+	models, err := upstream.Models(ctx)
+	if err != nil {
+		writeConfigError(w, http.StatusBadGateway, fmt.Errorf("test provider connection: %w", err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "models": models})
 }
 
 func persistConfig(path string, cfg *config.Config) error {

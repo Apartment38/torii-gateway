@@ -14,9 +14,7 @@ const authProvider: AuthProvider = new NoAuthProvider();
 const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
-const STORAGE_KEY = "torii-gateway-console-draft";
-
-const providerDefaults = { id: "openai", type: "openai_compatible", base_url: "", api_path: "", portal_url: "", client_id: "", bearer_env: "", management_env: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
+const providerDefaults = { id: "openai", type: "openai_compatible", api_url: "", api_key_env: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
 
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
@@ -26,13 +24,14 @@ function checked(provider: Record<string, string | boolean>, key: string): strin
 function renderProviders(): void {
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> Provider ${index + 1}</div>${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> Provider ${index + 1}</div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">Test connection</button>${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}<span class="provider-result" data-result="${index}" role="status"></span></div></div>
       <div class="grid three">
         <label>Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label>
         <label>Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
-        <label>Base URL<input data-provider="${index}" data-key="base_url" value="${value(provider,"base_url")}" placeholder="https://api.example.com" /></label>
-        <label>API path<input data-provider="${index}" data-key="api_path" value="${value(provider,"api_path")}" placeholder="/v1" /></label>
-        <label>Bearer token environment<input data-provider="${index}" data-key="bearer_env" value="${value(provider,"bearer_env")}" placeholder="PROVIDER_API_KEY" /></label>
+        <label>API URL<input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com/v1" /></label>
+        <label>API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
+      </div>
+      <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
         <label>Management token environment<input data-provider="${index}" data-key="management_env" value="${value(provider,"management_env")}" placeholder="OPENROUTER_MANAGEMENT_KEY" /></label>
         <label>Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
         <label>Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
@@ -47,10 +46,11 @@ function renderProviders(): void {
         <label>Connect timeout<input data-provider="${index}" data-key="connect_timeout" value="${value(provider,"connect_timeout")}" placeholder="5s" /></label>
         <label>Request timeout<input data-provider="${index}" data-key="request_timeout" value="${value(provider,"request_timeout")}" placeholder="60s" /></label>
         <label>Discovery timeout<input data-provider="${index}" data-key="discovery_timeout" value="${value(provider,"discovery_timeout")}" placeholder="10s" /></label>
-      </div>
-      <div class="check-row"><label class="checkbox"><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label></div>
+        <div class="check-row"><label class="checkbox"><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label></div>
+      </div></details>
     </article>`).join("");
   providerList.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach(button => button.addEventListener("click", () => { providers.splice(Number(button.dataset.remove), 1); renderProviders(); markDirty(); }));
+  providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test), button); }));
   providerList.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
 }
 
@@ -62,26 +62,17 @@ function updateProvider(event: Event): void {
   markDirty();
 }
 
-function markDirty(): void { saveState.textContent = "Unsaved draft"; localStorage.setItem(STORAGE_KEY, JSON.stringify({ providers, fields: Object.fromEntries(new FormData(form)) })); }
-function readDraft(): void {
-  try {
-    const draft = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!draft) return;
-    providers = draft.providers || providers;
-    renderProviders();
-    Object.entries(draft.fields || {}).forEach(([name, raw]) => { const control = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null; if (control) control.type === "checkbox" ? control.checked = raw === "on" : control.value = String(raw); });
-    saveState.textContent = "Draft restored";
-  } catch { localStorage.removeItem(STORAGE_KEY); }
-}
+function markDirty(): void { saveState.textContent = "Unsaved changes"; }
 
 function applyConfig(config: Record<string, any>): void {
   providers = (config.providers || []).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
-    bearer_env: provider.bearer_token?.env || "",
+    api_key_env: provider.bearer_token?.env || "",
     management_env: provider.management_token?.env || "",
     tls_ca: provider.tls?.ca_file || "",
     tls_server: provider.tls?.server_name || "",
+    api_url: `${provider.base_url || ""}${provider.api_path || ""}`,
     headers: provider.headers ? JSON.stringify(provider.headers) : "",
     rewrites: provider.model_rewrites ? JSON.stringify(provider.model_rewrites) : "",
     models: Array.isArray(provider.models) ? provider.models.join(", ") : "",
@@ -110,13 +101,12 @@ async function loadServerConfig(): Promise<void> {
     if (!response.ok) return;
     applyConfig(await response.json());
     saveState.textContent = "Loaded from gateway";
-  } catch { /* The console remains usable in local draft mode. */ }
+  } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
 async function saveConfig(): Promise<void> {
   const response = await fetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(readConfig()) });
   if (!response.ok) { toast(`Save failed: ${await response.text()}`); return; }
-  localStorage.removeItem(STORAGE_KEY);
   saveState.textContent = "Saved and reloaded";
   await loadServerConfig();
   toast("Configuration saved and reloaded");
@@ -135,26 +125,34 @@ function setNested(target: Record<string, any>, path: string, raw: unknown): voi
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = { server: {}, state: {}, providers: [], router: { classifier: {}, sessions: {}, quota: {}, selection: {} } };
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  config.providers = providers.map(provider => { const output: Record<string, any> = {}; Object.entries(provider).forEach(([key, raw]) => { if (key === "discover") { if (raw) output.discover_models = true; return; } if (String(raw).trim() === "") return; const map: Record<string, string> = { bearer_env: "bearer_token", management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" }; const mapped = map[key] || key; if (key === "models") output.models = String(raw).split(",").map(v => v.trim()).filter(Boolean); else if (key === "headers" || key === "rewrites") { try { output[key === "headers" ? "headers" : "model_rewrites"] = JSON.parse(String(raw)); } catch { output[key === "headers" ? "headers" : "model_rewrites"] = {}; } } else if (key.endsWith("_env")) { setNested(output, mapped, { env: raw }); } else setNested(output, mapped, raw); }); return output; });
+  config.providers = providers.map(provider => { const output: Record<string, any> = {}; Object.entries(provider).forEach(([key, raw]) => { if (key === "discover") { if (raw) output.discover_models = true; return; } if (String(raw).trim() === "") return; const map: Record<string, string> = { api_key_env: "bearer_token", management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" }; const mapped = map[key] || key; if (key === "api_url") { const url = new URL(String(raw)); output.base_url = `${url.protocol}//${url.host}`; output.api_path = url.pathname === "/" ? "" : url.pathname; return; } if (key === "models") output.models = String(raw).split(",").map(v => v.trim()).filter(Boolean); else if (key === "headers" || key === "rewrites") { try { output[key === "headers" ? "headers" : "model_rewrites"] = JSON.parse(String(raw)); } catch { output[key === "headers" ? "headers" : "model_rewrites"] = {}; } } else if (key.endsWith("_env")) { setNested(output, mapped, { env: raw }); } else setNested(output, mapped, raw); }); return output; });
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
   return config;
 }
-function yamlScalar(value: unknown): string { if (typeof value === "boolean" || typeof value === "number") return String(value); const text = String(value); return /^[A-Za-z0-9_./:@+-]+$/.test(text) ? text : JSON.stringify(text); }
-function toYAML(value: any, indent = 0): string {
-  const pad = " ".repeat(indent); let output = "";
-  if (Array.isArray(value)) return value.map(item => typeof item === "object" ? `${pad}-\n${toYAML(item, indent + 2)}` : `${pad}- ${yamlScalar(item)}\n`).join("");
-  Object.entries(value).forEach(([key, raw]) => { if (raw === undefined || raw === null || raw === "") return; if (typeof raw === "object") output += `${pad}${key}:\n${toYAML(raw, indent + 2)}`; else output += `${pad}${key}: ${yamlScalar(raw)}\n`; }); return output;
+async function testProvider(index: number, button: HTMLButtonElement): Promise<void> {
+  const result = providerList.querySelector<HTMLSpanElement>(`[data-result="${index}"]`)!;
+  button.disabled = true;
+  result.textContent = "Testing…";
+  result.className = "provider-result pending";
+  try {
+    const response = await fetch("/gateway/v1/providers/test", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: readConfig().providers[index] }) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "connection failed");
+    result.textContent = `Success · ${body.models.length} model${body.models.length === 1 ? "" : "s"} detected`;
+    result.className = "provider-result success";
+  } catch (error) {
+    result.textContent = `Failed · ${error instanceof Error ? error.message : "connection failed"}`;
+    result.className = "provider-result failure";
+  } finally { button.disabled = false; }
 }
-function download(): void { const blob = new Blob([toYAML(readConfig())], { type: "text/yaml" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "config.yaml"; link.click(); URL.revokeObjectURL(link.href); saveState.textContent = "YAML downloaded"; toast("Configuration downloaded"); }
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
 document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults, id: `provider-${providers.length + 1}` }); renderProviders(); markDirty(); });
-document.querySelector("#download-button")!.addEventListener("click", download);
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
-document.querySelector("#reset-button")!.addEventListener("click", () => { localStorage.removeItem(STORAGE_KEY); location.reload(); });
+document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
 form.addEventListener("input", markDirty);
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-renderProviders(); navigate(); void loadServerConfig().then(() => readDraft());
+renderProviders(); navigate(); void loadServerConfig();

@@ -16,7 +16,7 @@ func TestHandlerServesConsoleAndBrandAssets(t *testing.T) {
 		want string
 	}{
 		{path: "/", want: "Torii Gateway Console"},
-		{path: "/web/app.js", want: "Configuration downloaded"},
+		{path: "/web/app.js", want: "testProvider"},
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))

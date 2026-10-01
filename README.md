@@ -7,8 +7,8 @@
 Torii Gateway is a lightweight, resource-efficient LLM gateway written in Go.
 
 The root URL serves an embedded, dependency-light configuration console. It
-supports light and dark themes, provider and routing configuration, local draft
-persistence, and YAML download. The console does not require authentication;
+supports light and dark themes, provider and routing configuration, automatic
+loading of the active configuration, and live save/reload. The console does not require authentication;
 the API uses the configured bearer key when one is present. Authentication is
 kept behind a replaceable interface so Basic Auth or Authentik/OIDC can be
 added later without changing the console.
@@ -117,9 +117,8 @@ The console is divided into Overview, Server, Providers, Routing, and State &
 Quota pages. **Save & reload** sends the validated configuration to
 `PUT /gateway/v1/config`; the gateway atomically replaces the mounted YAML
 file and swaps in the rebuilt provider/routing handler. A failed validation or
-provider initialization leaves the current configuration active. Download YAML
-remains available when you want to review or transfer a configuration without
-applying it.
+provider initialization leaves the current configuration active. The console
+reloads the active configuration after a successful save.
 
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its state volume. If an upstream

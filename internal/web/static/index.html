@@ -25,7 +25,7 @@
         </nav>
         <div class="sidebar-foot">
           <span class="status-dot"></span>
-          <span>Local draft mode</span>
+          <span>Gateway configuration</span>
         </div>
       </aside>
       <main id="top" class="content">
@@ -37,9 +37,8 @@
           </div>
           <div class="top-actions">
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">☾</button>
-            <button id="reset-button" class="button quiet" type="button">Reset draft</button>
+            <button id="reset-button" class="button quiet" type="button">Refresh config</button>
             <button id="save-button" class="button primary" type="button">Save &amp; reload</button>
-            <button id="download-button" class="button quiet" type="button">Download YAML</button>
           </div>
         </header>
 
@@ -47,7 +46,7 @@
           <div class="hero-copy">
             <span class="pill">Configuration studio</span>
             <h2>Make the path through your models feel intentional.</h2>
-            <p>These settings are kept in your browser until you download a configuration file. Nothing is sent anywhere by this console.</p>
+            <p>Configure the live gateway from a focused, section-by-section workspace.</p>
           </div>
           <img class="hero-logo" src="/web/torii-gateway-logo.png" alt="Torii Gateway wave and torii logo" />
         </section>
@@ -102,7 +101,7 @@
             <div class="subcard"><div class="subcard-title">Local quota allowances</div><p class="muted">Optional model-to-cost limits, one entry per line.</p><textarea name="router.quota.allowances" rows="4" placeholder="provider/model = 10.00"></textarea></div>
           </section>
         </form>
-        <footer class="footer"><span>Torii Gateway · local-first configuration</span><span id="save-state">Draft ready</span></footer>
+        <footer class="footer"><span>Torii Gateway · live configuration</span><span id="save-state">Ready</span></footer>
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

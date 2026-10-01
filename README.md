@@ -81,12 +81,14 @@ leaving a partially configured service running.
 
 The repository includes a Podman-compatible [`compose.yaml`](compose.yaml).
 Create the mounted configuration file, change `server.listen` to
-`0.0.0.0:8080`, and set provider URLs that are reachable from the container:
+`0.0.0.0:8080`, and create a project-root `.env` file for the API key:
 
 ```sh
 cp config.example.yaml config.yaml
-# edit config.yaml, then set the API key if authentication is enabled
-export TORII_API_KEY="replace-with-a-long-random-secret"
+cat > .env <<'EOF'
+TORII_API_KEY=replace-with-a-long-random-secret
+EOF
+# edit config.yaml and set provider URLs reachable from the container
 podman compose up --build -d
 ```
 
@@ -94,14 +96,18 @@ The console is available at <http://127.0.0.1:8080/> and the API at
 <http://127.0.0.1:8080/v1>. The compose service publishes host port `8080` by
 default, stores persistent gateway state in the named
 `torii_gateway_state` volume, and runs as the image's non-root user. Set
-`TORII_PORT` to publish a different host port or `TORII_IMAGE` to use a
-prebuilt image:
+`TORII_PORT` in `.env` to publish a different host port or `TORII_IMAGE` to use
+a prebuilt image. Compose interpolates these values and passes `TORII_API_KEY`
+into the container for the `server.authentication.api_key.env` reference:
 
 ```sh
-TORII_PORT=9000 TORII_IMAGE=torii-gateway:release podman compose up -d
+# Edit .env if you want a different port, image, or API key.
 podman compose logs -f torii-gateway
 podman compose down
 ```
+
+Keep `.env` private; it is ignored by Git. If authentication is omitted from
+`config.yaml`, the API key environment variable is not required.
 
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its state volume. If an upstream

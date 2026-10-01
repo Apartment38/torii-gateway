@@ -3,13 +3,16 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -34,6 +37,13 @@ type PKCEAuthorization struct {
 	ClientID         string
 	HostID           string
 	Nonce            string
+}
+
+// CodexIdentity contains the validated identity claims from an OpenAI ID token.
+type CodexIdentity struct {
+	Issuer  string
+	Subject string
+	Email   string
 }
 
 // StartPKCE creates an authorization URL for a caller-managed callback.
@@ -146,6 +156,155 @@ func ExchangePKCE(ctx context.Context, issuer, code string, authorization PKCEAu
 		token.ClientID = clientID
 	}
 	return CodexCredential{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, ExpiresAt: expires, Endpoint: issuer, AccountID: token.AccountID, ClientID: token.ClientID, IDToken: token.IDToken, Issuer: issuer, HostID: authorization.HostID, Scopes: strings.Fields(token.Scope)}, nil
+}
+
+// ValidateCodexIDToken validates the OpenID Connect token returned by OpenAI.
+// The discovery and JWKS documents are fetched for each login; the helper is a
+// short-lived process, so a persistent key cache is unnecessary here.
+func ValidateCodexIDToken(ctx context.Context, token, issuer, clientID, nonce string, client *http.Client) (CodexIdentity, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return CodexIdentity{}, errors.New("Codex ID token is not a JWT")
+	}
+	decode := func(value string) ([]byte, error) { return base64.RawURLEncoding.DecodeString(value) }
+	headerBytes, err := decode(parts[0])
+	if err != nil {
+		return CodexIdentity{}, errors.New("Codex ID token header is invalid")
+	}
+	var header struct {
+		Algorithm string `json:"alg"`
+		KeyID     string `json:"kid"`
+	}
+	if json.Unmarshal(headerBytes, &header) != nil || header.Algorithm != "RS256" || header.KeyID == "" {
+		return CodexIdentity{}, errors.New("Codex ID token signing header is invalid")
+	}
+	payloadBytes, err := decode(parts[1])
+	if err != nil {
+		return CodexIdentity{}, errors.New("Codex ID token claims are invalid")
+	}
+	var claims struct {
+		Issuer    string          `json:"iss"`
+		Subject   string          `json:"sub"`
+		Email     string          `json:"email"`
+		Audience  json.RawMessage `json:"aud"`
+		ExpiresAt int64           `json:"exp"`
+		Nonce     string          `json:"nonce"`
+	}
+	if json.Unmarshal(payloadBytes, &claims) != nil || claims.Issuer == "" || claims.Subject == "" || claims.ExpiresAt <= time.Now().Unix() || claims.Nonce != nonce {
+		return CodexIdentity{}, errors.New("Codex ID token claims failed validation")
+	}
+	if strings.TrimRight(claims.Issuer, "/") != strings.TrimRight(issuer, "/") {
+		return CodexIdentity{}, errors.New("Codex ID token issuer is invalid")
+	}
+	if !audienceContains(claims.Audience, clientID) {
+		return CodexIdentity{}, errors.New("Codex ID token audience is invalid")
+	}
+
+	discovery, err := fetchOpenAIDiscovery(ctx, issuer, client)
+	if err != nil {
+		return CodexIdentity{}, err
+	}
+	key, err := fetchOpenAIKey(ctx, discovery.JWKSURI, header.KeyID, client)
+	if err != nil {
+		return CodexIdentity{}, err
+	}
+	signature, err := decode(parts[2])
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if err != nil || rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], signature) != nil {
+		return CodexIdentity{}, errors.New("Codex ID token signature is invalid")
+	}
+	return CodexIdentity{Issuer: claims.Issuer, Subject: claims.Subject, Email: claims.Email}, nil
+}
+
+func audienceContains(raw json.RawMessage, wanted string) bool {
+	var single string
+	if json.Unmarshal(raw, &single) == nil {
+		return single == wanted
+	}
+	var multiple []string
+	if json.Unmarshal(raw, &multiple) != nil {
+		return false
+	}
+	for _, value := range multiple {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+type openAIDiscovery struct {
+	JWKSURI string `json:"jwks_uri"`
+}
+
+func fetchOpenAIDiscovery(ctx context.Context, issuer string, client *http.Client) (openAIDiscovery, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(issuer, "/")+"/.well-known/openid-configuration", nil)
+	if err != nil {
+		return openAIDiscovery{}, err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return openAIDiscovery{}, fmt.Errorf("fetch OpenAI discovery: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return openAIDiscovery{}, fmt.Errorf("fetch OpenAI discovery returned %s", response.Status)
+	}
+	var discovery openAIDiscovery
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&discovery); err != nil || discovery.JWKSURI == "" {
+		return openAIDiscovery{}, errors.New("OpenAI discovery document is invalid")
+	}
+	return discovery, nil
+}
+
+func fetchOpenAIKey(ctx context.Context, jwksURI, keyID string, client *http.Client) (*rsa.PublicKey, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURI, nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("fetch OpenAI JWKS: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("fetch OpenAI JWKS returned %s", response.Status)
+	}
+	var document struct {
+		Keys []struct {
+			KeyID string `json:"kid"`
+			N     string `json:"n"`
+			E     string `json:"e"`
+		} `json:"keys"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&document); err != nil {
+		return nil, errors.New("OpenAI JWKS document is invalid")
+	}
+	for _, candidate := range document.Keys {
+		if candidate.KeyID != keyID {
+			continue
+		}
+		modulus, err := base64.RawURLEncoding.DecodeString(candidate.N)
+		if err != nil {
+			return nil, errors.New("OpenAI JWKS modulus is invalid")
+		}
+		exponentBytes, err := base64.RawURLEncoding.DecodeString(candidate.E)
+		if err != nil || len(exponentBytes) > 4 {
+			return nil, errors.New("OpenAI JWKS exponent is invalid")
+		}
+		var exponent uint32
+		for _, value := range exponentBytes {
+			exponent = exponent<<8 | uint32(value)
+		}
+		if exponent == 0 {
+			return nil, errors.New("OpenAI JWKS exponent is invalid")
+		}
+		return &rsa.PublicKey{N: new(big.Int).SetBytes(modulus), E: int(exponent)}, nil
+	}
+	return nil, fmt.Errorf("OpenAI JWKS key %q was not found", keyID)
 }
 
 // CodexOAuthPort extracts the externally reachable port from the request host.

@@ -878,6 +878,10 @@ func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Re
 		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential is missing required fields"))
 		return
 	}
+	if !containsScope(imported.Scopes, "chatgpt.tokens.use.direct") {
+		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not include ChatGPT plan usage permission"))
+		return
+	}
 	if imported.HostID != session.HostID || (session.ClientID != "dynamic_agent_client" && imported.ClientID != session.ClientID) {
 		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not match this login session"))
 		return
@@ -924,6 +928,15 @@ func newLoginPairingToken() (string, string, error) {
 	token := hex.EncodeToString(raw)
 	hash := sha256.Sum256([]byte(token))
 	return token, hex.EncodeToString(hash[:]), nil
+}
+
+func containsScope(scopes []string, wanted string) bool {
+	for _, scope := range scopes {
+		if scope == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func providerLoginSessionURL(req *http.Request) string {
@@ -1000,7 +1013,7 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 		if storeErr != nil {
 			err = storeErr
 		} else {
-			err = store.Save(flow.Provider.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: flow.Provider.BaseURL, AccountID: credential.AccountID, TokenType: "Bearer"})
+			err = store.Save(flow.Provider.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: flow.Provider.BaseURL, AccountID: credential.AccountID, ClientID: credential.ClientID, IDToken: credential.IDToken, Issuer: credential.Issuer, Subject: credential.Subject, Email: credential.Email, HostID: credential.HostID, Scopes: credential.Scopes, TokenType: "Bearer"})
 		}
 	}
 	if err != nil {

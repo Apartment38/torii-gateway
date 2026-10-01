@@ -153,7 +153,14 @@ func login(ctx context.Context, sessionURL, pairingToken string, client *http.Cl
 	if err != nil {
 		return fmt.Errorf("exchange Codex authorization: %w", err)
 	}
+	identity, err := provider.ValidateCodexIDToken(ctx, credential.IDToken, session.Issuer, credential.ClientID, authorization.Nonce, client)
+	if err != nil {
+		return fmt.Errorf("validate Codex identity: %w", err)
+	}
 	credential.HostID = session.HostID
+	credential.Subject = identity.Subject
+	credential.Email = identity.Email
+	credential.Issuer = identity.Issuer
 	if credential.ClientID == "" {
 		credential.ClientID = authorization.ClientID
 	}
@@ -162,6 +169,9 @@ func login(ctx context.Context, sessionURL, pairingToken string, client *http.Cl
 	}
 	if credential.IDToken == "" {
 		return errors.New("Codex token response did not include an ID token")
+	}
+	if !containsScope(credential.Scopes, "chatgpt.tokens.use.direct") {
+		return errors.New("Codex authorization did not grant ChatGPT plan usage")
 	}
 
 	importURL, err := importEndpoint(sessionURL)
@@ -202,6 +212,15 @@ func importEndpoint(sessionURL string) (string, error) {
 	parsed.Path = strings.TrimSuffix(parsed.Path, "/session") + "/import"
 	parsed.RawQuery = ""
 	return parsed.String(), nil
+}
+
+func containsScope(scopes []string, wanted string) bool {
+	for _, scope := range scopes {
+		if scope == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func openBrowser(target string) error {

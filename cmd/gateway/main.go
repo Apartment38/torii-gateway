@@ -3,8 +3,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -349,25 +352,40 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
-	mu         sync.RWMutex
-	handler    http.Handler
-	configPath string
-	loginMu    sync.Mutex
-	logins     map[string]providerLogin
-	loginFlows map[string]providerLoginFlow
+	mu            sync.RWMutex
+	handler       http.Handler
+	configPath    string
+	loginMu       sync.Mutex
+	logins        map[string]providerLogin
+	loginFlows    map[string]providerLoginFlow
+	loginSessions map[string]providerLoginSession
 }
 
 type providerLogin struct {
-	Status          string `json:"status"`
-	Message         string `json:"message,omitempty"`
-	VerificationURL string `json:"verification_url,omitempty"`
-	UserCode        string `json:"user_code,omitempty"`
+	Status          string    `json:"status"`
+	Message         string    `json:"message,omitempty"`
+	VerificationURL string    `json:"verification_url,omitempty"`
+	UserCode        string    `json:"user_code,omitempty"`
+	HelperURL       string    `json:"helper_url,omitempty"`
+	HelperToken     string    `json:"helper_token,omitempty"`
+	ExpiresAt       time.Time `json:"expires_at,omitempty"`
 }
 
 type providerLoginFlow struct {
 	Authorization provider.PKCEAuthorization
 	Provider      config.ProviderConfig
 	StateDir      string
+}
+
+type providerLoginSession struct {
+	TokenHash string
+	Provider  config.ProviderConfig
+	StateDir  string
+	HostID    string
+	ClientID  string
+	IDToken   string
+	ExpiresAt time.Time
+	Used      bool
 }
 
 func (r *handlerRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -552,6 +570,8 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		mux.HandleFunc("POST /gateway/v1/providers/test", runtime.testProvider)
 		mux.HandleFunc("POST /gateway/v1/providers/login", runtime.startProviderLogin)
 		mux.HandleFunc("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
+		mux.HandleFunc("GET /gateway/v1/providers/login/session", runtime.providerLoginSession)
+		mux.HandleFunc("POST /gateway/v1/providers/login/import", runtime.importProviderLogin)
 		mux.HandleFunc("GET /gateway/v1/providers/login/callback", runtime.providerLoginCallback)
 		mux.HandleFunc("GET /auth/callback", runtime.providerLoginCallback)
 	}
@@ -725,7 +745,25 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		return
 	}
 	if providerConfig.Type == "openai-codex" {
-		authorization, startErr := provider.StartPKCE("https://auth.openai.com", providerLoginRedirectURL(req))
+		if !isLoopbackRequest(req) {
+			r.startRemoteCodexLogin(w, req, providerConfig, current.State.Directory)
+			return
+		}
+		hostID, hostErr := provider.LoadOrCreateCodexHostID(current.State.Directory)
+		if hostErr != nil {
+			writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", hostErr))
+			return
+		}
+		clientID, idToken := "", ""
+		if store, storeErr := state.NewFlatFileCredentialStore(current.State.Directory); storeErr == nil {
+			if credential, loadErr := store.Load(providerConfig.ID); loadErr == nil {
+				clientID, idToken = credential.ClientID, credential.IDToken
+			}
+		}
+		if clientID == "" {
+			clientID = "dynamic_agent_client"
+		}
+		authorization, startErr := provider.StartPKCEForHost("https://auth.openai.com", providerLoginRedirectURL(req), clientID, hostID, idToken)
 		if startErr != nil {
 			writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("start Codex OAuth: %w", startErr))
 			return
@@ -761,6 +799,155 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 	r.loginMu.Unlock()
 	writeJSON(w, http.StatusAccepted, providerLogin{Status: "pending", Message: "Waiting for authorization"})
 	go r.completeProviderLogin(providerConfig, current.State.Directory)
+}
+
+func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.Request, providerConfig config.ProviderConfig, stateDir string) {
+	hostID, err := provider.LoadOrCreateCodexHostID(stateDir)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", err))
+		return
+	}
+	clientID, idToken := "", ""
+	if store, storeErr := state.NewFlatFileCredentialStore(stateDir); storeErr == nil {
+		if credential, loadErr := store.Load(providerConfig.ID); loadErr == nil {
+			clientID, idToken = credential.ClientID, credential.IDToken
+		}
+	}
+	if clientID == "" {
+		clientID = "dynamic_agent_client"
+	}
+	token, tokenHash, err := newLoginPairingToken()
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("create Codex login session: %w", err))
+		return
+	}
+	expiresAt := time.Now().Add(10 * time.Minute)
+	r.loginMu.Lock()
+	if r.logins == nil {
+		r.logins = make(map[string]providerLogin)
+	}
+	if r.loginSessions == nil {
+		r.loginSessions = make(map[string]providerLoginSession)
+	}
+	if existing, ok := r.logins[providerConfig.ID]; ok && existing.Status == "pending" && existing.HelperURL != "" && existing.ExpiresAt.After(time.Now()) {
+		r.loginMu.Unlock()
+		writeJSON(w, http.StatusAccepted, existing)
+		return
+	}
+	r.loginSessions[tokenHash] = providerLoginSession{TokenHash: tokenHash, Provider: providerConfig, StateDir: stateDir, HostID: hostID, ClientID: clientID, IDToken: idToken, ExpiresAt: expiresAt}
+	status := providerLogin{Status: "pending", Message: "Run the Torii Auth Helper on the computer with your browser", HelperURL: providerLoginSessionURL(req), HelperToken: token, ExpiresAt: expiresAt}
+	r.logins[providerConfig.ID] = status
+	r.loginMu.Unlock()
+	writeJSON(w, http.StatusAccepted, status)
+}
+
+func (r *handlerRuntime) providerLoginSession(w http.ResponseWriter, req *http.Request) {
+	session, ok := r.findLoginSession(req)
+	if !ok {
+		writeConfigError(w, http.StatusUnauthorized, errors.New("Codex login session is invalid or expired"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"provider_id": session.Provider.ID, "issuer": "https://auth.openai.com", "client_id": session.ClientID, "host_id": session.HostID, "id_token_hint": session.IDToken})
+}
+
+func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Request) {
+	session, ok := r.findLoginSession(req)
+	if !ok {
+		writeConfigError(w, http.StatusUnauthorized, errors.New("Codex login session is invalid or expired"))
+		return
+	}
+	var imported struct {
+		AccessToken  string    `json:"access_token"`
+		RefreshToken string    `json:"refresh_token"`
+		TokenType    string    `json:"token_type"`
+		ExpiresAt    time.Time `json:"expires_at"`
+		AccountID    string    `json:"account_id"`
+		ClientID     string    `json:"client_id"`
+		IDToken      string    `json:"id_token"`
+		Issuer       string    `json:"issuer"`
+		Subject      string    `json:"subject"`
+		Email        string    `json:"email"`
+		HostID       string    `json:"host_id"`
+		Scopes       []string  `json:"scopes"`
+	}
+	if err := json.NewDecoder(io.LimitReader(req.Body, 1<<20)).Decode(&imported); err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode Codex credential: %w", err))
+		return
+	}
+	if imported.AccessToken == "" || imported.RefreshToken == "" || imported.ClientID == "" || imported.HostID == "" {
+		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential is missing required fields"))
+		return
+	}
+	if imported.HostID != session.HostID || (session.ClientID != "dynamic_agent_client" && imported.ClientID != session.ClientID) {
+		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not match this login session"))
+		return
+	}
+	store, err := state.NewFlatFileCredentialStore(session.StateDir)
+	if err == nil {
+		err = store.Save(session.Provider.ID, &state.Credential{AccessToken: imported.AccessToken, RefreshToken: imported.RefreshToken, TokenType: imported.TokenType, ExpiresAt: imported.ExpiresAt, AccountID: imported.AccountID, Endpoint: session.Provider.BaseURL, ClientID: imported.ClientID, IDToken: imported.IDToken, Issuer: imported.Issuer, Subject: imported.Subject, Email: imported.Email, HostID: imported.HostID, Scopes: imported.Scopes})
+	}
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("save Codex credential: %w", err))
+		return
+	}
+	r.loginMu.Lock()
+	if current, exists := r.loginSessions[session.TokenHash]; exists {
+		current.Used = true
+		r.loginSessions[session.TokenHash] = current
+	}
+	r.loginMu.Unlock()
+	r.setProviderLogin(session.Provider.ID, providerLogin{Status: "success", Message: "Provider login complete"})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "imported", "provider_id": session.Provider.ID})
+}
+
+func (r *handlerRuntime) findLoginSession(req *http.Request) (providerLoginSession, bool) {
+	token := strings.TrimSpace(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
+	if token == "" {
+		return providerLoginSession{}, false
+	}
+	hash := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(hash[:])
+	r.loginMu.Lock()
+	defer r.loginMu.Unlock()
+	session, ok := r.loginSessions[tokenHash]
+	if !ok || session.Used || !session.ExpiresAt.After(time.Now()) {
+		return providerLoginSession{}, false
+	}
+	return session, true
+}
+
+func newLoginPairingToken() (string, string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", "", err
+	}
+	token := hex.EncodeToString(raw)
+	hash := sha256.Sum256([]byte(token))
+	return token, hex.EncodeToString(hash[:]), nil
+}
+
+func providerLoginSessionURL(req *http.Request) string {
+	scheme := req.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		scheme = "http"
+		if req.TLS != nil {
+			scheme = "https"
+		}
+	}
+	return (&url.URL{Scheme: scheme, Host: req.Host, Path: "/gateway/v1/providers/login/session"}).String()
+}
+
+func isLoopbackRequest(req *http.Request) bool {
+	host := req.Host
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Request) {

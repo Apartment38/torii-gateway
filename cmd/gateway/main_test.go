@@ -20,6 +20,30 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/config"
 )
 
+func TestInitializeConfigPathBootstrapsConsoleConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config", "config.yaml")
+	if err := initializeConfigPath(path, "", true); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("bootstrap config is invalid: %v", err)
+	}
+	if cfg.Server.Listen != "0.0.0.0:8080" || len(cfg.Providers) != 1 || cfg.Providers[0].ID != "setup" {
+		t.Fatalf("unexpected bootstrap config: %+v", cfg)
+	}
+}
+
+func TestInitializeConfigPathDoesNotCreateWithoutBootstrap(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := initializeConfigPath(path, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("config exists or stat failed: %v", err)
+	}
+}
+
 func TestGatewayProcessServesAuthenticatedModels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {

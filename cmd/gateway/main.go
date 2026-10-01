@@ -140,7 +140,8 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		return errors.New("usage: gateway serve --config <path>")
 	}
 
-	if err := initializeConfigPath(*configPath, os.Getenv("TORII_CONFIG_TEMPLATE")); err != nil {
+	bootstrap := strings.EqualFold(strings.TrimSpace(os.Getenv("TORII_CONFIG_BOOTSTRAP")), "true") || os.Getenv("TORII_CONFIG_BOOTSTRAP") == "1"
+	if err := initializeConfigPath(*configPath, os.Getenv("TORII_CONFIG_TEMPLATE"), bootstrap); err != nil {
 		return err
 	}
 	cfg, err := config.Load(*configPath)
@@ -167,22 +168,37 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	return serveHTTP(ctx, server, listener)
 }
 
-// initializeConfigPath seeds a writable active configuration from a read-only
-// template. This is used by container deployments where the template is
-// bind-mounted read-only but the web console must atomically replace the active
-// configuration after validation.
-func initializeConfigPath(path, template string) error {
+const bootstrapConfig = `server:
+  listen: 0.0.0.0:8080
+state:
+  directory: /state
+providers:
+  - id: setup
+    type: openai_compatible
+    base_url: https://example.invalid
+    api_path: /v1
+    discover_models: false
+    models: [setup]
+`
+
+// initializeConfigPath seeds a missing writable configuration from a supplied
+// template or the minimal console bootstrap when explicitly enabled.
+func initializeConfigPath(path, template string, bootstrap bool) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect configuration: %w", err)
 	}
-	if template == "" {
+	if template == "" && !bootstrap {
 		return nil
 	}
-	data, err := os.ReadFile(template)
-	if err != nil {
-		return fmt.Errorf("read configuration template: %w", err)
+	data := []byte(bootstrapConfig)
+	if template != "" {
+		var err error
+		data, err = os.ReadFile(template)
+		if err != nil {
+			return fmt.Errorf("read configuration template: %w", err)
+		}
 	}
 	directory := filepath.Dir(path)
 	if err := os.MkdirAll(directory, 0o700); err != nil {

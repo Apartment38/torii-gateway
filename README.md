@@ -84,17 +84,20 @@ leaving a partially configured service running.
 ## Run with Podman Compose
 
 The repository includes a Podman-compatible [`compose.yaml`](compose.yaml).
-Create the mounted configuration file under `config/`, change
-`server.listen` to `0.0.0.0:8080`, and create a project-root `.env` file for
-the API key:
+The container creates a minimal writable configuration automatically on first
+start, so no initial configuration file is required. To customize it before
+starting, create `config/config.yaml`, change `server.listen` to
+`0.0.0.0:8080`, and create a project-root `.env` file for the API key:
 
 ```sh
+# Optional: create config/config.yaml from the full example before starting.
 mkdir -p config
 cp config.example.yaml config/config.yaml
 cat > .env <<'EOF'
 TORII_API_KEY=replace-with-a-long-random-secret
 EOF
-# edit config/config.yaml and set provider URLs reachable from the container
+# If you created the file, edit config/config.yaml and set provider URLs
+# reachable from the container.
 podman compose up --build -d
 ```
 

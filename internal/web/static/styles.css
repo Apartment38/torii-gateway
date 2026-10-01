@@ -107,6 +107,9 @@ textarea { resize: vertical; line-height: 1.5; }
 .provider-result.pending { color: var(--muted); }
 .provider-result.success { color: #16845a; }
 .provider-result.failure { color: var(--danger); }
+.provider-helper { display: grid; gap: 6px; width: min(620px, calc(100% - 39px)); line-height: 1.45; }
+.provider-helper span { overflow-wrap: anywhere; padding: 9px 10px; border: 1px dashed var(--line); border-radius: 9px; background: var(--surface-muted); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 500; }
+.provider-helper small { color: var(--muted); font-size: 11px; font-weight: 500; }
 .provider-subscription-note { margin: 0 0 6px 39px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .password-field { display: flex; gap: 7px; }
 .password-field input { min-width: 0; }

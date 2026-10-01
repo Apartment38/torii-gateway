@@ -220,6 +220,11 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
     const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: readConfig().providers[index] }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "login could not start");
+    if (body.helper_url && body.helper_token) {
+      renderHelperInstructions(result, body.helper_url, body.helper_token);
+      await pollProviderLogin(String(providers[index].id), result, button, "", true);
+      return;
+    }
     if (body.verification_url) window.open(body.verification_url, "_blank", "noopener,noreferrer");
     result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
     await pollProviderLogin(String(providers[index].id), result, button, body.verification_url || "");
@@ -229,7 +234,12 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
     button.disabled = false;
   }
 }
-async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = ""): Promise<void> {
+function renderHelperInstructions(result: HTMLDivElement, sessionURL: string, pairingToken: string): void {
+  const command = `torii-auth --session-url ${sessionURL} --pairing-token ${pairingToken}`;
+  result.className = "provider-result pending provider-helper";
+  result.innerHTML = `<strong>Run the one-shot helper on the computer with your browser.</strong><span>${escapeHTML(command)}</span><small>The helper opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
+}
+async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
   for (let attempt = 0; attempt < 180; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, 2000));
     const response = await fetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
@@ -237,8 +247,10 @@ async function pollProviderLogin(providerID: string, result: HTMLDivElement, but
     if (body.verification_url && body.verification_url !== openedURL) { openedURL = body.verification_url; window.open(openedURL, "_blank", "noopener,noreferrer"); }
     if (body.status === "success") { result.className = "provider-result success"; result.textContent = body.message || "Login complete"; button.disabled = false; return; }
     if (body.status === "failure") { result.className = "provider-result failure"; result.textContent = `Failed · ${body.message || "login failed"}`; button.disabled = false; return; }
-    result.className = "provider-result pending";
-    result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+    if (!helperPending) {
+      result.className = "provider-result pending";
+      result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+    }
   }
   result.className = "provider-result failure";
   result.textContent = "Failed · login timed out";

@@ -84,15 +84,17 @@ leaving a partially configured service running.
 ## Run with Podman Compose
 
 The repository includes a Podman-compatible [`compose.yaml`](compose.yaml).
-Create the mounted configuration file, change `server.listen` to
-`0.0.0.0:8080`, and create a project-root `.env` file for the API key:
+Create the mounted configuration file under `config/`, change
+`server.listen` to `0.0.0.0:8080`, and create a project-root `.env` file for
+the API key:
 
 ```sh
-cp config.example.yaml config.yaml
+mkdir -p config
+cp config.example.yaml config/config.yaml
 cat > .env <<'EOF'
 TORII_API_KEY=replace-with-a-long-random-secret
 EOF
-# edit config.yaml and set provider URLs reachable from the container
+# edit config/config.yaml and set provider URLs reachable from the container
 podman compose up --build -d
 ```
 
@@ -111,16 +113,26 @@ podman compose down
 ```
 
 Keep `.env` private; it is ignored by Git. If authentication is omitted from
-`config.yaml`, the API key environment variable is not required.
+`config/config.yaml`, the API key environment variable is not required.
 
-The compose file mounts the host project directory at `/config` as a writable
-Podman bind mount with `rw,Z,U`; `config.yaml` is read from
+The compose file mounts only the host `config/` directory at `/config` as a
+writable Podman bind mount with `rw,Z,U`; the container reads
 `/config/config.yaml`. The directory mount is required because the web console
 creates a temporary file beside the configuration before atomically replacing
-it. The `U` option adjusts ownership for the container’s non-root user, so
-Podman may change the host files’ ownership. The named state volume is mounted
-with `Z,U` as well, so the non-root gateway user can create its runtime
-directories there.
+it. The `U` option adjusts ownership only within `config/` for the container’s
+non-root user, so it does not change ownership across the repository. The
+named state volume is mounted with `Z,U` as well, so the non-root gateway user
+can create its runtime directories there.
+
+If an existing deployment still has a root-level `config.yaml`, migrate it
+once before restarting Compose:
+
+```sh
+mkdir -p config
+cp config.yaml config/config.yaml
+podman compose down
+podman compose up --build -d
+```
 
 The console is divided into Overview, Server, Providers, Routing, and State &
 Quota pages. **Save & reload** sends the validated configuration to
@@ -227,7 +239,7 @@ state directory during an application update.
 
 ### Podman Compose container
 
-The Compose workflow preserves the bind-mounted project directory and named
+The Compose workflow preserves the bind-mounted `config/` directory and named
 `torii_gateway_state` volume while rebuilding the image:
 
 ```sh

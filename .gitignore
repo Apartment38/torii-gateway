@@ -30,6 +30,8 @@ go.work.sum
 # Local builds, configuration, and runtime state
 /bin/
 /config.yaml
+/config/*
+!/config/.gitkeep
 /state/
 
 # Editor/IDE

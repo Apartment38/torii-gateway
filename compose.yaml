@@ -14,7 +14,7 @@ services:
     ports:
       - "${TORII_PORT:-8080}:8080"
     volumes:
-      - ".:/config:rw,Z,U"
+      - "./config:/config:rw,Z,U"
       - "torii_gateway_state:/state:Z,U"
     healthcheck:
       test: ["CMD", "/gateway", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]

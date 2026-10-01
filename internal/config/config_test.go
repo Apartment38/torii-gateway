@@ -63,7 +63,7 @@ func TestDecodeRejectsInvalidServerAuthenticationSecret(t *testing.T) {
 state:
 `, 1)
 	_, err := config.Decode(strings.NewReader(input))
-	if err == nil || !strings.Contains(err.Error(), "exactly one of env or file") {
+	if err == nil || !strings.Contains(err.Error(), "exactly one of env, file, or value") {
 		t.Fatalf("Decode() error = %v, want exactly-one-source error", err)
 	}
 }

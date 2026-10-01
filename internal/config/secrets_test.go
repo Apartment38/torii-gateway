@@ -39,6 +39,13 @@ func TestSecretRefResolveEnvironment(t *testing.T) {
 	}
 }
 
+func TestSecretRefResolveValue(t *testing.T) {
+	got, err := (config.SecretRef{Value: "inline-secret"}).Resolve()
+	if err != nil || got != "inline-secret" {
+		t.Fatalf("Resolve() = %q, %v; want inline-secret", got, err)
+	}
+}
+
 func TestSecretRefResolveMissingEnvironment(t *testing.T) {
 	const name = "TEST_GATEWAY_MISSING_SECRET"
 	if err := os.Unsetenv(name); err != nil {

@@ -14,43 +14,47 @@ const authProvider: AuthProvider = new NoAuthProvider();
 const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
+let serverAPIKeyReference: Record<string, string> | null = null;
 const providerDefaults = { id: "openai", type: "openai_compatible", api_url: "", api_key_env: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
 
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider: Record<string, string | boolean>, key: string): string { return provider[key] === false ? "" : "checked"; }
+function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex" || provider.type === "nous"; }
 
 function renderProviders(): void {
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> Provider ${index + 1}</div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">Test connection</button>${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}<span class="provider-result" data-result="${index}" role="status"></span></div></div>
-      <div class="grid three">
-        <label>Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label>
-        <label>Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
-        <label>API URL<input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com/v1" /></label>
-        <label>API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions">${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : `<button class="test-provider button secondary" type="button" data-test="${index}">Test connection</button>`}${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div></div>
+      <div class="provider-result" data-result="${index}" role="status" aria-live="polite"></div>
+      ${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. It must be unique among providers.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are stored in the gateway state directory.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+        <label data-tooltip="The stable ID used as the prefix of public model names. It must be unique among providers.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label>
+        <label data-tooltip="The provider integration Torii should use. The selected type controls authentication and request behavior.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
+        <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
+        <label data-tooltip="The environment variable containing the upstream API key. The key itself is never written to this provider form.">API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
       </div>
       <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
-        <label>Management token environment<input data-provider="${index}" data-key="management_env" value="${value(provider,"management_env")}" placeholder="OPENROUTER_MANAGEMENT_KEY" /></label>
-        <label>Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
-        <label>Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
-        <label>Models (comma separated)<input data-provider="${index}" data-key="models" value="${value(provider,"models")}" placeholder="model-a, model-b" /></label>
-        <label>Transport<input data-provider="${index}" data-key="transport" value="${value(provider,"transport")}" placeholder="direct or provider" /></label>
-        <label>Organization<input data-provider="${index}" data-key="organization" value="${value(provider,"organization")}" /></label>
-        <label>Project<input data-provider="${index}" data-key="project" value="${value(provider,"project")}" /></label>
-        <label>Headers JSON<input data-provider="${index}" data-key="headers" value='${value(provider,"headers")}' placeholder='{"X-Header":{"env":"ENV_VAR"}}' /></label>
-        <label>Model rewrites JSON<input data-provider="${index}" data-key="rewrites" value='${value(provider,"rewrites")}' placeholder='{"public":"upstream"}' /></label>
-        <label>CA file<input data-provider="${index}" data-key="tls_ca" value="${value(provider,"tls_ca")}" /></label>
-        <label>TLS server name<input data-provider="${index}" data-key="tls_server" value="${value(provider,"tls_server")}" /></label>
-        <label>Connect timeout<input data-provider="${index}" data-key="connect_timeout" value="${value(provider,"connect_timeout")}" placeholder="5s" /></label>
-        <label>Request timeout<input data-provider="${index}" data-key="request_timeout" value="${value(provider,"request_timeout")}" placeholder="60s" /></label>
-        <label>Discovery timeout<input data-provider="${index}" data-key="discovery_timeout" value="${value(provider,"discovery_timeout")}" placeholder="10s" /></label>
-        <div class="check-row"><label class="checkbox"><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label></div>
-      </div></details>
+        <label data-tooltip="Optional separate management credential used for provider administration or quota lookup.">Management token environment<input data-provider="${index}" data-key="management_env" value="${value(provider,"management_env")}" placeholder="OPENROUTER_MANAGEMENT_KEY" /></label>
+        <label data-tooltip="The portal URL used for subscription or account management. It is relevant to providers with a separate portal.">Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
+        <label data-tooltip="The OAuth client identifier used by a provider portal. Leave empty to use the provider default.">Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
+        <label data-tooltip="A static fallback model list used when discovery is disabled or unavailable. Separate model IDs with commas.">Models (comma separated)<input data-provider="${index}" data-key="models" value="${value(provider,"models")}" placeholder="model-a, model-b" /></label>
+        <label data-tooltip="The transport mode for provider-specific integrations. Leave empty for the provider default.">Transport<input data-provider="${index}" data-key="transport" value="${value(provider,"transport")}" placeholder="direct or provider" /></label>
+        <label data-tooltip="Optional organization identifier sent to providers that support organization scoping.">Organization<input data-provider="${index}" data-key="organization" value="${value(provider,"organization")}" /></label>
+        <label data-tooltip="Optional project identifier sent to providers that support project scoping.">Project<input data-provider="${index}" data-key="project" value="${value(provider,"project")}" /></label>
+        <label data-tooltip="JSON map of custom header names to secret references. Headers are added to upstream requests.">Headers JSON<input data-provider="${index}" data-key="headers" value='${value(provider,"headers")}' placeholder='{"X-Header":{"env":"ENV_VAR"}}' /></label>
+        <label data-tooltip="JSON map of public model IDs to upstream model IDs. Use this to expose friendly aliases.">Model rewrites JSON<input data-provider="${index}" data-key="rewrites" value='${value(provider,"rewrites")}' placeholder='{"public":"upstream"}' /></label>
+        <label data-tooltip="A custom CA bundle for TLS verification. Leave empty to use the system trust store.">CA file<input data-provider="${index}" data-key="tls_ca" value="${value(provider,"tls_ca")}" /></label>
+        <label data-tooltip="Overrides the TLS server name used during certificate verification. Leave empty for the URL hostname.">TLS server name<input data-provider="${index}" data-key="tls_server" value="${value(provider,"tls_server")}" /></label>
+        <label data-tooltip="Maximum time allowed to establish an upstream connection. Use a Go duration such as 5s.">Connect timeout<input data-provider="${index}" data-key="connect_timeout" value="${value(provider,"connect_timeout")}" placeholder="5s" /></label>
+        <label data-tooltip="Maximum time allowed for an upstream request. Use a Go duration such as 60s.">Request timeout<input data-provider="${index}" data-key="request_timeout" value="${value(provider,"request_timeout")}" placeholder="60s" /></label>
+        <label data-tooltip="Maximum time allowed while discovering the provider model catalog. Use a Go duration such as 10s.">Discovery timeout<input data-provider="${index}" data-key="discovery_timeout" value="${value(provider,"discovery_timeout")}" placeholder="10s" /></label>
+        <label class="checkbox" data-tooltip="When enabled, Torii queries the provider for its available models. Disable this only when you provide a static model list."><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label>
+      </div></details>`}
     </article>`).join("");
   providerList.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach(button => button.addEventListener("click", () => { providers.splice(Number(button.dataset.remove), 1); renderProviders(); markDirty(); }));
   providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test), button); }));
+  providerList.querySelectorAll<HTMLButtonElement>("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
 }
 
@@ -59,12 +63,19 @@ function updateProvider(event: Event): void {
   const index = Number(control.dataset.provider);
   const key = control.dataset.key!;
   providers[index][key] = control instanceof HTMLInputElement && control.type === "checkbox" ? control.checked : control.value;
+  if (key === "id") {
+    const title = providerList.querySelector<HTMLElement>(`[data-provider-title="${index}"]`);
+    if (title) title.textContent = control.value || `Provider ${index + 1}`;
+  }
+  if (key === "type") { renderProviders(); }
   markDirty();
 }
 
 function markDirty(): void { saveState.textContent = "Unsaved changes"; }
 
 function applyConfig(config: Record<string, any>): void {
+  const configuredAPIKey = config.server?.authentication?.api_key;
+  serverAPIKeyReference = configuredAPIKey && !configuredAPIKey.value ? { ...configuredAPIKey } : null;
   providers = (config.providers || []).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
@@ -72,7 +83,7 @@ function applyConfig(config: Record<string, any>): void {
     management_env: provider.management_token?.env || "",
     tls_ca: provider.tls?.ca_file || "",
     tls_server: provider.tls?.server_name || "",
-    api_url: `${provider.base_url || ""}${provider.api_path || ""}`,
+    api_url: `${String(provider.base_url || "").replace(/\/$/, "")}${provider.api_path || ""}`,
     headers: provider.headers ? JSON.stringify(provider.headers) : "",
     rewrites: provider.model_rewrites ? JSON.stringify(provider.model_rewrites) : "",
     models: Array.isArray(provider.models) ? provider.models.join(", ") : "",
@@ -125,6 +136,8 @@ function setNested(target: Record<string, any>, path: string, raw: unknown): voi
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = { server: {}, state: {}, providers: [], router: { classifier: {}, sessions: {}, quota: {}, selection: {} } };
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
+  const apiKeyInput = form.elements.namedItem("server.authentication.api_key.value") as HTMLInputElement;
+  if (!apiKeyInput.value.trim() && serverAPIKeyReference) config.server.authentication = { api_key: serverAPIKeyReference };
   config.providers = providers.map(provider => { const output: Record<string, any> = {}; Object.entries(provider).forEach(([key, raw]) => { if (key === "discover") { if (raw) output.discover_models = true; return; } if (String(raw).trim() === "") return; const map: Record<string, string> = { api_key_env: "bearer_token", management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" }; const mapped = map[key] || key; if (key === "api_url") { const url = new URL(String(raw)); output.base_url = `${url.protocol}//${url.host}`; output.api_path = url.pathname === "/" ? "" : url.pathname; return; } if (key === "models") output.models = String(raw).split(",").map(v => v.trim()).filter(Boolean); else if (key === "headers" || key === "rewrites") { try { output[key === "headers" ? "headers" : "model_rewrites"] = JSON.parse(String(raw)); } catch { output[key === "headers" ? "headers" : "model_rewrites"] = {}; } } else if (key.endsWith("_env")) { setNested(output, mapped, { env: raw }); } else setNested(output, mapped, raw); }); return output; });
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
@@ -146,6 +159,43 @@ async function testProvider(index: number, button: HTMLButtonElement): Promise<v
     result.className = "provider-result failure";
   } finally { button.disabled = false; }
 }
+async function loginProvider(index: number, button: HTMLButtonElement): Promise<void> {
+  const result = providerList.querySelector<HTMLDivElement>(`[data-result="${index}"]`)!;
+  button.disabled = true;
+  result.className = "provider-result pending";
+  result.textContent = "Starting login…";
+  try {
+    const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: providers[index].id }) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "login could not start");
+    if (body.verification_url) window.open(body.verification_url, "_blank", "noopener,noreferrer");
+    result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+    await pollProviderLogin(String(providers[index].id), result, button);
+  } catch (error) {
+    result.className = "provider-result failure";
+    result.textContent = `Failed · ${error instanceof Error ? error.message : "login failed"}`;
+    button.disabled = false;
+  }
+}
+async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement): Promise<void> {
+  let openedURL = "";
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    const response = await fetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
+    const body = await response.json();
+    if (body.verification_url && body.verification_url !== openedURL) { openedURL = body.verification_url; window.open(openedURL, "_blank", "noopener,noreferrer"); }
+    if (body.status === "success") { result.className = "provider-result success"; result.textContent = body.message || "Login complete"; button.disabled = false; return; }
+    if (body.status === "failure") { result.className = "provider-result failure"; result.textContent = `Failed · ${body.message || "login failed"}`; button.disabled = false; return; }
+    result.className = "provider-result pending";
+    result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+  }
+  result.className = "provider-result failure";
+  result.textContent = "Failed · login timed out";
+  button.disabled = false;
+}
+function testAllProviders(): void {
+  providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => { void testProvider(Number(button.dataset.test), button); });
+}
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
 document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults, id: `provider-${providers.length + 1}` }); renderProviders(); markDirty(); });
@@ -155,4 +205,6 @@ document.querySelector("#theme-toggle")!.addEventListener("click", () => { const
 form.addEventListener("input", markDirty);
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-renderProviders(); navigate(); void loadServerConfig();
+document.querySelector<HTMLButtonElement>("#reveal-api-key")!.addEventListener("click", event => { const input = document.querySelector<HTMLInputElement>("#server-api-key")!; const button = event.currentTarget as HTMLButtonElement; const visible = input.type === "text"; input.type = visible ? "password" : "text"; button.textContent = visible ? "Show" : "Hide"; });
+document.querySelector<HTMLInputElement>("#server-api-key")!.addEventListener("input", event => { if ((event.target as HTMLInputElement).value) serverAPIKeyReference = null; });
+renderProviders(); navigate(); void loadServerConfig().then(() => testAllProviders());

@@ -351,6 +351,15 @@ type handlerRuntime struct {
 	mu         sync.RWMutex
 	handler    http.Handler
 	configPath string
+	loginMu    sync.Mutex
+	logins     map[string]providerLogin
+}
+
+type providerLogin struct {
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	VerificationURL string `json:"verification_url,omitempty"`
+	UserCode        string `json:"user_code,omitempty"`
 }
 
 func (r *handlerRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -533,6 +542,8 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		mux.HandleFunc("PUT /gateway/v1/config", runtime.putConfig)
 		mux.HandleFunc("POST /gateway/v1/config", runtime.putConfig)
 		mux.HandleFunc("POST /gateway/v1/providers/test", runtime.testProvider)
+		mux.HandleFunc("POST /gateway/v1/providers/login", runtime.startProviderLogin)
+		mux.HandleFunc("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
 	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
@@ -641,6 +652,122 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "models": models})
+}
+
+func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Request) {
+	var request struct {
+		Provider string `json:"provider" yaml:"provider"`
+	}
+	if err := yaml.NewDecoder(io.LimitReader(req.Body, 64<<10)).Decode(&request); err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode login request: %w", err))
+		return
+	}
+	if request.Provider == "" {
+		writeConfigError(w, http.StatusBadRequest, errors.New("provider is required"))
+		return
+	}
+	current, err := config.Load(r.configPath)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
+		return
+	}
+	var providerConfig *config.ProviderConfig
+	for i := range current.Providers {
+		if current.Providers[i].ID == request.Provider {
+			providerConfig = &current.Providers[i]
+			break
+		}
+	}
+	if providerConfig == nil {
+		writeConfigError(w, http.StatusNotFound, fmt.Errorf("provider %q is not configured", request.Provider))
+		return
+	}
+	if providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
+		writeConfigError(w, http.StatusBadRequest, errors.New("browser login is supported only for openai-codex and nous providers"))
+		return
+	}
+	r.loginMu.Lock()
+	if r.logins == nil {
+		r.logins = make(map[string]providerLogin)
+	}
+	if existing, ok := r.logins[request.Provider]; ok && existing.Status == "pending" {
+		r.loginMu.Unlock()
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+	r.logins[request.Provider] = providerLogin{Status: "pending", Message: "Waiting for authorization"}
+	r.loginMu.Unlock()
+	writeJSON(w, http.StatusAccepted, providerLogin{Status: "pending", Message: "Waiting for authorization"})
+	go r.completeProviderLogin(*providerConfig, current.State.Directory)
+}
+
+func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Request) {
+	providerID := req.URL.Query().Get("provider")
+	r.loginMu.Lock()
+	status, ok := r.logins[providerID]
+	r.loginMu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"status": "not_started"})
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderConfig, stateDirectory string) {
+	store, err := state.NewFlatFileCredentialStore(stateDirectory)
+	if err != nil {
+		r.setProviderLogin(providerConfig.ID, providerLogin{Status: "failure", Message: err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	if providerConfig.Type == "openai-codex" {
+		credential, loginErr := provider.DeviceCodeLogin(ctx, "https://auth.openai.com", &http.Client{}, func(url, code string) {
+			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "pending", Message: "Open the verification URL and enter the code", VerificationURL: url, UserCode: code})
+		})
+		if loginErr == nil {
+			loginErr = store.Save(providerConfig.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: providerConfig.BaseURL, AccountID: credential.AccountID, TokenType: "Bearer"})
+		}
+		if loginErr != nil {
+			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "failure", Message: loginErr.Error()})
+			return
+		}
+	} else {
+		portalURL := providerConfig.PortalURL
+		if portalURL == "" {
+			portalURL = provider.DefaultNousPortalURL
+		}
+		clientID := providerConfig.ClientID
+		if clientID == "" {
+			clientID = provider.DefaultNousClientID
+		}
+		credential, loginErr := provider.NousDeviceCodeLogin(ctx, portalURL, clientID, "inference:invoke", &http.Client{}, func(url, code string) {
+			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "pending", Message: "Open the verification URL and enter the code", VerificationURL: url, UserCode: code})
+		})
+		if loginErr == nil {
+			loginErr = store.Save(providerConfig.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: strings.TrimRight(providerConfig.BaseURL, "/"), TokenType: "Bearer"})
+		}
+		if loginErr != nil {
+			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "failure", Message: loginErr.Error()})
+			return
+		}
+	}
+	r.setProviderLogin(providerConfig.ID, providerLogin{Status: "success", Message: "Provider login complete"})
+}
+
+func (r *handlerRuntime) setProviderLogin(providerID string, status providerLogin) {
+	r.loginMu.Lock()
+	if r.logins == nil {
+		r.logins = make(map[string]providerLogin)
+	}
+	r.logins[providerID] = status
+	r.loginMu.Unlock()
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func persistConfig(path string, cfg *config.Config) error {

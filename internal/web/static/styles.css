@@ -50,7 +50,7 @@ nav { display: grid; gap: 6px; margin-top: 48px; }
 .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; color: var(--muted); font-size: 12px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #38b979; box-shadow: 0 0 0 5px rgba(56,185,121,.14); }
 .content { width: min(1120px, 100%); margin: auto; padding: 42px clamp(22px, 5vw, 72px) 30px; }
-.topbar { display: flex; justify-content: space-between; gap: 28px; align-items: flex-start; margin-bottom: 36px; }
+.topbar { display: flex; justify-content: flex-end; gap: 28px; align-items: flex-start; margin-bottom: 36px; }
 h1, h2, p { margin-top: 0; }
 h1 { max-width: 650px; margin-bottom: 10px; color: var(--text-strong); font-size: clamp(32px, 5vw, 58px); line-height: .99; letter-spacing: -.07em; }
 h2 { margin-bottom: 8px; color: var(--text-strong); font-size: 25px; letter-spacing: -.04em; }
@@ -81,6 +81,11 @@ h2 { margin-bottom: 8px; color: var(--text-strong); font-size: 25px; letter-spac
 .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 label { display: grid; gap: 8px; color: var(--text-strong); font-size: 12px; font-weight: 750; }
+label[data-tooltip] { position: relative; }
+label[data-tooltip]::after { content: "?"; display: inline-grid; position: absolute; top: 0; right: 0; width: 16px; height: 16px; place-items: center; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent); font-size: 10px; font-weight: 800; cursor: help; }
+label[data-tooltip]::before { content: attr(data-tooltip); position: absolute; z-index: 20; top: 23px; right: 0; width: min(260px, 80vw); padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-solid); color: var(--text); box-shadow: var(--shadow); font-size: 11px; font-weight: 500; line-height: 1.45; opacity: 0; pointer-events: none; transform: translateY(-3px); transition: opacity .15s ease, transform .15s ease; }
+label[data-tooltip]:hover::before, label[data-tooltip]:focus-within::before { opacity: 1; transform: translateY(0); }
+.quota-field { gap: 7px; }
 input, select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 11px; outline: none; background: var(--surface-solid); color: var(--text); padding: 11px 12px; transition: border .2s ease, box-shadow .2s ease; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 17%, transparent); }
 textarea { resize: vertical; line-height: 1.5; }
@@ -96,10 +101,14 @@ textarea { resize: vertical; line-height: 1.5; }
 .provider-card-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .provider-index { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px; background: var(--accent); color: white; font-size: 12px; }
 .remove-provider { border: 0; background: transparent; color: var(--danger); font-size: 12px; }
-.provider-result { font-size: 12px; font-weight: 700; }
+.provider-result { width: 280px; min-height: 18px; margin: -6px 0 14px 39px; font-size: 12px; font-weight: 700; }
 .provider-result.pending { color: var(--muted); }
 .provider-result.success { color: #16845a; }
 .provider-result.failure { color: var(--danger); }
+.provider-subscription-note { margin: 0 0 6px 39px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.password-field { display: flex; gap: 7px; }
+.password-field input { min-width: 0; }
+.reveal-button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-solid); color: var(--accent-deep); padding: 0 11px; cursor: pointer; font-size: 12px; font-weight: 700; }
 .advanced-provider { grid-column: 1 / -1; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 15px; }
 .advanced-provider summary { width: max-content; cursor: pointer; color: var(--accent-deep); font-size: 12px; font-weight: 800; }
 .advanced-provider[open] summary { margin-bottom: 17px; }

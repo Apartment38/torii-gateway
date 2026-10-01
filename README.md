@@ -125,6 +125,36 @@ container to read the configuration and write its state volume. If an upstream
 provider runs on the host, use a host-reachable address such as
 `host.containers.internal` in `config.yaml` rather than `127.0.0.1`.
 
+### Connect to host Ollama from the container
+
+Do not use `http://127.0.0.1:11434` for an Ollama provider in the container;
+that address points back to the Torii container. Use Podman's host gateway name
+instead:
+
+```yaml
+providers:
+  - id: local
+    type: ollama
+    base_url: http://host.containers.internal:11434
+```
+
+The included compose file adds `host.containers.internal` for compatibility.
+Ollama must also listen on a host-reachable interface because its usual
+loopback-only bind cannot be reached from a container. For a systemd-managed
+Ollama installation, set `OLLAMA_HOST=0.0.0.0:11434` in the service environment
+and restart Ollama; restrict the port with the host firewall if needed. Verify
+the host service before starting Torii:
+
+```sh
+curl http://127.0.0.1:11434/api/tags
+podman compose up --build -d
+```
+
+On Docker Desktop, Podman machine, macOS, and Windows, the same
+`host.containers.internal` URL is the intended host gateway address. If the
+runtime does not provide that name, use its documented host-gateway alias or
+run the gateway with host networking where supported.
+
 ## Update an existing installation
 
 ### Local binary
@@ -207,10 +237,12 @@ providers:
 | Field | Required | Description |
 | --- | --- | --- |
 | `server.listen` | yes | TCP `host:port` on which the gateway listens. Use `127.0.0.1:8080` for local-only access or `0.0.0.0:8080` in a container. |
-| `server.authentication.api_key` | no | Optional secret reference used to authenticate API clients. Select exactly one of `env` or `file`; omit the section for local no-auth mode. |
+| `server.authentication.api_key` | no | Optional secret reference used to authenticate API clients. Select exactly one of `value`, `env`, or `file`; omit the section for local no-auth mode. |
 
-The API key must be non-empty and cannot contain whitespace. To load it from a
-mounted secret file instead of the environment, use:
+The API key must be non-empty and cannot contain whitespace. The console can
+store it as a masked `value`, or you can load it from a mounted secret file or
+environment variable. To load it from a mounted secret file instead of the
+environment, use:
 
 ```yaml
 server:
@@ -220,9 +252,19 @@ server:
       file: /run/secrets/torii-api-key
 ```
 
+For a console-managed local configuration, an inline value is written as:
+
+```yaml
+server:
+  authentication:
+    api_key:
+      value: replace-with-a-long-random-secret
+```
+
 Environment-backed secret values are used exactly as supplied. Surrounding
 whitespace is removed from file-backed values, which makes files ending in a
-newline safe to use. Do not put the secret value itself in YAML.
+newline safe to use. Prefer environment or file references for shared or
+production deployments.
 
 ### State
 

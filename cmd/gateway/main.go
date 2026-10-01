@@ -28,6 +28,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/router"
 	"github.com/Apartment38/torii-gateway/internal/state"
 	"github.com/Apartment38/torii-gateway/internal/usage"
+	"github.com/Apartment38/torii-gateway/internal/web"
 )
 
 func main() {
@@ -338,16 +339,17 @@ func normalizeServeError(err error) error {
 }
 
 func buildHandler(cfg *config.Config) (http.Handler, error) {
-	if cfg.Server.Authentication == nil {
-		return nil, errors.New("server.authentication is required to serve the API")
-	}
-	apiKey, err := cfg.Server.Authentication.APIKey.Resolve()
-	if err != nil {
-		return nil, fmt.Errorf("resolve server API key: %w", err)
-	}
-	authenticator, err := api.NewStaticBearerAuthenticator(apiKey)
-	if err != nil {
-		return nil, err
+	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
+	if cfg.Server.Authentication != nil {
+		apiKey, err := cfg.Server.Authentication.APIKey.Resolve()
+		if err != nil {
+			return nil, fmt.Errorf("resolve server API key: %w", err)
+		}
+		configured, err := api.NewStaticBearerAuthenticator(apiKey)
+		if err != nil {
+			return nil, err
+		}
+		authenticator = configured
 	}
 
 	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
@@ -492,7 +494,10 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
-	mux.Handle("/", api.AuthenticateMiddleware(authenticator, openAI))
+	apiHandler := api.AuthenticateMiddleware(authenticator, openAI)
+	mux.Handle("/v1/", apiHandler)
+	mux.Handle("/gateway/v1/", apiHandler)
+	mux.Handle("/", web.Handler())
 	return api.RequestIDMiddleware(nil, mux), nil
 }
 

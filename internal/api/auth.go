@@ -25,6 +25,15 @@ type ClientAuthenticator interface {
 	Authenticate(*http.Request) (*ClientIdentity, error)
 }
 
+// NoAuthAuthenticator is the intentionally opt-in development authenticator.
+// Keep the request boundary behind ClientAuthenticator so Basic Auth and
+// Authentik/OIDC adapters can replace it without changing API handlers.
+type NoAuthAuthenticator struct{}
+
+func (NoAuthAuthenticator) Authenticate(*http.Request) (*ClientIdentity, error) {
+	return &ClientIdentity{ID: "anonymous"}, nil
+}
+
 // StaticBearerAuthenticator authenticates the single gateway API key used in
 // v1. The stored digest also ensures comparisons have a fixed length.
 type StaticBearerAuthenticator struct {

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071a35" />
+    <title>Torii Gateway Console</title>
+    <link rel="icon" href="/web/torii-gateway-icon.png" />
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#top" aria-label="Torii Gateway home">
+          <img src="/web/torii-gateway-icon.png" alt="" />
+          <span>Torii <b>Gateway</b></span>
+        </a>
+        <p class="eyebrow">Control plane</p>
+        <nav id="nav" aria-label="Configuration sections">
+          <a class="nav-link active" href="#overview">Overview</a>
+          <a class="nav-link" href="#server">Server</a>
+          <a class="nav-link" href="#providers">Providers</a>
+          <a class="nav-link" href="#routing">Routing</a>
+          <a class="nav-link" href="#state">State &amp; quota</a>
+        </nav>
+        <div class="sidebar-foot">
+          <span class="status-dot"></span>
+          <span>Local draft mode</span>
+        </div>
+      </aside>
+      <main id="top" class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Torii Gateway</p>
+            <h1>Shape your gateway.</h1>
+            <p class="lede">Configure providers, smart routing, and operational defaults from one calm workspace.</p>
+          </div>
+          <div class="top-actions">
+            <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">☾</button>
+            <button id="reset-button" class="button quiet" type="button">Reset draft</button>
+            <button id="download-button" class="button primary" type="button">Download YAML</button>
+          </div>
+        </header>
+
+        <section id="overview" class="hero card reveal">
+          <div class="hero-copy">
+            <span class="pill">Configuration studio</span>
+            <h2>Make the path through your models feel intentional.</h2>
+            <p>These settings are kept in your browser until you download a configuration file. Nothing is sent anywhere by this console.</p>
+          </div>
+          <img class="hero-logo" src="/web/torii-gateway-logo.png" alt="Torii Gateway wave and torii logo" />
+        </section>
+
+        <form id="config-form" novalidate>
+          <section id="server" class="section-block reveal">
+            <div class="section-heading"><div><p class="eyebrow">01 / Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
+            <div class="grid two">
+              <label>Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
+              <label>API key environment variable<input name="server.authentication.api_key.env" value="TORII_API_KEY" placeholder="TORII_API_KEY" /></label>
+              <label>API key file<input name="server.authentication.api_key.file" placeholder="/run/secrets/torii-api-key" /></label>
+            </div>
+            <div class="notice"><span>◎</span><span>Authentication is not required by this console. The gateway API still uses its configured bearer key today; a future auth adapter can add Basic Auth or Authentik without changing this form.</span></div>
+          </section>
+
+          <section id="providers" class="section-block reveal">
+            <div class="section-heading"><div><p class="eyebrow">02 / Upstreams</p><h2>Providers</h2></div><button id="add-provider" class="button secondary" type="button">＋ Add provider</button></div>
+            <div id="providers-list" class="provider-list"></div>
+          </section>
+
+          <section id="routing" class="section-block reveal">
+            <div class="section-heading"><div><p class="eyebrow">03 / Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
+            <div class="grid two">
+              <label>Virtual model name<input name="router.model_name" value="smart" /></label>
+              <label>Catalog override file<input name="router.catalog_file" placeholder="./catalog-overrides.json" /></label>
+              <label>Classifier type<select name="router.classifier.type"><option value="">Disabled</option><option value="laya">Laya</option><option value="jev">Jev</option><option value="embedding">Embedding</option></select></label>
+              <label>Classifier model<input name="router.classifier.model" placeholder="provider/model" /></label>
+              <label>Classifier provider<input name="router.classifier.provider" placeholder="provider id" /></label>
+              <label>Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="fallback">Fallback</option><option value="fail">Fail</option></select></label>
+              <label>Classifier base URL<input name="router.classifier.base_url" placeholder="https://..." /></label>
+              <label>Classifier API key environment<input name="router.classifier.api_key.env" placeholder="JEV_API_KEY" /></label>
+              <label>Classifier API key file<input name="router.classifier.api_key.file" placeholder="/run/secrets/jev-key" /></label>
+              <label>Classifier transport<select name="router.classifier.transport"><option value="">Direct</option><option value="provider">Provider</option></select></label>
+            </div>
+            <div class="grid three compact-fields">
+              <label>Max context utilization<input name="router.selection.context_utilization_limit" type="number" min="0" max="1" step="0.01" placeholder="0.85" /></label>
+              <label>Expected output tokens<input name="router.selection.default_expected_output_tokens" type="number" min="0" placeholder="1024" /></label>
+              <label>Location preference<input name="router.selection.location_preference" placeholder="local" /></label>
+              <label>Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
+            </div>
+            <div class="check-row"><label class="checkbox"><input name="router.allow_paid_models" type="checkbox" /> Allow paid models</label></div>
+          </section>
+
+          <section id="state" class="section-block reveal">
+            <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
+            <div class="grid two">
+              <label>State directory<input name="state.directory" value="./state" /></label>
+              <label>Quota cache TTL<input name="router.quota.cache_ttl" value="1m" placeholder="1m" /></label>
+              <label>Session inactivity timeout<input name="router.sessions.inactivity_timeout" placeholder="30m" /></label>
+              <label>On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
+            </div>
+            <div class="subcard"><div class="subcard-title">Local quota allowances</div><p class="muted">Optional model-to-cost limits, one entry per line.</p><textarea name="router.quota.allowances" rows="4" placeholder="provider/model = 10.00"></textarea></div>
+          </section>
+        </form>
+        <footer class="footer"><span>Torii Gateway · local-first configuration</span><span id="save-state">Draft ready</span></footer>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/web/app.js"></script>
+  </body>
+</html>

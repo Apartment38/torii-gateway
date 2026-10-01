@@ -1,6 +1,13 @@
 # Torii Gateway
 
 Torii Gateway is a lightweight, resource-efficient LLM gateway written in Go.
+
+The root URL serves an embedded, dependency-light configuration console. It
+supports light and dark themes, provider and routing configuration, local draft
+persistence, and YAML download. The console does not require authentication;
+the API uses the configured bearer key when one is present. Authentication is
+kept behind a replaceable interface so Basic Auth or Authentik/OIDC can be
+added later without changing the console.
 It presents an OpenAI-compatible HTTP API in front of one or more Ollama servers or standard OpenAI-compatible
 endpoints and gives every upstream model a provider-qualified name such as
 `local/llama3.2`. The current build implements the repository's Version 1
@@ -22,7 +29,7 @@ ID.
   provider-scoped credentials, TLS, timeouts, custom headers, and model aliases
 - transparent request forwarding, including fields the gateway does not know
 - low-overhead, byte-for-byte SSE streaming
-- bearer authentication for every API endpoint except `GET /healthz`
+- optional bearer authentication for API endpoints; the embedded console is public
 - secrets loaded from an environment variable or a file, never inline YAML
 - strict configuration validation and graceful shutdown
 - request IDs, typed OpenAI-style errors, and secret-safe structured logging
@@ -98,7 +105,7 @@ providers:
 | Field | Required | Description |
 | --- | --- | --- |
 | `server.listen` | yes | TCP `host:port` on which the gateway listens. Use `127.0.0.1:8080` for local-only access or `0.0.0.0:8080` in a container. |
-| `server.authentication.api_key` | yes when serving | A secret reference used to authenticate clients. Select exactly one of `env` or `file`. |
+| `server.authentication.api_key` | no | Optional secret reference used to authenticate API clients. Select exactly one of `env` or `file`; omit the section for local no-auth mode. |
 
 The API key must be non-empty and cannot contain whitespace. To load it from a
 mounted secret file instead of the environment, use:

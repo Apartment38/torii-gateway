@@ -1054,14 +1054,14 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 			if err != nil {
 				return provider.CodexCredential{}, err
 			}
-			return provider.CodexCredential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, Endpoint: credential.Endpoint, ExpiresAt: credential.ExpiresAt, AccountID: credential.AccountID}, nil
+			return provider.CodexCredential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, Endpoint: credential.Endpoint, ExpiresAt: credential.ExpiresAt, AccountID: credential.AccountID, ClientID: credential.ClientID, IDToken: credential.IDToken, Issuer: credential.Issuer, Subject: credential.Subject, Email: credential.Email, HostID: credential.HostID, Scopes: credential.Scopes}, nil
 		}
 		codex, err := provider.NewCodex(cfg.ID, cfg.BaseURL, cfg.Models, loader, &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
 		if err != nil {
 			return nil, err
 		}
 		saver := func(id string, value provider.CodexCredential) error {
-			return credentialStore.Save(id, &state.Credential{AccessToken: value.AccessToken, RefreshToken: value.RefreshToken, ExpiresAt: value.ExpiresAt, Endpoint: value.Endpoint, AccountID: value.AccountID, TokenType: "Bearer"})
+			return credentialStore.Save(id, &state.Credential{AccessToken: value.AccessToken, RefreshToken: value.RefreshToken, ExpiresAt: value.ExpiresAt, Endpoint: value.Endpoint, AccountID: value.AccountID, ClientID: value.ClientID, IDToken: value.IDToken, Issuer: value.Issuer, Subject: value.Subject, Email: value.Email, HostID: value.HostID, Scopes: value.Scopes, TokenType: "Bearer"})
 		}
 		codex.ConfigureRefresh("https://auth.openai.com", saver)
 		return codex, nil

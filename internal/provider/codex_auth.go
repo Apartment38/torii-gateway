@@ -30,13 +30,29 @@ type PKCEAuthorization struct {
 	Verifier         string
 	RedirectURI      string
 	ClientID         string
+	HostID           string
+	Nonce            string
 }
 
 // StartPKCE creates an authorization URL for a caller-managed callback.
 func StartPKCE(issuer, redirectURI string) (PKCEAuthorization, error) {
+	return StartPKCEForHost(issuer, redirectURI, codexDynamicClientID, "urn:uuid:torii-gateway", "")
+}
+
+// StartPKCEForHost creates an OpenAI Sign in with ChatGPT authorization URL.
+// clientID is dynamic_agent_client for first registration and the issued
+// client ID for subsequent authorization. hostID must remain stable for the
+// lifetime of the remote Torii installation.
+func StartPKCEForHost(issuer, redirectURI, clientID, hostID, idTokenHint string) (PKCEAuthorization, error) {
 	issuer = strings.TrimRight(issuer, "/")
 	if issuer == "" || redirectURI == "" {
 		return PKCEAuthorization{}, errors.New("Codex OAuth issuer and redirect URI are required")
+	}
+	if clientID == "" {
+		clientID = codexDynamicClientID
+	}
+	if hostID == "" {
+		return PKCEAuthorization{}, errors.New("Codex OAuth host ID is required")
 	}
 	verifier, err := randomURLValue(32)
 	if err != nil {
@@ -65,7 +81,15 @@ func StartPKCE(issuer, redirectURI string) (PKCEAuthorization, error) {
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
-	return PKCEAuthorization{AuthorizationURL: issuer + "/api/accounts/authorize?" + query.Encode(), State: state, Verifier: verifier, RedirectURI: redirectURI, ClientID: codexDynamicClientID}, nil
+	query.Set("client_id", clientID)
+	query.Set("ext_agent_host_id", hostID)
+	if clientID != codexDynamicClientID {
+		query.Del("agent_name_hint")
+	}
+	if idTokenHint != "" {
+		query.Set("id_token_hint", idTokenHint)
+	}
+	return PKCEAuthorization{AuthorizationURL: issuer + "/api/accounts/authorize?" + query.Encode(), State: state, Verifier: verifier, RedirectURI: redirectURI, ClientID: clientID, HostID: hostID, Nonce: nonce}, nil
 }
 
 // ExchangePKCE exchanges a callback code for Codex credentials.
@@ -105,6 +129,9 @@ func ExchangePKCE(ctx context.Context, issuer, code string, authorization PKCEAu
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int    `json:"expires_in"`
 		AccountID    string `json:"account_id"`
+		ClientID     string `json:"client_id"`
+		IDToken      string `json:"id_token"`
+		Scope        string `json:"scope"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&token); err != nil || token.AccessToken == "" {
 		return CodexCredential{}, errors.New("Codex authorization token response is invalid")
@@ -113,7 +140,10 @@ func ExchangePKCE(ctx context.Context, issuer, code string, authorization PKCEAu
 	if token.ExpiresIn > 0 {
 		expires = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
 	}
-	return CodexCredential{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, ExpiresAt: expires, Endpoint: issuer, AccountID: token.AccountID}, nil
+	if token.ClientID == "" {
+		token.ClientID = clientID
+	}
+	return CodexCredential{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, ExpiresAt: expires, Endpoint: issuer, AccountID: token.AccountID, ClientID: token.ClientID, IDToken: token.IDToken, Issuer: issuer, HostID: authorization.HostID, Scopes: strings.Fields(token.Scope)}, nil
 }
 
 // CodexOAuthPort extracts the externally reachable port from the request host.

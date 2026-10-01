@@ -35,6 +35,9 @@ type CodexCredential struct {
 	AccessToken, RefreshToken, Endpoint string
 	ExpiresAt                           time.Time
 	AccountID                           string
+	ClientID, IDToken, Issuer           string
+	Subject, Email, HostID              string
+	Scopes                              []string
 }
 
 func NewCodex(id, baseURL string, models []string, load func(string) (CodexCredential, error), client *http.Client) (*Codex, error) {
@@ -233,12 +236,17 @@ func (r *codexStreamReader) nextEvent() ([]byte, error) {
 }
 
 func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexCredential, error) {
-	body, _ := json.Marshal(map[string]string{"grant_type": "refresh_token", "refresh_token": credential.RefreshToken, "client_id": "app_EMoamEEZ73f0CkXaXp7hrann"})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.issuer+"/oauth/token", bytes.NewReader(body))
+	clientID := credential.ClientID
+	if clientID == "" {
+		clientID = CodexOAuthClientID
+	}
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {credential.RefreshToken}, "client_id": {clientID}, "resource": {"https://api.openai.com/v1"}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.issuer+"/api/accounts/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return credential, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
 	response, err := c.client.Do(req)
 	if err != nil {
 		return credential, err
@@ -251,6 +259,8 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int    `json:"expires_in"`
+		IDToken      string `json:"id_token"`
+		Scope        string `json:"scope"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&refreshed); err != nil || refreshed.AccessToken == "" {
 		return credential, errors.New("Codex token refresh response is invalid")
@@ -258,6 +268,12 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	credential.AccessToken = refreshed.AccessToken
 	if refreshed.RefreshToken != "" {
 		credential.RefreshToken = refreshed.RefreshToken
+	}
+	if refreshed.IDToken != "" {
+		credential.IDToken = refreshed.IDToken
+	}
+	if refreshed.Scope != "" {
+		credential.Scopes = strings.Fields(refreshed.Scope)
 	}
 	if refreshed.ExpiresIn > 0 {
 		credential.ExpiresAt = time.Now().Add(time.Duration(refreshed.ExpiresIn) * time.Second)

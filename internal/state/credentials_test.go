@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestFlatFileCredentialStorePersistsAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *got != *want {
+	if !reflect.DeepEqual(*got, *want) {
 		t.Fatalf("Load() = %#v, want %#v", got, want)
 	}
 	info, err := os.Stat(filepath.Join(directory, "auth", "openai-codex.json"))

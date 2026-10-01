@@ -30,6 +30,13 @@ type Credential struct {
 	AccountID    string    `json:"account_id,omitempty"`
 	PrincipalID  string    `json:"principal_id,omitempty"`
 	Endpoint     string    `json:"endpoint"`
+	ClientID     string    `json:"client_id,omitempty"`
+	IDToken      string    `json:"id_token,omitempty"`
+	Scopes       []string  `json:"scopes,omitempty"`
+	Issuer       string    `json:"issuer,omitempty"`
+	Subject      string    `json:"subject,omitempty"`
+	Email        string    `json:"email,omitempty"`
+	HostID       string    `json:"host_id,omitempty"`
 }
 
 type CredentialStore interface {

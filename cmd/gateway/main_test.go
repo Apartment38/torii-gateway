@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -172,6 +173,55 @@ providers:
 	}
 	if _, err := buildHandler(cfg); err == nil || !strings.Contains(err.Error(), "whitespace") {
 		t.Fatalf("buildHandler() error = %v, want whitespace validation error", err)
+	}
+}
+
+func TestRuntimeConfigEndpointPersistsAndReloads(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	initial := `server:
+  listen: 127.0.0.1:8080
+state:
+  directory: STATE_DIR
+providers:
+  - id: local
+    type: openai_compatible
+    base_url: https://example.test
+    discover_models: false
+    models: [model]
+`
+	initial = strings.Replace(initial, "STATE_DIR", filepath.Dir(configPath), 1)
+	if err := os.WriteFile(configPath, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &handlerRuntime{configPath: configPath}
+	handler, err := buildHandlerWithRuntime(cfg, configPath, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.handler = handler
+
+	get := httptest.NewRecorder()
+	handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/gateway/v1/config", nil))
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"listen":"127.0.0.1:8080"`) {
+		t.Fatalf("GET config = %d %s", get.Code, get.Body.String())
+	}
+
+	updated := []byte(`{"server":{"listen":"127.0.0.1:9090"},"state":{"directory":"` + filepath.Dir(configPath) + `"},"providers":[{"id":"local","type":"openai_compatible","base_url":"https://example.test","discover_models":false,"models":["model"]}]}`)
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", bytes.NewReader(updated)))
+	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
+		t.Fatalf("PUT config = %d %s", put.Code, put.Body.String())
+	}
+	reloaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Server.Listen != "127.0.0.1:9090" {
+		t.Fatalf("reloaded listen = %q", reloaded.Server.Listen)
 	}
 }
 

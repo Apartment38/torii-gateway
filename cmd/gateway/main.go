@@ -15,7 +15,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/state"
 	"github.com/Apartment38/torii-gateway/internal/usage"
 	"github.com/Apartment38/torii-gateway/internal/web"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -137,7 +140,8 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	handler, err := buildHandler(cfg)
+	runtime := &handlerRuntime{configPath: *configPath}
+	handler, err := buildHandlerWithRuntime(cfg, *configPath, runtime)
 	if err != nil {
 		return err
 	}
@@ -147,8 +151,9 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	}
 	defer listener.Close()
 
+	runtime.handler = handler
 	server := &http.Server{
-		Handler:           handler,
+		Handler:           runtime,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -339,6 +344,33 @@ func normalizeServeError(err error) error {
 }
 
 func buildHandler(cfg *config.Config) (http.Handler, error) {
+	return buildHandlerWithRuntime(cfg, "", nil)
+}
+
+type handlerRuntime struct {
+	mu         sync.RWMutex
+	handler    http.Handler
+	configPath string
+}
+
+func (r *handlerRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.mu.RLock()
+	handler := r.handler
+	r.mu.RUnlock()
+	if handler == nil {
+		http.Error(w, "gateway is starting", http.StatusServiceUnavailable)
+		return
+	}
+	handler.ServeHTTP(w, req)
+}
+
+func (r *handlerRuntime) swap(handler http.Handler) {
+	r.mu.Lock()
+	r.handler = handler
+	r.mu.Unlock()
+}
+
+func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *handlerRuntime) (http.Handler, error) {
 	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
 	if cfg.Server.Authentication != nil {
 		apiKey, err := cfg.Server.Authentication.APIKey.Resolve()
@@ -496,9 +528,114 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 	})
 	apiHandler := api.AuthenticateMiddleware(authenticator, openAI)
 	mux.Handle("/v1/", apiHandler)
+	if runtime != nil && configPath != "" {
+		mux.HandleFunc("GET /gateway/v1/config", runtime.getConfig)
+		mux.HandleFunc("PUT /gateway/v1/config", runtime.putConfig)
+		mux.HandleFunc("POST /gateway/v1/config", runtime.putConfig)
+	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
 	return api.RequestIDMiddleware(nil, mux), nil
+}
+
+func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.handler == nil {
+		http.Error(w, "gateway is starting", http.StatusServiceUnavailable)
+		return
+	}
+	cfg, err := config.Load(r.configPath)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, err)
+		return
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, err)
+		return
+	}
+	var document any
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		writeConfigError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(document)
+}
+
+func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
+	if req.ContentLength > 2<<20 {
+		writeConfigError(w, http.StatusRequestEntityTooLarge, errors.New("configuration exceeds 2 MiB"))
+		return
+	}
+	decoder := yaml.NewDecoder(io.LimitReader(req.Body, 2<<20))
+	decoder.KnownFields(true)
+	var next config.Config
+	if err := decoder.Decode(&next); err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode configuration: %w", err))
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			writeConfigError(w, http.StatusBadRequest, errors.New("multiple configuration documents are not allowed"))
+		} else {
+			writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode configuration: %w", err))
+		}
+		return
+	}
+	if err := next.Validate(); err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("validate configuration: %w", err))
+		return
+	}
+	newHandler, err := buildHandlerWithRuntime(&next, r.configPath, r)
+	if err != nil {
+		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("initialize configuration: %w", err))
+		return
+	}
+	if err := persistConfig(r.configPath, &next); err != nil {
+		writeConfigError(w, http.StatusInternalServerError, err)
+		return
+	}
+	r.swap(newHandler)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, `{"status":"saved","reloaded":true}`+"\n")
+}
+
+func persistConfig(path string, cfg *config.Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("encode configuration: %w", err)
+	}
+	directory := filepath.Dir(path)
+	temporary, err := os.CreateTemp(directory, ".torii-gateway-config-*")
+	if err != nil {
+		return fmt.Errorf("create temporary configuration: %w", err)
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("protect temporary configuration: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("write temporary configuration: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary configuration: %w", err)
+	}
+	if err := os.Rename(temporaryName, path); err != nil {
+		return fmt.Errorf("replace configuration: %w", err)
+	}
+	return nil
+}
+
+func writeConfigError(w http.ResponseWriter, status int, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
 
 type providerQuotaFetcher struct{ providers map[string]quota.Fetcher }

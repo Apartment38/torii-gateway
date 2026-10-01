@@ -38,11 +38,12 @@
           <div class="top-actions">
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">☾</button>
             <button id="reset-button" class="button quiet" type="button">Reset draft</button>
-            <button id="download-button" class="button primary" type="button">Download YAML</button>
+            <button id="save-button" class="button primary" type="button">Save &amp; reload</button>
+            <button id="download-button" class="button quiet" type="button">Download YAML</button>
           </div>
         </header>
 
-        <section id="overview" class="hero card reveal">
+        <section id="overview" class="page hero card reveal">
           <div class="hero-copy">
             <span class="pill">Configuration studio</span>
             <h2>Make the path through your models feel intentional.</h2>
@@ -52,7 +53,7 @@
         </section>
 
         <form id="config-form" novalidate>
-          <section id="server" class="section-block reveal">
+          <section id="server" class="page section-block reveal">
             <div class="section-heading"><div><p class="eyebrow">01 / Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
             <div class="grid two">
               <label>Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
@@ -62,12 +63,12 @@
             <div class="notice"><span>◎</span><span>Authentication is not required by this console. The gateway API still uses its configured bearer key today; a future auth adapter can add Basic Auth or Authentik without changing this form.</span></div>
           </section>
 
-          <section id="providers" class="section-block reveal">
+          <section id="providers" class="page section-block reveal">
             <div class="section-heading"><div><p class="eyebrow">02 / Upstreams</p><h2>Providers</h2></div><button id="add-provider" class="button secondary" type="button">＋ Add provider</button></div>
             <div id="providers-list" class="provider-list"></div>
           </section>
 
-          <section id="routing" class="section-block reveal">
+          <section id="routing" class="page section-block reveal">
             <div class="section-heading"><div><p class="eyebrow">03 / Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
             <div class="grid two">
               <label>Virtual model name<input name="router.model_name" value="smart" /></label>
@@ -90,7 +91,7 @@
             <div class="check-row"><label class="checkbox"><input name="router.allow_paid_models" type="checkbox" /> Allow paid models</label></div>
           </section>
 
-          <section id="state" class="section-block reveal">
+          <section id="state" class="page section-block reveal">
             <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
             <div class="grid two">
               <label>State directory<input name="state.directory" value="./state" /></label>

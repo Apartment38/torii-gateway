@@ -74,6 +74,60 @@ function readDraft(): void {
   } catch { localStorage.removeItem(STORAGE_KEY); }
 }
 
+function applyConfig(config: Record<string, any>): void {
+  providers = (config.providers || []).map((provider: Record<string, any>) => ({
+    ...providerDefaults,
+    ...provider,
+    bearer_env: provider.bearer_token?.env || "",
+    management_env: provider.management_token?.env || "",
+    tls_ca: provider.tls?.ca_file || "",
+    tls_server: provider.tls?.server_name || "",
+    headers: provider.headers ? JSON.stringify(provider.headers) : "",
+    rewrites: provider.model_rewrites ? JSON.stringify(provider.model_rewrites) : "",
+    models: Array.isArray(provider.models) ? provider.models.join(", ") : "",
+    discover: provider.discover_models !== false,
+  }));
+  if (!providers.length) providers = [{ ...providerDefaults }];
+  renderProviders();
+  const fill = (value: any, prefix = ""): void => Object.entries(value || {}).forEach(([key, raw]) => {
+    const name = prefix ? `${prefix}.${key}` : key;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) fill(raw, name);
+    else {
+      const control = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
+      if (control) control.type === "checkbox" ? control.checked = Boolean(raw) : control.value = String(raw);
+    }
+  });
+  fill(config);
+  const allowances = config.router?.quota?.allowances || {};
+  (form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement).value = Object.entries(allowances).map(([key, raw]) => `${key} = ${raw}`).join("\n");
+  const quality = config.router?.selection?.minimum_quality;
+  if (quality) (form.elements.namedItem("router.selection.minimum_quality") as HTMLInputElement).value = JSON.stringify(quality);
+}
+
+async function loadServerConfig(): Promise<void> {
+  try {
+    const response = await fetch("/gateway/v1/config", { headers: await authProvider.headers() });
+    if (!response.ok) return;
+    applyConfig(await response.json());
+    saveState.textContent = "Loaded from gateway";
+  } catch { /* The console remains usable in local draft mode. */ }
+}
+
+async function saveConfig(): Promise<void> {
+  const response = await fetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(readConfig()) });
+  if (!response.ok) { toast(`Save failed: ${await response.text()}`); return; }
+  localStorage.removeItem(STORAGE_KEY);
+  saveState.textContent = "Saved and reloaded";
+  await loadServerConfig();
+  toast("Configuration saved and reloaded");
+}
+
+function navigate(): void {
+  const current = location.hash.replace(/^#/, "") || "overview";
+  document.querySelectorAll<HTMLElement>(".page").forEach(page => page.classList.toggle("active", page.id === current));
+  document.querySelectorAll<HTMLAnchorElement>(".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+}
+
 function setNested(target: Record<string, any>, path: string, raw: unknown): void {
   const parts = path.split("."); let cursor = target;
   parts.forEach((part, index) => { if (index === parts.length - 1) cursor[part] = raw; else cursor = cursor[part] ||= {}; });
@@ -97,8 +151,10 @@ function toast(message: string): void { const node = document.querySelector<HTML
 
 document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults, id: `provider-${providers.length + 1}` }); renderProviders(); markDirty(); });
 document.querySelector("#download-button")!.addEventListener("click", download);
+document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { localStorage.removeItem(STORAGE_KEY); location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
 form.addEventListener("input", markDirty);
+window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-renderProviders(); readDraft();
+renderProviders(); navigate(); void loadServerConfig().then(() => readDraft());

@@ -109,6 +109,14 @@ podman compose down
 Keep `.env` private; it is ignored by Git. If authentication is omitted from
 `config.yaml`, the API key environment variable is not required.
 
+The console is divided into Overview, Server, Providers, Routing, and State &
+Quota pages. **Save & reload** sends the validated configuration to
+`PUT /gateway/v1/config`; the gateway atomically replaces the mounted YAML
+file and swaps in the rebuilt provider/routing handler. A failed validation or
+provider initialization leaves the current configuration active. Download YAML
+remains available when you want to review or transfer a configuration without
+applying it.
+
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its state volume. If an upstream
 provider runs on the host, use a host-reachable address such as

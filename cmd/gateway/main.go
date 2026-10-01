@@ -661,13 +661,18 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 
 func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Request) {
 	var request struct {
-		Provider string `json:"provider" yaml:"provider"`
+		Provider   config.ProviderConfig `json:"provider" yaml:"provider"`
+		ProviderID string                `json:"provider_id" yaml:"provider_id"`
 	}
 	if err := yaml.NewDecoder(io.LimitReader(req.Body, 64<<10)).Decode(&request); err != nil {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode login request: %w", err))
 		return
 	}
-	if request.Provider == "" {
+	providerID := request.Provider.ID
+	if providerID == "" {
+		providerID = request.ProviderID
+	}
+	if providerID == "" {
 		writeConfigError(w, http.StatusBadRequest, errors.New("provider is required"))
 		return
 	}
@@ -676,16 +681,26 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
 		return
 	}
-	var providerConfig *config.ProviderConfig
-	for i := range current.Providers {
-		if current.Providers[i].ID == request.Provider {
-			providerConfig = &current.Providers[i]
-			break
+	providerConfig := request.Provider
+	if providerConfig.ID == "" {
+		for i := range current.Providers {
+			if current.Providers[i].ID == providerID {
+				providerConfig = current.Providers[i]
+				break
+			}
 		}
 	}
-	if providerConfig == nil {
-		writeConfigError(w, http.StatusNotFound, fmt.Errorf("provider %q is not configured", request.Provider))
+	if providerConfig.ID == "" {
+		writeConfigError(w, http.StatusNotFound, fmt.Errorf("provider %q is not configured", providerID))
 		return
+	}
+	if providerConfig.Type == "openai-codex" {
+		if providerConfig.BaseURL == "" {
+			providerConfig.BaseURL = "https://chatgpt.com/backend-api/codex"
+		}
+		if len(providerConfig.Models) == 0 {
+			providerConfig.Models = []string{"gpt-5.5"}
+		}
 	}
 	if providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
 		writeConfigError(w, http.StatusBadRequest, errors.New("browser login is supported only for openai-codex and nous providers"))
@@ -695,15 +710,15 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 	if r.logins == nil {
 		r.logins = make(map[string]providerLogin)
 	}
-	if existing, ok := r.logins[request.Provider]; ok && existing.Status == "pending" {
+	if existing, ok := r.logins[providerConfig.ID]; ok && existing.Status == "pending" {
 		r.loginMu.Unlock()
 		writeJSON(w, http.StatusOK, existing)
 		return
 	}
-	r.logins[request.Provider] = providerLogin{Status: "pending", Message: "Waiting for authorization"}
+	r.logins[providerConfig.ID] = providerLogin{Status: "pending", Message: "Waiting for authorization"}
 	r.loginMu.Unlock()
 	writeJSON(w, http.StatusAccepted, providerLogin{Status: "pending", Message: "Waiting for authorization"})
-	go r.completeProviderLogin(*providerConfig, current.State.Directory)
+	go r.completeProviderLogin(providerConfig, current.State.Directory)
 }
 
 func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Request) {

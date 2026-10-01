@@ -91,7 +91,14 @@ function updateProvider(event: Event): void {
     const title = providerList.querySelector<HTMLElement>(`[data-provider-title="${index}"]`);
     if (title) title.textContent = control.value || `Provider ${index + 1}`;
   }
-  if (key === "type") { renderProviders(); }
+  if (key === "type") {
+    if (control.value === "openai-codex" && !providers[index].api_url) {
+      providers[index].api_url = "https://chatgpt.com/backend-api/codex";
+      providers[index].models = "gpt-5.5";
+    }
+    if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
+    renderProviders();
+  }
   markDirty();
 }
 
@@ -194,7 +201,7 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
   result.className = "provider-result pending";
   result.textContent = "Starting login…";
   try {
-    const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: providers[index].id }) });
+    const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: readConfig().providers[index] }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "login could not start");
     if (body.verification_url) window.open(body.verification_url, "_blank", "noopener,noreferrer");

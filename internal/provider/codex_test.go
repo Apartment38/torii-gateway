@@ -90,6 +90,54 @@ func TestPKCELoginValidatesStateAndExchangesCode(t *testing.T) {
 	}
 }
 
+func TestStartAndExchangePKCEUsesCurrentCodexOAuthFlow(t *testing.T) {
+	var receivedForm url.Values
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/accounts/oauth/token" {
+			t.Fatalf("token path = %s", r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			t.Fatalf("content type = %q", r.Header.Get("Content-Type"))
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		receivedForm = r.Form
+		_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"refresh","expires_in":3600,"account_id":"acct"}`)
+	}))
+	defer issuer.Close()
+
+	authorization, err := StartPKCE(issuer.URL, "http://127.0.0.1:8398/auth/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(authorization.AuthorizationURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Path != "/api/accounts/authorize" {
+		t.Fatalf("authorization path = %s", parsed.Path)
+	}
+	query := parsed.Query()
+	if query.Get("client_id") != codexDynamicClientID || query.Get("redirect_uri") != authorization.RedirectURI || query.Get("resource") != "https://api.openai.com/v1" {
+		t.Fatalf("authorization query = %#v", query)
+	}
+	if query.Get("scope") != "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct" {
+		t.Fatalf("scope = %q", query.Get("scope"))
+	}
+
+	credential, err := ExchangePKCE(context.Background(), issuer.URL, "auth-code", authorization, issuer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credential.AccessToken != "access" || credential.AccountID != "acct" {
+		t.Fatalf("credential = %#v", credential)
+	}
+	if receivedForm.Get("client_id") != codexDynamicClientID || receivedForm.Get("code") != "auth-code" || receivedForm.Get("resource") != "https://api.openai.com/v1" {
+		t.Fatalf("token form = %#v", receivedForm)
+	}
+}
+
 func TestCodexToolTranslation(t *testing.T) {
 	body, stream, err := codexRequest("/v1/chat/completions", []byte(`{"model":"gpt","messages":[{"role":"user","content":"call it"},{"role":"tool","tool_call_id":"call-1","content":"result"}],"tools":[{"type":"function","function":{"name":"lookup","description":"find a value","parameters":{"type":"object"}}}]}`), "gpt")
 	if err != nil || stream {

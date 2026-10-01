@@ -13,11 +13,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const CodexOAuthClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+
+const codexDynamicClientID = "dynamic_agent_client"
 
 // PKCEAuthorization contains the browser URL and verifier state for a web
 // OAuth flow. The verifier must remain private until the callback exchange.
@@ -26,6 +29,7 @@ type PKCEAuthorization struct {
 	State            string
 	Verifier         string
 	RedirectURI      string
+	ClientID         string
 }
 
 // StartPKCE creates an authorization URL for a caller-managed callback.
@@ -44,8 +48,24 @@ func StartPKCE(issuer, redirectURI string) (PKCEAuthorization, error) {
 	}
 	hash := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
-	query := url.Values{"response_type": {"code"}, "client_id": {CodexOAuthClientID}, "redirect_uri": {redirectURI}, "scope": {"openid profile email offline_access"}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
-	return PKCEAuthorization{AuthorizationURL: issuer + "/oauth/authorize?" + query.Encode(), State: state, Verifier: verifier, RedirectURI: redirectURI}, nil
+	nonce, err := randomURLValue(24)
+	if err != nil {
+		return PKCEAuthorization{}, err
+	}
+	query := url.Values{
+		"response_type":         {"code"},
+		"client_id":             {codexDynamicClientID},
+		"redirect_uri":          {redirectURI},
+		"scope":                 {"openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"},
+		"resource":              {"https://api.openai.com/v1"},
+		"state":                 {state},
+		"nonce":                 {nonce},
+		"agent_name_hint":       {"Torii Gateway"},
+		"ext_agent_host_id":     {"torii-gateway"},
+		"code_challenge":        {challenge},
+		"code_challenge_method": {"S256"},
+	}
+	return PKCEAuthorization{AuthorizationURL: issuer + "/api/accounts/authorize?" + query.Encode(), State: state, Verifier: verifier, RedirectURI: redirectURI, ClientID: codexDynamicClientID}, nil
 }
 
 // ExchangePKCE exchanges a callback code for Codex credentials.
@@ -54,12 +74,24 @@ func ExchangePKCE(ctx context.Context, issuer, code string, authorization PKCEAu
 		client = http.DefaultClient
 	}
 	issuer = strings.TrimRight(issuer, "/")
-	requestBody, _ := json.Marshal(map[string]string{"grant_type": "authorization_code", "client_id": CodexOAuthClientID, "code": code, "redirect_uri": authorization.RedirectURI, "code_verifier": authorization.Verifier})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, issuer+"/oauth/token", bytes.NewReader(requestBody))
+	clientID := authorization.ClientID
+	if clientID == "" {
+		clientID = codexDynamicClientID
+	}
+	requestBody := url.Values{
+		"grant_type":    {"authorization_code"},
+		"client_id":     {clientID},
+		"code":          {code},
+		"redirect_uri":  {authorization.RedirectURI},
+		"code_verifier": {authorization.Verifier},
+		"resource":      {"https://api.openai.com/v1"},
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, issuer+"/api/accounts/oauth/token", strings.NewReader(requestBody.Encode()))
 	if err != nil {
 		return CodexCredential{}, err
 	}
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Accept", "application/json")
 	response, err := client.Do(request)
 	if err != nil {
 		return CodexCredential{}, err
@@ -82,6 +114,18 @@ func ExchangePKCE(ctx context.Context, issuer, code string, authorization PKCEAu
 		expires = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
 	}
 	return CodexCredential{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, ExpiresAt: expires, Endpoint: issuer, AccountID: token.AccountID}, nil
+}
+
+// CodexOAuthPort extracts the externally reachable port from the request host.
+// OpenAI's Codex sign-in flow requires a loopback redirect, so the browser must
+// return to the same published gateway port while using 127.0.0.1 as the host.
+func CodexOAuthPort(host string) string {
+	if _, port, err := net.SplitHostPort(host); err == nil && port != "" {
+		if n, parseErr := strconv.Atoi(port); parseErr == nil && n > 0 && n <= 65535 {
+			return port
+		}
+	}
+	return "8080"
 }
 
 // PKCELogin starts a browser authorization-code flow and waits for the

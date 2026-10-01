@@ -553,6 +553,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		mux.HandleFunc("POST /gateway/v1/providers/login", runtime.startProviderLogin)
 		mux.HandleFunc("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
 		mux.HandleFunc("GET /gateway/v1/providers/login/callback", runtime.providerLoginCallback)
+		mux.HandleFunc("GET /auth/callback", runtime.providerLoginCallback)
 	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
@@ -775,15 +776,7 @@ func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Re
 }
 
 func providerLoginRedirectURL(req *http.Request) string {
-	scheme := req.Header.Get("X-Forwarded-Proto")
-	if scheme == "" {
-		if req.TLS != nil {
-			scheme = "https"
-		} else {
-			scheme = "http"
-		}
-	}
-	return (&url.URL{Scheme: scheme, Host: req.Host, Path: "/gateway/v1/providers/login/callback"}).String()
+	return (&url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", provider.CodexOAuthPort(req.Host)), Path: "/auth/callback"}).String()
 }
 
 func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.Request) {
@@ -808,6 +801,9 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 		r.setProviderLogin(flow.Provider.ID, providerLogin{Status: "failure", Message: "Codex authorization callback did not include a code"})
 		http.Error(w, "Authorization failed. You may close this window.", http.StatusBadRequest)
 		return
+	}
+	if clientID := req.URL.Query().Get("client_id"); clientID != "" {
+		flow.Authorization.ClientID = clientID
 	}
 	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
 	defer cancel()

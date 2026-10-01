@@ -572,6 +572,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		mux.HandleFunc("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
 		mux.HandleFunc("GET /gateway/v1/providers/login/session", runtime.providerLoginSession)
 		mux.HandleFunc("POST /gateway/v1/providers/login/import", runtime.importProviderLogin)
+		mux.HandleFunc("GET /gateway/v1/providers/login/helper/{asset}", runtime.downloadLoginHelper)
 		mux.HandleFunc("GET /gateway/v1/providers/login/callback", runtime.providerLoginCallback)
 		mux.HandleFunc("GET /auth/callback", runtime.providerLoginCallback)
 	}
@@ -848,6 +849,36 @@ func (r *handlerRuntime) providerLoginSession(w http.ResponseWriter, req *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"provider_id": session.Provider.ID, "issuer": "https://auth.openai.com", "client_id": session.ClientID, "host_id": session.HostID, "id_token_hint": session.IDToken})
+}
+
+func (r *handlerRuntime) downloadLoginHelper(w http.ResponseWriter, req *http.Request) {
+	asset := req.PathValue("asset")
+	allowed := map[string]string{
+		"torii-auth-linux-amd64":       "torii-auth-linux-amd64",
+		"torii-auth-linux-arm64":       "torii-auth-linux-arm64",
+		"torii-auth-darwin-amd64":      "torii-auth-darwin-amd64",
+		"torii-auth-darwin-arm64":      "torii-auth-darwin-arm64",
+		"torii-auth-windows-amd64.exe": "torii-auth-windows-amd64.exe",
+	}
+	filename, ok := allowed[asset]
+	if !ok {
+		http.NotFound(w, req)
+		return
+	}
+	path := filepath.Join("/helpers", filename)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		http.Error(w, "This container image does not include the login helper; rebuild the image with the current Dockerfile.", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Unable to read the login helper.", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(data)
 }
 
 func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Request) {

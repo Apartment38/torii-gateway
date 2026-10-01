@@ -257,7 +257,7 @@ function helperDownloadURL(): string {
   else if (platform.includes("mac") || agent.includes("macintosh")) asset = agent.includes("arm") ? "torii-auth-darwin-arm64" : "torii-auth-darwin-amd64";
   else if (agent.includes("aarch64") || agent.includes("arm64")) asset = "torii-auth-linux-arm64";
   else if (platform.includes("linux")) asset = "torii-auth-linux-amd64";
-  return asset ? `https://github.com/Apartment38/torii-router/releases/latest/download/${asset}` : "https://github.com/Apartment38/torii-router/releases/latest";
+  return asset ? `/gateway/v1/providers/login/helper/${asset}` : "https://github.com/Apartment38/torii-router/releases/latest";
 }
 async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
   for (let attempt = 0; attempt < 180; attempt += 1) {

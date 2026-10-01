@@ -4,9 +4,19 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o /out/gateway ./cmd/gateway
+RUN for target in \
+      "linux amd64" \
+      "linux arm64" \
+      "darwin amd64" \
+      "darwin arm64" \
+      "windows amd64"; do \
+      set -- $target; suffix=""; if [ "$1" = "windows" ]; then suffix=".exe"; fi; \
+      CGO_ENABLED=0 GOOS="$1" GOARCH="$2" go build -trimpath -ldflags='-s -w' -o "/out/torii-auth-$1-$2$suffix" ./cmd/torii-auth; \
+    done
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/gateway /gateway
+COPY --from=build /out/torii-auth-* /helpers/
 VOLUME ["/state"]
 EXPOSE 8080
 USER nonroot:nonroot

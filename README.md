@@ -113,17 +113,16 @@ podman compose down
 Keep `.env` private; it is ignored by Git. If authentication is omitted from
 `config.yaml`, the API key environment variable is not required.
 
-The host `config.yaml` is mounted as a read-only startup template. On the first
-start, Torii copies it to `/state/config.yaml` in the persistent state volume;
-the web console saves and reloads that writable active copy atomically. After
-the first start, the active state-volume copy is authoritative, so edit the
-configuration through the console or intentionally reseed the state volume
-when replacing the template.
+The compose file mounts the host `config.yaml` as a writable Podman bind mount
+with `rw,Z,U`. The `U` option adjusts ownership for the container’s non-root
+user, so Podman may change the host file’s ownership. The web console saves and
+reloads directly to the host `config.yaml` using an atomic replacement. The
+named state volume continues to store credentials and other runtime state.
 
 The console is divided into Overview, Server, Providers, Routing, and State &
 Quota pages. **Save & reload** sends the validated configuration to
-`PUT /gateway/v1/config`; the gateway atomically replaces the active YAML file
-in the state volume and swaps in the rebuilt provider/routing handler. A failed validation or
+`PUT /gateway/v1/config`; the gateway atomically replaces the host YAML file
+and swaps in the rebuilt provider/routing handler. A failed validation or
 provider initialization leaves the current configuration active. The console
 reloads the active configuration after a successful save.
 

@@ -120,6 +120,33 @@ file and swaps in the rebuilt provider/routing handler. A failed validation or
 provider initialization leaves the current configuration active. The console
 reloads the active configuration after a successful save.
 
+### Log in to Codex from a remote container
+
+When the gateway runs on another computer, the Providers page cannot complete
+OpenAI's loopback OAuth callback directly in the container. Click **Log in**
+for the `openai-codex` provider and run the displayed one-shot helper on the
+computer where your browser is running. Download the matching `torii-auth`
+binary from the project release for your operating system, then run the
+command shown by the console:
+
+```sh
+torii-auth --session-url https://gateway.example.com/gateway/v1/providers/login/session \
+  --pairing-token '<one-time-token-from-the-console>'
+```
+
+The helper opens OpenAI login locally, receives the callback on `127.0.0.1`,
+transfers the protected credential to the pending gateway session, and exits.
+The pairing token expires after 10 minutes and can be used only once. The
+gateway stores and refreshes the credential; the helper does not need to keep
+running. Use HTTPS for the console in production because the helper transfers
+OAuth credentials to the gateway over the session connection.
+
+For local development, build the helper with:
+
+```sh
+go build -o ./bin/torii-auth ./cmd/torii-auth
+```
+
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its state volume. If an upstream
 provider runs on the host, use a host-reachable address such as

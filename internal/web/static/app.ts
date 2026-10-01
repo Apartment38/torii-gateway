@@ -237,7 +237,7 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
 function renderHelperInstructions(result: HTMLDivElement, sessionURL: string, pairingToken: string): void {
   const command = `torii-auth --session-url ${sessionURL} --pairing-token ${pairingToken}`;
   result.className = "provider-result pending provider-helper";
-  result.innerHTML = `<strong>Run the one-shot helper on the computer with your browser.</strong><span>${escapeHTML(command)}</span><small>The helper opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
+  result.innerHTML = `<strong>Run the one-shot helper on the computer with your browser.</strong><a href="https://github.com/Apartment38/torii-router/releases/latest" target="_blank" rel="noreferrer">Download torii-auth for your operating system</a><span>${escapeHTML(command)}</span><small>The helper opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
 }
 async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
   for (let attempt = 0; attempt < 180; attempt += 1) {

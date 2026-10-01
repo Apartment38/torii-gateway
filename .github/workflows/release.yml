@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build helper
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          suffix=""
+          if [ "$GOOS" = "windows" ]; then suffix=".exe"; fi
+          mkdir -p dist
+          CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "dist/torii-auth-${GOOS}-${GOARCH}${suffix}" ./cmd/torii-auth
+
+      - name: Upload helper artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: torii-auth-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/torii-auth-*
+
+  publish:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download helper artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          pattern: torii-auth-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum torii-auth-* > SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/torii-auth-*
+            dist/SHA256SUMS

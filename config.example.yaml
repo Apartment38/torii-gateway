@@ -2,7 +2,7 @@
 # Copy this file to config.yaml and set TORII_API_KEY before starting.
 server:
   # Use 0.0.0.0:8080 when the gateway must listen outside the local machine or
-  # container. Authentication is required on every endpoint except /healthz.
+  # container. Set this to 0.0.0.0:8080 for container access.
   listen: 127.0.0.1:8080
   authentication:
     api_key:

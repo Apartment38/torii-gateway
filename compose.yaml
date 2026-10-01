@@ -1,0 +1,22 @@
+services:
+  torii-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${TORII_IMAGE:-torii-gateway:local}
+    restart: unless-stopped
+    command: ["serve", "--config", "/config/config.yaml"]
+    ports:
+      - "${TORII_PORT:-8080}:8080"
+    volumes:
+      - "./config.yaml:/config/config.yaml:ro,Z"
+      - "torii_gateway_state:/state:Z"
+    healthcheck:
+      test: ["CMD", "/gateway", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  torii_gateway_state:

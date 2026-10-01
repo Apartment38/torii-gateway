@@ -137,7 +137,10 @@ function applyConfig(config: Record<string, any>): void {
     discover: provider.discover_models !== false,
   }));
   providers.forEach(provider => {
-    if (provider.type === "openai-codex" && provider.models === "setup") provider.models = "gpt-5.3-codex";
+    if (provider.type === "openai-codex") {
+      if (provider.models === "setup") provider.models = "gpt-5.3-codex";
+      if (String(provider.api_url).startsWith("https://example.invalid")) provider.api_url = "https://chatgpt.com/backend-api/codex";
+    }
   });
   if (!providers.length) providers = [{ ...providerDefaults }];
   renderProviders();

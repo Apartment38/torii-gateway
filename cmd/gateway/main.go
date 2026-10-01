@@ -828,8 +828,8 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		return
 	}
 	if providerConfig.Type == "openai-codex" {
-		if providerConfig.BaseURL == "" {
-			providerConfig.BaseURL = "https://chatgpt.com/backend-api/codex"
+		if providerConfig.BaseURL == "" || providerConfig.BaseURL == "https://example.invalid" {
+			providerConfig.BaseURL = provider.DefaultCodexBaseURL
 		}
 	}
 	if providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
@@ -1377,6 +1377,9 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		}
 	}
 	if cfg.Type == "openai-codex" {
+		if cfg.BaseURL == "" || cfg.BaseURL == "https://example.invalid" {
+			cfg.BaseURL = provider.DefaultCodexBaseURL
+		}
 		if stateDirectory == "" {
 			return nil, errors.New("state directory is required for openai-codex")
 		}

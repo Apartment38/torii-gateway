@@ -31,7 +31,10 @@ type Codex struct {
 	refreshMu sync.Mutex
 }
 
-const defaultCodexModel = "gpt-5.3-codex"
+const (
+	DefaultCodexBaseURL = "https://chatgpt.com/backend-api/codex"
+	defaultCodexModel   = "gpt-5.3-codex"
+)
 
 type CodexCredential struct {
 	AccessToken, RefreshToken, Endpoint string

@@ -222,15 +222,14 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
     if (!response.ok) throw new Error(body.error || "login could not start");
     if (body.verification_url) window.open(body.verification_url, "_blank", "noopener,noreferrer");
     result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
-    await pollProviderLogin(String(providers[index].id), result, button);
+    await pollProviderLogin(String(providers[index].id), result, button, body.verification_url || "");
   } catch (error) {
     result.className = "provider-result failure";
     result.textContent = `Failed · ${error instanceof Error ? error.message : "login failed"}`;
     button.disabled = false;
   }
 }
-async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement): Promise<void> {
-  let openedURL = "";
+async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = ""): Promise<void> {
   for (let attempt = 0; attempt < 180; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, 2000));
     const response = await fetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });

@@ -19,6 +19,71 @@ import (
 
 const CodexOAuthClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
+// PKCEAuthorization contains the browser URL and verifier state for a web
+// OAuth flow. The verifier must remain private until the callback exchange.
+type PKCEAuthorization struct {
+	AuthorizationURL string
+	State            string
+	Verifier         string
+	RedirectURI      string
+}
+
+// StartPKCE creates an authorization URL for a caller-managed callback.
+func StartPKCE(issuer, redirectURI string) (PKCEAuthorization, error) {
+	issuer = strings.TrimRight(issuer, "/")
+	if issuer == "" || redirectURI == "" {
+		return PKCEAuthorization{}, errors.New("Codex OAuth issuer and redirect URI are required")
+	}
+	verifier, err := randomURLValue(32)
+	if err != nil {
+		return PKCEAuthorization{}, err
+	}
+	state, err := randomURLValue(24)
+	if err != nil {
+		return PKCEAuthorization{}, err
+	}
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+	query := url.Values{"response_type": {"code"}, "client_id": {CodexOAuthClientID}, "redirect_uri": {redirectURI}, "scope": {"openid profile email offline_access"}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
+	return PKCEAuthorization{AuthorizationURL: issuer + "/oauth/authorize?" + query.Encode(), State: state, Verifier: verifier, RedirectURI: redirectURI}, nil
+}
+
+// ExchangePKCE exchanges a callback code for Codex credentials.
+func ExchangePKCE(ctx context.Context, issuer, code string, authorization PKCEAuthorization, client *http.Client) (CodexCredential, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	issuer = strings.TrimRight(issuer, "/")
+	requestBody, _ := json.Marshal(map[string]string{"grant_type": "authorization_code", "client_id": CodexOAuthClientID, "code": code, "redirect_uri": authorization.RedirectURI, "code_verifier": authorization.Verifier})
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, issuer+"/oauth/token", bytes.NewReader(requestBody))
+	if err != nil {
+		return CodexCredential{}, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		return CodexCredential{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return CodexCredential{}, fmt.Errorf("Codex authorization token exchange returned %s", response.Status)
+	}
+	var token struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		AccountID    string `json:"account_id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&token); err != nil || token.AccessToken == "" {
+		return CodexCredential{}, errors.New("Codex authorization token response is invalid")
+	}
+	expires := time.Time{}
+	if token.ExpiresIn > 0 {
+		expires = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
+	}
+	return CodexCredential{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, ExpiresAt: expires, Endpoint: issuer, AccountID: token.AccountID}, nil
+}
+
 // PKCELogin starts a browser authorization-code flow and waits for the
 // localhost callback. It prints/returns only the authorization URL; tokens are
 // returned to the caller for secure persistence.

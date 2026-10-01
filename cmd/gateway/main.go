@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -353,6 +354,7 @@ type handlerRuntime struct {
 	configPath string
 	loginMu    sync.Mutex
 	logins     map[string]providerLogin
+	loginFlows map[string]providerLoginFlow
 }
 
 type providerLogin struct {
@@ -360,6 +362,12 @@ type providerLogin struct {
 	Message         string `json:"message,omitempty"`
 	VerificationURL string `json:"verification_url,omitempty"`
 	UserCode        string `json:"user_code,omitempty"`
+}
+
+type providerLoginFlow struct {
+	Authorization provider.PKCEAuthorization
+	Provider      config.ProviderConfig
+	StateDir      string
 }
 
 func (r *handlerRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -544,6 +552,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		mux.HandleFunc("POST /gateway/v1/providers/test", runtime.testProvider)
 		mux.HandleFunc("POST /gateway/v1/providers/login", runtime.startProviderLogin)
 		mux.HandleFunc("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
+		mux.HandleFunc("GET /gateway/v1/providers/login/callback", runtime.providerLoginCallback)
 	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
@@ -714,6 +723,30 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		writeConfigError(w, http.StatusBadRequest, errors.New("browser login is supported only for openai-codex and nous providers"))
 		return
 	}
+	if providerConfig.Type == "openai-codex" {
+		authorization, startErr := provider.StartPKCE("https://auth.openai.com", providerLoginRedirectURL(req))
+		if startErr != nil {
+			writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("start Codex OAuth: %w", startErr))
+			return
+		}
+		r.loginMu.Lock()
+		if r.logins == nil {
+			r.logins = make(map[string]providerLogin)
+		}
+		if r.loginFlows == nil {
+			r.loginFlows = make(map[string]providerLoginFlow)
+		}
+		if existing, ok := r.logins[providerConfig.ID]; ok && existing.Status == "pending" {
+			r.loginMu.Unlock()
+			writeJSON(w, http.StatusOK, existing)
+			return
+		}
+		r.loginFlows[authorization.State] = providerLoginFlow{Authorization: authorization, Provider: providerConfig, StateDir: current.State.Directory}
+		r.logins[providerConfig.ID] = providerLogin{Status: "pending", Message: "Waiting for authorization", VerificationURL: authorization.AuthorizationURL}
+		r.loginMu.Unlock()
+		writeJSON(w, http.StatusAccepted, providerLogin{Status: "pending", Message: "Open the OpenAI authorization page", VerificationURL: authorization.AuthorizationURL})
+		return
+	}
 	r.loginMu.Lock()
 	if r.logins == nil {
 		r.logins = make(map[string]providerLogin)
@@ -739,6 +772,62 @@ func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Re
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+func providerLoginRedirectURL(req *http.Request) string {
+	scheme := req.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		if req.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	return (&url.URL{Scheme: scheme, Host: req.Host, Path: "/gateway/v1/providers/login/callback"}).String()
+}
+
+func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.Request) {
+	oauthState := req.URL.Query().Get("state")
+	r.loginMu.Lock()
+	flow, ok := r.loginFlows[oauthState]
+	if ok {
+		delete(r.loginFlows, oauthState)
+	}
+	r.loginMu.Unlock()
+	if !ok || oauthState == "" {
+		http.Error(w, "This OAuth login is invalid or expired.", http.StatusBadRequest)
+		return
+	}
+	if oauthError := req.URL.Query().Get("error"); oauthError != "" {
+		r.setProviderLogin(flow.Provider.ID, providerLogin{Status: "failure", Message: "Codex authorization failed: " + oauthError})
+		http.Error(w, "Authorization failed. You may close this window.", http.StatusBadRequest)
+		return
+	}
+	code := req.URL.Query().Get("code")
+	if code == "" {
+		r.setProviderLogin(flow.Provider.ID, providerLogin{Status: "failure", Message: "Codex authorization callback did not include a code"})
+		http.Error(w, "Authorization failed. You may close this window.", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+	defer cancel()
+	credential, err := provider.ExchangePKCE(ctx, "https://auth.openai.com", code, flow.Authorization, &http.Client{})
+	if err == nil {
+		store, storeErr := state.NewFlatFileCredentialStore(flow.StateDir)
+		if storeErr != nil {
+			err = storeErr
+		} else {
+			err = store.Save(flow.Provider.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: flow.Provider.BaseURL, AccountID: credential.AccountID, TokenType: "Bearer"})
+		}
+	}
+	if err != nil {
+		r.setProviderLogin(flow.Provider.ID, providerLogin{Status: "failure", Message: err.Error()})
+		http.Error(w, "Authorization failed. You may close this window.", http.StatusBadGateway)
+		return
+	}
+	r.setProviderLogin(flow.Provider.ID, providerLogin{Status: "success", Message: "Provider login complete"})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, "<html><body><h1>Torii Gateway login complete</h1><p>You may close this window and return to the console.</p></body></html>")
 }
 
 func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderConfig, stateDirectory string) {

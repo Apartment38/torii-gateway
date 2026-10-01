@@ -140,6 +140,9 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		return errors.New("usage: gateway serve --config <path>")
 	}
 
+	if err := initializeConfigPath(*configPath, os.Getenv("TORII_CONFIG_TEMPLATE")); err != nil {
+		return err
+	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
@@ -162,6 +165,50 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		IdleTimeout:       60 * time.Second,
 	}
 	return serveHTTP(ctx, server, listener)
+}
+
+// initializeConfigPath seeds a writable active configuration from a read-only
+// template. This is used by container deployments where the template is
+// bind-mounted read-only but the web console must atomically replace the active
+// configuration after validation.
+func initializeConfigPath(path, template string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect configuration: %w", err)
+	}
+	if template == "" {
+		return nil
+	}
+	data, err := os.ReadFile(template)
+	if err != nil {
+		return fmt.Errorf("read configuration template: %w", err)
+	}
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return fmt.Errorf("create configuration directory: %w", err)
+	}
+	temporary, err := os.CreateTemp(directory, ".torii-gateway-config-*")
+	if err != nil {
+		return fmt.Errorf("create initial configuration: %w", err)
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("protect initial configuration: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("write initial configuration: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close initial configuration: %w", err)
+	}
+	if err := os.Rename(temporaryName, path); err != nil {
+		return fmt.Errorf("install initial configuration: %w", err)
+	}
+	return nil
 }
 
 func runAuth(args []string, output io.Writer) error {

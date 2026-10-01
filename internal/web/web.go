@@ -44,6 +44,7 @@ func Handler() http.Handler {
 		if contentType := mime.TypeByExtension(r.URL.Path[strings.LastIndex(r.URL.Path, "."):]); contentType != "" {
 			w.Header().Set("Content-Type", contentType)
 		}
+		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(data)
 	})
 }

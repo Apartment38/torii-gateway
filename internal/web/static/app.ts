@@ -237,7 +237,27 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
 function renderHelperInstructions(result: HTMLDivElement, sessionURL: string, pairingToken: string): void {
   const command = `torii-auth --session-url ${sessionURL} --pairing-token ${pairingToken}`;
   result.className = "provider-result pending provider-helper";
-  result.innerHTML = `<strong>Run the one-shot helper on the computer with your browser.</strong><a href="https://github.com/Apartment38/torii-router/releases/latest" target="_blank" rel="noreferrer">Download torii-auth for your operating system</a><span>${escapeHTML(command)}</span><small>The helper opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
+  const downloadURL = helperDownloadURL();
+  result.innerHTML = `<strong>Download and run the one-shot helper on the computer with your browser.</strong><a href="${downloadURL}" download>Download torii-auth for this computer</a><span>${escapeHTML(command)}</span><button class="copy-helper button quiet" type="button">Copy command</button><small>Browsers cannot launch executables automatically. Run the downloaded helper once; it opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
+  result.querySelector<HTMLButtonElement>(".copy-helper")?.addEventListener("click", async event => {
+    const button = event.currentTarget as HTMLButtonElement;
+    try {
+      await navigator.clipboard.writeText(command);
+      button.textContent = "Copied";
+    } catch {
+      button.textContent = "Copy unavailable";
+    }
+  });
+}
+function helperDownloadURL(): string {
+  const platform = navigator.platform.toLowerCase();
+  const agent = navigator.userAgent.toLowerCase();
+  let asset = "";
+  if (platform.includes("win")) asset = "torii-auth-windows-amd64.exe";
+  else if (platform.includes("mac") || agent.includes("macintosh")) asset = agent.includes("arm") ? "torii-auth-darwin-arm64" : "torii-auth-darwin-amd64";
+  else if (agent.includes("aarch64") || agent.includes("arm64")) asset = "torii-auth-linux-arm64";
+  else if (platform.includes("linux")) asset = "torii-auth-linux-amd64";
+  return asset ? `https://github.com/Apartment38/torii-router/releases/latest/download/${asset}` : "https://github.com/Apartment38/torii-router/releases/latest";
 }
 async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
   for (let attempt = 0; attempt < 180; attempt += 1) {

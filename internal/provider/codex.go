@@ -31,6 +31,8 @@ type Codex struct {
 	refreshMu sync.Mutex
 }
 
+const defaultCodexModel = "gpt-5.3-codex"
+
 type CodexCredential struct {
 	AccessToken, RefreshToken, Endpoint string
 	ExpiresAt                           time.Time
@@ -50,6 +52,9 @@ func NewCodex(id, baseURL string, models []string, load func(string) (CodexCrede
 	}
 	if load == nil {
 		return nil, errors.New("Codex credential store is required")
+	}
+	if len(models) == 0 || (len(models) == 1 && strings.EqualFold(strings.TrimSpace(models[0]), "setup")) {
+		models = []string{defaultCodexModel}
 	}
 	if client == nil {
 		client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}

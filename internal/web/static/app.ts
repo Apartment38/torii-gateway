@@ -107,9 +107,9 @@ function updateProvider(event: Event): void {
     const previousID = String(providers[index].id || "");
     const previousBase = knownProviderIDs[String(providers[index].type)] || "";
     if (previousBase && (previousID === previousBase || /^.+-\d+$/.test(previousID))) providers[index].id = "";
-    if (control.value === "openai-codex" && !providers[index].api_url) {
+    if (control.value === "openai-codex" && (!providers[index].api_url || providers[index].models === "setup")) {
       providers[index].api_url = "https://chatgpt.com/backend-api/codex";
-      providers[index].models = "gpt-5.5";
+      providers[index].models = "gpt-5.3-codex";
     }
     if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
     if (knownProviderIDs[control.value]) providers[index].id = knownProviderID(control.value, index);
@@ -136,6 +136,9 @@ function applyConfig(config: Record<string, any>): void {
     models: Array.isArray(provider.models) ? provider.models.join(", ") : "",
     discover: provider.discover_models !== false,
   }));
+  providers.forEach(provider => {
+    if (provider.type === "openai-codex" && provider.models === "setup") provider.models = "gpt-5.3-codex";
+  });
   if (!providers.length) providers = [{ ...providerDefaults }];
   renderProviders();
   const fill = (value: any, prefix = ""): void => Object.entries(value || {}).forEach(([key, raw]) => {

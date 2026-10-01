@@ -43,6 +43,22 @@ func TestCodexTranslatesChatAndResponse(t *testing.T) {
 	}
 }
 
+func TestCodexUsesDefaultModelForBootstrapPlaceholder(t *testing.T) {
+	codex, err := NewCodex("openai-codex", "https://chatgpt.com/backend-api/codex", []string{"setup"}, func(string) (CodexCredential, error) {
+		return CodexCredential{}, nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := codex.Models(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].ID != "openai-codex/gpt-5.3-codex" {
+		t.Fatalf("models = %+v, want default Codex model", models)
+	}
+}
+
 func TestCodexRejectsCredentialBoundToOtherOrigin(t *testing.T) {
 	server := httptest.NewTLSServer(http.NotFoundHandler())
 	defer server.Close()

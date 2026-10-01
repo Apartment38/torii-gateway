@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/torii-gateway-logo.png" alt="Torii Gateway logo" width="360" />
+</p>
+
 # Torii Gateway
 
 Torii Gateway is a lightweight, resource-efficient LLM gateway written in Go.
@@ -121,6 +125,60 @@ On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its state volume. If an upstream
 provider runs on the host, use a host-reachable address such as
 `host.containers.internal` in `config.yaml` rather than `127.0.0.1`.
+
+## Update an existing installation
+
+### Local binary
+
+Pull the new source, validate the existing configuration, build a replacement
+binary, then restart the process or service that runs the gateway. The config
+file and state directory are not changed by the build:
+
+```sh
+git pull --ff-only
+./bin/gateway config validate --config ./config.yaml
+go build -trimpath -o ./bin/gateway.new ./cmd/gateway
+mv ./bin/gateway.new ./bin/gateway
+```
+
+Restart the gateway using the same command or service manager used for the
+current process, for example:
+
+```sh
+./bin/gateway serve --config ./config.yaml
+```
+
+If the gateway is managed by systemd, use `systemctl restart
+torii-gateway.service` after installing the new binary. Keep a copy of the
+previous binary if you need to roll back; do not replace `config.yaml` or the
+state directory during an application update.
+
+### Podman Compose container
+
+The Compose workflow preserves the bind-mounted `config.yaml` and named
+`torii_gateway_state` volume while rebuilding the image:
+
+```sh
+git pull --ff-only
+podman compose up --build -d
+podman compose ps
+podman compose logs --tail=100 torii-gateway
+```
+
+For a clean image rebuild, use `podman compose build --no-cache` before
+`podman compose up -d`. To deploy a prebuilt image, set `TORII_IMAGE` in `.env`
+and start without rebuilding:
+
+```sh
+TORII_IMAGE=torii-gateway:release podman compose up --no-build -d
+```
+
+The gateway validates and reloads configuration saved through the web console;
+rebuilding the application image is only required when updating gateway code.
+To roll back, point `TORII_IMAGE` at the previous image tag or check out the
+previous source revision and rebuild it. Do not remove the
+`torii_gateway_state` volume unless you intentionally want to discard
+persistent gateway state.
 
 ## Configuration
 

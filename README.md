@@ -125,9 +125,9 @@ reloads the active configuration after a successful save.
 When the gateway runs on another computer, the Providers page cannot complete
 OpenAI's loopback OAuth callback directly in the container. Click **Log in**
 for the `openai-codex` provider and run the displayed one-shot helper on the
-computer where your browser is running. Download the matching `torii-auth`
-binary from the project release for your operating system, then run the
-command shown by the console:
+computer where your browser is running. The container serves a matching
+`torii-auth` binary for the detected operating system; download it from the
+console, then run the command shown there:
 
 ```sh
 torii-auth --session-url https://gateway.example.com/gateway/v1/providers/login/session \
@@ -140,6 +140,13 @@ The pairing token expires after 10 minutes and can be used only once. The
 gateway stores and refreshes the credential; the helper does not need to keep
 running. Use HTTPS for the console in production because the helper transfers
 OAuth credentials to the gateway over the session connection.
+
+For images built before the helper endpoint was added, rebuild the container:
+
+```sh
+podman compose build --no-cache
+podman compose up -d
+```
 
 For local development, build the helper with:
 

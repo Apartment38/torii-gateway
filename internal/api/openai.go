@@ -32,6 +32,7 @@ type OpenAIHandler struct {
 	catalog          *catalog.Catalog
 	refreshMu        sync.Mutex
 	ready            bool
+	refreshedAt      time.Time
 	sessions         *session.Manager
 	classifier       classifier.Runner
 	policy           router.SelectionPolicy
@@ -98,19 +99,23 @@ func (h *OpenAIHandler) RefreshCatalog(ctx context.Context) error {
 		return err
 	}
 	h.ready = true
+	h.refreshedAt = time.Now()
 	return nil
 }
 
 func (h *OpenAIHandler) ensureCatalog(ctx context.Context) error {
 	h.refreshMu.Lock()
 	defer h.refreshMu.Unlock()
-	if h.ready {
+	// Do not pin a startup fallback forever after credentials or the account
+	// catalog change. Refresh at most once per minute, serialized across callers.
+	if h.ready && time.Since(h.refreshedAt) < time.Minute {
 		return nil
 	}
 	if err := h.catalog.Refresh(ctx); err != nil {
 		return err
 	}
 	h.ready = true
+	h.refreshedAt = time.Now()
 	return nil
 }
 

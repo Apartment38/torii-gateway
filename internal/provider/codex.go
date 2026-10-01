@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,20 +23,24 @@ import (
 // store is intentionally read only by this provider; normal OpenAI API
 // providers never use it.
 type Codex struct {
-	id        string
-	base      *url.URL
-	models    []string
-	client    *http.Client
-	load      func(string) (CodexCredential, error)
-	save      func(string, CodexCredential) error
-	issuer    string
-	refreshMu sync.Mutex
+	id         string
+	base       *url.URL
+	models     []string
+	client     *http.Client
+	load       func(string) (CodexCredential, error)
+	save       func(string, CodexCredential) error
+	issuer     string
+	refreshMu  sync.Mutex
+	modelsMu   sync.Mutex
+	lastModels []Model
 }
 
 const (
 	DefaultCodexBaseURL = "https://chatgpt.com/backend-api/codex"
 	defaultCodexModel   = "gpt-5.3-codex"
-	codexClientVersion  = "0.144.5"
+	// Match Hermes' newest-client probe so version gating does not hide models.
+	// Discovery retries the legacy 0.0.0 sentinel for older backend deployments.
+	codexClientVersion = "99.0.0"
 )
 
 type CodexCredential struct {
@@ -72,53 +78,143 @@ func (c *Codex) ConfigureRefresh(issuer string, save func(string, CodexCredentia
 }
 func (c *Codex) ID() string { return c.id }
 func (c *Codex) Models(ctx context.Context) ([]Model, error) {
-	credential, err := c.load(c.id)
-	if err != nil || credential.AccessToken == "" {
-		return c.staticModels(), nil
+	models, err := c.DiscoverModels(ctx)
+	c.modelsMu.Lock()
+	defer c.modelsMu.Unlock()
+	if err == nil {
+		c.lastModels = append([]Model(nil), models...)
+		return models, nil
 	}
-	requestURL := *c.base
-	requestURL.Path = strings.TrimRight(requestURL.Path, "/") + "/models"
-	query := requestURL.Query()
-	query.Set("client_version", codexClientVersion)
-	requestURL.RawQuery = query.Encode()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
+	slog.Warn("Codex model discovery failed; using fallback catalog", "provider", c.id, "error", err)
+	if len(c.lastModels) != 0 {
+		return append([]Model(nil), c.lastModels...), nil
+	}
+	return c.staticModels(), nil
+}
+
+// DiscoverModels returns the live account catalog, without hiding failures behind
+// fallback models. Connection tests use this to report actionable errors.
+func (c *Codex) DiscoverModels(ctx context.Context) ([]Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	credential, err := c.credential(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("build Codex model discovery request: %w", err)
+		return nil, err
 	}
-	request.Header.Set("Authorization", "Bearer "+credential.AccessToken)
-	if credential.AccountID != "" {
-		request.Header.Set("ChatGPT-Account-ID", credential.AccountID)
+	base := c.inferenceBase(credential)
+	versions := []string{codexClientVersion, "0.0.0"}
+	if base.Host == "api.openai.com" {
+		versions = []string{""}
 	}
-	request.Header.Set("originator", "codex_cli_rs")
-	response, err := c.client.Do(request)
-	if err != nil {
-		return c.staticModels(), nil
+	var discoveryErr error
+	for _, version := range versions {
+		requestURL := base
+		requestURL.Path = strings.TrimRight(base.Path, "/") + "/models"
+		if version != "" {
+			requestURL.RawQuery = url.Values{"client_version": {version}}.Encode()
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
+		if err != nil {
+			return nil, errors.New("build Codex catalog request")
+		}
+		c.authenticate(request, credential)
+		response, err := c.client.Do(request)
+		if err != nil {
+			return nil, errors.New("Codex catalog request failed (network or timeout)")
+		}
+		models, err := c.decodeModels(response)
+		_ = response.Body.Close()
+		if err == nil {
+			return models, nil
+		}
+		discoveryErr = err
 	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return c.staticModels(), nil
+	return nil, discoveryErr
+}
+
+func (c *Codex) decodeModels(response *http.Response) ([]Model, error) {
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Codex catalog returned HTTP %d", response.StatusCode)
+	}
+	const maxCatalogBytes = 8 << 20
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxCatalogBytes+1))
+	if err != nil || len(data) > maxCatalogBytes {
+		return nil, errors.New("Codex catalog unreadable or exceeds 8 MiB")
 	}
 	var envelope struct {
 		Models []struct {
-			Slug           string `json:"slug"`
-			Visibility     string `json:"visibility"`
-			SupportedInAPI bool   `json:"supported_in_api"`
+			Slug          string `json:"slug"`
+			Visibility    string `json:"visibility"`
+			ContextWindow *int64 `json:"context_window"`
 		} `json:"models"`
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil {
-		return c.staticModels(), nil
+	if json.Unmarshal(data, &envelope) != nil || envelope.Models == nil {
+		return nil, errors.New("Codex catalog response is invalid")
 	}
 	models := make([]Model, 0, len(envelope.Models))
+	seen := make(map[string]bool)
 	for _, model := range envelope.Models {
-		if strings.TrimSpace(model.Slug) == "" || model.Visibility != "list" || !model.SupportedInAPI {
+		slug := strings.TrimSpace(model.Slug)
+		visibility := strings.ToLower(strings.TrimSpace(model.Visibility))
+		if slug == "" || strings.ContainsAny(slug, "\r\n\t ") || visibility == "hide" || visibility == "hidden" || seen[slug] {
 			continue
 		}
-		models = append(models, Model{ID: c.id + "/" + model.Slug, Object: "model", OwnedBy: c.id})
+		seen[slug] = true
+		models = append(models, Model{ID: c.id + "/" + slug, Object: "model", OwnedBy: c.id, ContextWindow: model.ContextWindow, Subscription: true})
 	}
 	if len(models) == 0 {
-		return c.staticModels(), nil
+		return nil, errors.New("Codex catalog contains no visible models; check login and account selection")
 	}
 	return models, nil
+}
+
+// Tokens from the gateway's Sign in with ChatGPT helper use the documented
+// public plan-usage API. Legacy Codex OAuth credentials keep their bound backend.
+func (c *Codex) inferenceBase(credential CodexCredential) url.URL {
+	base := *c.base
+	if strings.TrimRight(c.base.String(), "/") == DefaultCodexBaseURL {
+		for _, scope := range credential.Scopes {
+			if scope == "chatgpt.tokens.use.direct" {
+				public, _ := url.Parse("https://api.openai.com/v1")
+				return *public
+			}
+		}
+	}
+	return base
+}
+
+func (c *Codex) authenticate(request *http.Request, credential CodexCredential) {
+	request.Header.Set("Authorization", "Bearer "+credential.AccessToken)
+	request.Header.Set("User-Agent", "ToriiGateway")
+	request.Header.Set("originator", "torii-gateway")
+	account := credential.AccountID
+	// Read routing hints only; JWT claims here are not used as proof of identity.
+	parts := strings.Split(credential.AccessToken, ".")
+	if len(parts) == 3 {
+		payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
+		var claims struct {
+			Auth struct {
+				Account          string `json:"chatgpt_account_id"`
+				Residency        string `json:"chatgpt_data_residency"`
+				ComputeResidency string `json:"chatgpt_compute_residency"`
+			} `json:"https://api.openai.com/auth"`
+		}
+		if json.Unmarshal(payload, &claims) == nil {
+			if account == "" {
+				account = claims.Auth.Account
+			}
+			residency := claims.Auth.Residency
+			if residency == "" {
+				residency = claims.Auth.ComputeResidency
+			}
+			if residency != "" {
+				request.Header.Set("x-openai-internal-codex-residency", residency)
+			}
+		}
+	}
+	if account != "" {
+		request.Header.Set("ChatGPT-Account-ID", account)
+	}
 }
 
 func (c *Codex) staticModels() []Model {
@@ -129,20 +225,20 @@ func (c *Codex) staticModels() []Model {
 	return result
 }
 
-func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
-	if endpoint != "/v1/chat/completions" && endpoint != "/v1/responses" {
-		return nil, fmt.Errorf("Codex does not support %s", endpoint)
-	}
+func (c *Codex) credential(ctx context.Context) (CodexCredential, error) {
 	credential, err := c.load(c.id)
 	if err != nil {
-		return nil, fmt.Errorf("load Codex credential: %w", err)
+		return CodexCredential{}, errors.New("Codex credential unavailable; log in to the provider")
+	}
+	if credential.AccessToken == "" {
+		return CodexCredential{}, errors.New("Codex access token is missing; log in to the provider")
 	}
 	if credential.Endpoint != c.base.String() {
-		return nil, errors.New("Codex credential endpoint binding does not match provider")
+		return CodexCredential{}, errors.New("Codex credential endpoint binding does not match provider; log in again")
 	}
 	if !credential.ExpiresAt.IsZero() && !credential.ExpiresAt.After(time.Now().Add(5*time.Minute)) {
 		if credential.RefreshToken == "" || c.save == nil || c.issuer == "" {
-			return nil, errors.New("Codex credential is expired or cannot be refreshed")
+			return CodexCredential{}, errors.New("Codex credential is expired or cannot be refreshed")
 		}
 		c.refreshMu.Lock()
 		defer c.refreshMu.Unlock()
@@ -156,30 +252,52 @@ func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model
 		if !credential.ExpiresAt.IsZero() && !credential.ExpiresAt.After(time.Now().Add(5*time.Minute)) {
 			credential, err = c.refresh(ctx, credential)
 			if err != nil {
-				return nil, err
+				return CodexCredential{}, err
 			}
 		}
+	}
+	return credential, nil
+}
+
+func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
+	if endpoint != "/v1/chat/completions" && endpoint != "/v1/responses" {
+		return nil, fmt.Errorf("Codex does not support %s", endpoint)
+	}
+	credential, err := c.credential(ctx)
+	if err != nil {
+		return nil, err
 	}
 	translated, stream, err := codexRequest(endpoint, body, model)
 	if err != nil {
 		return nil, err
 	}
-	u := *c.base
+	u := c.inferenceBase(credential)
+	// Plan-usage tokens require streaming upstream even for a non-streaming
+	// gateway request. Buffer only the completed response in that case.
+	planUsage := u.Host == "api.openai.com"
+	if planUsage {
+		var request map[string]json.RawMessage
+		if err := json.Unmarshal(translated, &request); err != nil {
+			return nil, err
+		}
+		request["stream"] = json.RawMessage("true")
+		translated, err = json.Marshal(request)
+		if err != nil {
+			return nil, err
+		}
+	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/responses"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(translated))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+credential.AccessToken)
-	if credential.AccountID != "" {
-		req.Header.Set("chatgpt-account-id", credential.AccountID)
-	}
+	c.authenticate(req, credential)
 	if id, ok := requestid.FromContext(ctx); ok {
 		req.Header.Set("X-Request-ID", id)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	if stream {
+	if stream || planUsage {
 		req.Header.Set("Accept", "text/event-stream")
 	}
 	resp, err := c.client.Do(req)
@@ -187,13 +305,18 @@ func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model
 		return nil, fmt.Errorf("Codex request: %w", err)
 	}
 	if stream || resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if stream && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if stream && endpoint == "/v1/chat/completions" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			resp.Body = &codexStreamReader{reader: bufio.NewReader(resp.Body), closer: resp.Body}
 			resp.Header.Set("Content-Type", "text/event-stream")
 		}
 		return resp, nil
 	}
-	data, err := io.ReadAll(resp.Body)
+	var data []byte
+	if planUsage {
+		data, err = completedCodexResponse(resp.Body)
+	} else {
+		data, err = io.ReadAll(resp.Body)
+	}
 	_ = resp.Body.Close()
 	if err != nil {
 		return nil, err
@@ -206,6 +329,57 @@ func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model
 	resp.ContentLength = int64(len(converted))
 	resp.Header.Set("Content-Type", "application/json")
 	return resp, nil
+}
+
+func completedCodexResponse(body io.Reader) ([]byte, error) {
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 4096), 32<<20)
+	var data strings.Builder
+	decode := func() ([]byte, error) {
+		var event struct {
+			Type     string          `json:"type"`
+			Response json.RawMessage `json:"response"`
+		}
+		if json.Unmarshal([]byte(data.String()), &event) != nil {
+			return nil, errors.New("invalid Codex response event")
+		}
+		data.Reset()
+		switch event.Type {
+		case "response.completed", "response.done":
+			if len(event.Response) == 0 || string(event.Response) == "null" {
+				return nil, errors.New("Codex completed event has no response")
+			}
+			return event.Response, nil
+		case "response.failed", "response.incomplete", "error":
+			return nil, errors.New("Codex response failed or was incomplete")
+		}
+		return nil, nil
+	}
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" && data.Len() > 0 {
+			if response, err := decode(); err != nil || response != nil {
+				return response, err
+			}
+		} else if strings.HasPrefix(line, "data:") {
+			if data.Len() > 0 {
+				data.WriteByte('\n')
+			}
+			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+			if data.Len() > 32<<20 {
+				return nil, errors.New("Codex response event exceeds 32 MiB")
+			}
+		}
+	}
+	if scanner.Err() != nil {
+		return nil, errors.New("read Codex response stream")
+	}
+	if data.Len() > 0 {
+		if response, err := decode(); err != nil || response != nil {
+			return response, err
+		}
+	}
+	return nil, errors.New("Codex response stream ended without a completed response")
 }
 
 type codexStreamReader struct {
@@ -299,8 +473,13 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	if clientID == "" {
 		clientID = CodexOAuthClientID
 	}
-	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {credential.RefreshToken}, "client_id": {clientID}, "resource": {"https://api.openai.com/v1"}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.issuer+"/api/accounts/oauth/token", strings.NewReader(form.Encode()))
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {credential.RefreshToken}, "client_id": {clientID}}
+	tokenPath := "/oauth/token"
+	if clientID != CodexOAuthClientID {
+		tokenPath = "/api/accounts/oauth/token"
+		form.Set("resource", "https://api.openai.com/v1")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.issuer+tokenPath, strings.NewReader(form.Encode()))
 	if err != nil {
 		return credential, err
 	}
@@ -308,7 +487,7 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	req.Header.Set("Accept", "application/json")
 	response, err := c.client.Do(req)
 	if err != nil {
-		return credential, err
+		return credential, errors.New("Codex token refresh request failed (network or timeout)")
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

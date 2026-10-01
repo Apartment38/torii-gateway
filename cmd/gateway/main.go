@@ -415,15 +415,13 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
-	mu             sync.RWMutex
-	handler        http.Handler
-	configPath     string
-	catalogMu      sync.Mutex
-	catalogRefresh func(context.Context) error
-	loginMu        sync.Mutex
-	logins         map[string]providerLogin
-	loginFlows     map[string]providerLoginFlow
-	loginSessions  map[string]providerLoginSession
+	mu            sync.RWMutex
+	handler       http.Handler
+	configPath    string
+	loginMu       sync.Mutex
+	logins        map[string]providerLogin
+	loginFlows    map[string]providerLoginFlow
+	loginSessions map[string]providerLoginSession
 }
 
 type providerLogin struct {
@@ -470,19 +468,25 @@ func (r *handlerRuntime) swap(handler http.Handler) {
 	r.mu.Unlock()
 }
 
-func (r *handlerRuntime) setCatalogRefresh(refresh func(context.Context) error) {
-	r.catalogMu.Lock()
-	r.catalogRefresh = refresh
-	r.catalogMu.Unlock()
+// Keep the catalog refresh callback attached to the active handler, so a
+// rejected configuration save cannot redirect login refreshes to a discarded one.
+type catalogHandler struct {
+	http.Handler
+	refresh func(context.Context) error
+}
+
+func (h *catalogHandler) RefreshCatalog(ctx context.Context) error {
+	return h.refresh(ctx)
 }
 
 func (r *handlerRuntime) refreshCatalog(ctx context.Context) error {
-	r.catalogMu.Lock()
-	defer r.catalogMu.Unlock()
-	if r.catalogRefresh == nil {
-		return nil
+	r.mu.RLock()
+	handler := r.handler
+	r.mu.RUnlock()
+	if catalog, ok := handler.(interface{ RefreshCatalog(context.Context) error }); ok {
+		return catalog.RefreshCatalog(ctx)
 	}
-	return r.catalogRefresh(ctx)
+	return nil
 }
 
 func (r *handlerRuntime) setLoginSuccess(providerID string) {
@@ -528,9 +532,6 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	if err := openAI.RefreshCatalog(context.Background()); err != nil {
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
-	}
-	if runtime != nil {
-		runtime.setCatalogRefresh(openAI.RefreshCatalog)
 	}
 	var configuredClassifier classifier.Classifier
 	if cfg.Router.Classifier.Type == "jev" {
@@ -672,7 +673,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
-	return api.RequestIDMiddleware(nil, mux), nil
+	return &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog}, nil
 }
 
 func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
@@ -775,7 +776,14 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 	}
 	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
 	defer cancel()
-	models, err := upstream.Models(ctx)
+	var models []provider.Model
+	if live, ok := upstream.(interface {
+		DiscoverModels(context.Context) ([]provider.Model, error)
+	}); ok {
+		models, err = live.DiscoverModels(ctx)
+	} else {
+		models, err = upstream.Models(ctx)
+	}
 	if err != nil {
 		writeConfigError(w, http.StatusBadGateway, fmt.Errorf("test provider connection: %w", err))
 		return

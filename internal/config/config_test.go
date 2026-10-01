@@ -202,7 +202,7 @@ func TestDecodeRouterAndCodexConfiguration(t *testing.T) {
   - id: openai-codex
     type: openai-codex
     base_url: https://chatgpt.com/backend-api/codex
-    models: [gpt-test]
+    discover_models: true
 router:
   model_name: smart
   allow_paid_models: false

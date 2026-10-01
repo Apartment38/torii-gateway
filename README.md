@@ -398,11 +398,22 @@ The profile exposes models as `openai/<model>`, sends only the configured API
 key and optional OpenAI project/organization headers, and does not use the
 gateway's persistent OAuth credential store.
 
-The gateway also accepts an endpoint-bound `openai-codex` provider with
-static model IDs. Import credentials with `gateway auth login openai-codex`;
-the provider refreshes near-expiry OAuth credentials against the configured
-Codex issuer and never sends them to the normal OpenAI API origin. Use
-`gateway models --config ./config.yaml` to inspect the configured catalog.
+The `openai-codex` provider automatically discovers the visible models for
+the logged-in subscription. A `models` list is optional and is only a fallback,
+not an allowlist. Import credentials with `gateway auth login openai-codex`
+or the web console's one-shot helper. Credentials remain endpoint-bound:
+the helper's `chatgpt.tokens.use.direct` tokens use the documented
+[ChatGPT plan-usage API](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
+at `https://api.openai.com/v1`; legacy Codex OAuth tokens use the Codex backend.
+This does not use an OpenAI API key or the API-key provider's credentials.
+Discovery refreshes near-expiry tokens before querying the catalog and does
+not exclude subscription models based on the API-key `supported_in_api` flag.
+If discovery fails, the gateway logs a warning and retains the last successful
+catalog, or uses configured fallback models. The served catalog refreshes on
+requests after one minute and immediately after a successful web login.
+Connection tests report the actual
+discovery error instead of claiming the fallback is a successful connection.
+Use `gateway models --config ./config.yaml` to inspect the catalog.
 
 Optional catalog metadata overrides can be supplied with
 `router.catalog_file: ./catalog-overrides.json`. The file is a strict JSON

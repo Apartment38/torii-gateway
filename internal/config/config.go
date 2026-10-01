@@ -357,12 +357,8 @@ func validateCodexProvider(p ProviderConfig) error {
 	if parsed.Scheme != "https" {
 		return errors.New("base_url must use HTTPS")
 	}
-	if len(p.Models) == 0 {
-		return errors.New("models are required until Codex catalog discovery is configured")
-	}
-	if p.DiscoverModels != nil && *p.DiscoverModels {
-		return errors.New("discover_models is not supported for openai-codex")
-	}
+	// Subscription catalogs are always discovered after login. Models are an
+	// optional fallback, not an allowlist; accept legacy discover_models: false.
 	return nil
 }
 

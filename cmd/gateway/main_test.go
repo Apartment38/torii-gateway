@@ -44,6 +44,50 @@ func TestInitializeConfigPathDoesNotCreateWithoutBootstrap(t *testing.T) {
 	}
 }
 
+func TestCodexConnectionTestDoesNotTreatFallbackAsSuccess(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "config.yaml")
+	if err := initializeConfigPath(path, "", true); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.State.Directory = directory
+	if err := persistConfig(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	r := &handlerRuntime{configPath: path}
+	w := httptest.NewRecorder()
+	r.testProvider(w, httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/test", strings.NewReader(`{"provider":{"id":"openai-codex","type":"openai-codex","base_url":"https://chatgpt.com/backend-api/codex"}}`)))
+	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "log in") {
+		t.Fatalf("missing credential falsely reported success: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestLoginRefreshUsesOnlyActiveHandler(t *testing.T) {
+	var active, discarded int
+	r := &handlerRuntime{}
+	r.swap(&catalogHandler{refresh: func(context.Context) error { active++; return nil }})
+	// Building a replacement is not enough; only successfully saved handlers
+	// are swapped into the runtime.
+	replacement := &catalogHandler{refresh: func(context.Context) error { discarded++; return nil }}
+	if err := r.refreshCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if active != 1 || discarded != 0 {
+		t.Fatalf("refreshed an inactive handler: active=%d discarded=%d", active, discarded)
+	}
+	r.swap(replacement)
+	if err := r.refreshCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if active != 1 || discarded != 1 {
+		t.Fatalf("refresh did not follow saved handler: active=%d discarded=%d", active, discarded)
+	}
+}
+
 func TestGatewayProcessServesAuthenticatedModels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-router/internal/api"
+	"github.com/Apartment38/torii-router/internal/catalog"
 	"github.com/Apartment38/torii-router/internal/classifier"
 	"github.com/Apartment38/torii-router/internal/config"
 	"github.com/Apartment38/torii-router/internal/provider"
@@ -356,7 +358,11 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 		}
 		providers = append(providers, upstream)
 	}
-	openAI, err := api.NewOpenAIHandler(providers)
+	overrides, err := loadCatalogOverrides(cfg.Router.CatalogFile)
+	if err != nil {
+		return nil, err
+	}
+	openAI, err := api.NewOpenAIHandlerWithOverrides(providers, overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +461,17 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 			quotaTTL = parsed
 		}
 	}
-	quotaCache := quota.NewCache(quotaTTL, nil)
+	quotaFetchers := make(map[string]quota.Fetcher)
+	for _, upstream := range providers {
+		if fetcher, ok := upstream.(quota.Fetcher); ok {
+			quotaFetchers[upstream.ID()] = fetcher
+		}
+	}
+	var quotaFetcher quota.Fetcher
+	if len(quotaFetchers) > 0 {
+		quotaFetcher = providerQuotaFetcher{providers: quotaFetchers}
+	}
+	quotaCache := quota.NewCache(quotaTTL, quotaFetcher)
 	openAI.SetQuotaCache(quotaCache)
 	usageStore, usageErr := usage.Open(cfg.State.Directory)
 	if usageErr != nil {
@@ -478,6 +494,56 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 	})
 	mux.Handle("/", api.AuthenticateMiddleware(authenticator, openAI))
 	return api.RequestIDMiddleware(nil, mux), nil
+}
+
+type providerQuotaFetcher struct{ providers map[string]quota.Fetcher }
+
+func (f providerQuotaFetcher) Quota(ctx context.Context, model string) (quota.Status, error) {
+	providerID, _, err := provider.ParseModelID(model)
+	if err != nil {
+		return quota.Status{Known: false}, nil
+	}
+	upstream := f.providers[providerID]
+	if upstream == nil {
+		return quota.Status{Known: false}, nil
+	}
+	return upstream.Quota(ctx, model)
+}
+
+func loadCatalogOverrides(path string) ([]catalog.Descriptor, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read router.catalog_file: %w", err)
+	}
+	if len(data) > 8<<20 {
+		return nil, errors.New("router.catalog_file exceeds 8 MiB")
+	}
+	var records []catalog.Descriptor
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&records); err != nil {
+		return nil, fmt.Errorf("decode router.catalog_file: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err == nil {
+		return nil, errors.New("router.catalog_file must contain one JSON value")
+	} else if !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("decode router.catalog_file: %w", err)
+	}
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record.PublicID == "" || record.ProviderID == "" || record.UpstreamID == "" {
+			return nil, errors.New("router.catalog_file records require id, provider_id, and upstream_id")
+		}
+		if _, exists := seen[record.PublicID]; exists {
+			return nil, fmt.Errorf("router.catalog_file duplicates model %q", record.PublicID)
+		}
+		seen[record.PublicID] = struct{}{}
+	}
+	return records, nil
 }
 
 func buildProvider(cfg config.ProviderConfig) (provider.OpenAIProvider, error) {
@@ -616,5 +682,18 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 			apiPath = "/v1"
 		}
 	}
-	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+	var quotaURL string
+	quotaHeaders := make(http.Header)
+	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
+		managementToken, err := cfg.ManagementToken.Resolve()
+		if err != nil {
+			return nil, fmt.Errorf("resolve OpenRouter management token: %w", err)
+		}
+		if managementToken == "" || strings.ContainsAny(managementToken, "\r\n") {
+			return nil, errors.New("resolved OpenRouter management token is empty or contains a newline")
+		}
+		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
+		quotaHeaders.Set("Authorization", "Bearer "+managementToken)
+	}
+	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
 }

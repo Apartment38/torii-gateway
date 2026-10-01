@@ -29,6 +29,7 @@ type Config struct {
 
 type RouterConfig struct {
 	ModelName       string           `yaml:"model_name,omitempty"`
+	CatalogFile     string           `yaml:"catalog_file,omitempty"`
 	AllowPaidModels *bool            `yaml:"allow_paid_models,omitempty"`
 	Classifier      ClassifierConfig `yaml:"classifier,omitempty"`
 	Sessions        SessionConfig    `yaml:"sessions,omitempty"`
@@ -86,6 +87,7 @@ type ProviderConfig struct {
 	PortalURL        string               `yaml:"portal_url,omitempty"`
 	ClientID         string               `yaml:"client_id,omitempty"`
 	BearerToken      *SecretRef           `yaml:"bearer_token,omitempty"`
+	ManagementToken  *SecretRef           `yaml:"management_token,omitempty"`
 	Headers          map[string]SecretRef `yaml:"headers,omitempty"`
 	TLS              *TLSConfig           `yaml:"tls,omitempty"`
 	Models           []string             `yaml:"models,omitempty"`
@@ -205,6 +207,14 @@ func (c Config) Validate() error {
 				return fmt.Errorf("%s: bearer_token is required", field)
 			}
 		}
+		if providerConfig.Type != "openrouter" && providerConfig.ManagementToken != nil {
+			return fmt.Errorf("%s: management_token requires type openrouter", field)
+		}
+		if providerConfig.Type == "openrouter" && providerConfig.ManagementToken != nil {
+			if err := providerConfig.ManagementToken.Validate(); err != nil {
+				return fmt.Errorf("%s: management_token: %w", field, err)
+			}
+		}
 		if providerConfig.Type == "anthropic" {
 			if err := validateAnthropicProvider(providerConfig); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
@@ -260,6 +270,9 @@ func validateNousProvider(p ProviderConfig) error {
 func (r RouterConfig) Validate() error {
 	if r.ModelName != "" && r.ModelName != "smart" {
 		return errors.New("model_name must be smart")
+	}
+	if strings.TrimSpace(r.CatalogFile) != "" && strings.ContainsAny(r.CatalogFile, "\r\n") {
+		return errors.New("catalog_file must not contain newlines")
 	}
 	if r.Classifier.Type != "" && r.Classifier.Type != "model" && r.Classifier.Type != "laya" && r.Classifier.Type != "embedding" && r.Classifier.Type != "jev" {
 		return fmt.Errorf("classifier.type %q is unsupported", r.Classifier.Type)

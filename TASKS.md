@@ -703,16 +703,16 @@ implementation, refresh their requirements and dependencies against current
 primary documentation.
 
 - **TASK-013 — OpenRouter adapter:** implemented discovery, authentication,
-  model metadata, transparent inference, and response-header quota capture.
-  A separate credits/balance API is not used because the gateway has no stable
-  provider-credit fetch contract.
+  model metadata, transparent inference, response-header quota capture, and
+  optional credits/balance polling through a separate management token.
 - **TASK-015 — Gemini adapter:** implemented through the verified
   `/v1beta/openai` compatibility surface.
 - **TASK-016 — xAI adapter:** implemented through the verified OpenAI-compatible
   `/v1` surface with provider-scoped credentials.
 - **TASK-018 — Anthropic adapter:** implemented native Messages translation
-  for non-streaming Chat Completions, tools, usage, and finish reasons;
-  streaming, vision, reasoning, and Responses translation remain follow-ups.
+  for Chat Completions and basic stateless Responses, including streaming,
+  vision, client tools/tool results, usage, finish reasons, and reasoning;
+  structured output is explicitly rejected as unsupported.
 - **TASK-023 — Nous Portal adapter:** implemented subscription authentication,
   refresh, catalog pricing, inference, and response-header quota behavior.
 - **Jev classifier adapters:** direct and provider-transport modes are implemented

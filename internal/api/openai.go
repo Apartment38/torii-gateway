@@ -43,6 +43,13 @@ type OpenAIHandler struct {
 }
 
 func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, error) {
+	return NewOpenAIHandlerWithOverrides(providers, nil)
+}
+
+// NewOpenAIHandlerWithOverrides constructs a handler with optional catalog
+// metadata supplied by the operator. Overrides are applied after bundled and
+// live provider metadata during catalog refresh.
+func NewOpenAIHandlerWithOverrides(providers []provider.OpenAIProvider, overrides []catalog.Descriptor) (*OpenAIHandler, error) {
 	registered := make(map[string]provider.OpenAIProvider, len(providers))
 	for _, p := range providers {
 		if p == nil {
@@ -57,7 +64,7 @@ func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, erro
 	for i := range providers {
 		discovery[i] = providers[i]
 	}
-	modelCatalog, err := catalog.New(discovery, nil, nil)
+	modelCatalog, err := catalog.New(discovery, nil, overrides)
 	if err != nil {
 		return nil, err
 	}

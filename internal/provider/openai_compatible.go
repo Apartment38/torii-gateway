@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Apartment38/torii-router/internal/quota"
 	"github.com/Apartment38/torii-router/internal/transport"
 )
 
@@ -30,20 +31,24 @@ type OpenAICompatibleConfig struct {
 	// APIPath identifies the upstream OpenAI-compatible API root relative to
 	// BaseURL. The default is /v1; providers such as Gemini use a different
 	// compatibility root.
-	APIPath string
+	APIPath      string
+	QuotaURL     string
+	QuotaHeaders http.Header
 }
 
 // Compatible is a generic transparent OpenAI-compatible provider.
 type Compatible struct {
-	id, baseURL string
-	client      *http.Client
-	transport   *transport.OpenAICompatible
-	headers     http.Header
-	discover    bool
-	static      []string
-	rewrites    map[string]string
-	discoveryTO time.Duration
-	apiPath     string
+	id, baseURL  string
+	client       *http.Client
+	transport    *transport.OpenAICompatible
+	headers      http.Header
+	discover     bool
+	static       []string
+	rewrites     map[string]string
+	discoveryTO  time.Duration
+	apiPath      string
+	quotaURL     string
+	quotaHeaders http.Header
 }
 
 func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error) {
@@ -77,7 +82,43 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	for k, v := range cfg.ModelRewrites {
 		rewrites[k] = v
 	}
-	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath}, nil
+	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone()}, nil
+}
+
+// Quota retrieves OpenRouter account credits when a separate management
+// credential has been configured. Other compatible providers leave quota
+// unknown because they do not expose this contract.
+func (p *Compatible) Quota(ctx context.Context, _ string) (quota.Status, error) {
+	if p.quotaURL == "" {
+		return quota.Status{Known: false}, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.quotaURL, nil)
+	if err != nil {
+		return quota.Status{}, err
+	}
+	for name, values := range p.quotaHeaders {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return quota.Status{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return quota.Status{}, fmt.Errorf("quota endpoint returned %s", resp.Status)
+	}
+	var envelope struct {
+		Data struct {
+			TotalCredits float64 `json:"total_credits"`
+			TotalUsage   float64 `json:"total_usage"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
+		return quota.Status{}, err
+	}
+	return quota.Status{Known: true, Limit: envelope.Data.TotalCredits, Used: envelope.Data.TotalUsage}, nil
 }
 
 func (p *Compatible) ID() string { return p.id }

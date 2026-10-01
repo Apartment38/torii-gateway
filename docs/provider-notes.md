@@ -130,11 +130,11 @@ Document whether remaining credits/quota can be queried and through which
 endpoint or headers.
 
 `GET /credits` returns total credits purchased and total usage, and requires a
-management key according to the current documentation. Ordinary inference
-keys are bearer keys for inference and must not be assumed to authorize
-management operations. Per-key limits and usage are exposed through the
-management-key API. Treat quota as optional metadata and fail open to normal
-provider errors when it is unavailable.
+management key according to the current documentation. Torii accepts this as
+the separate `management_token` secret on the `openrouter` provider. Ordinary
+inference keys are never reused for management operations. If the management
+key is absent or the endpoint is unavailable, quota remains unknown and normal
+inference continues.
 
 ### OpenAI Compatibility
 
@@ -388,9 +388,11 @@ API keys only, not SuperGrok or consumer-subscription OAuth.
 
 Research status: verified from Anthropic Claude Platform documentation
 Implementation status: complete through a native Messages API adapter for
-non-streaming Chat Completions, including system-message, usage, and finish-
-reason translation. Streaming, vision, and Responses translation remain
-explicit future extensions rather than being silently approximated.
+Chat Completions and basic stateless Responses requests, including system
+messages, streaming SSE adaptation, vision, client tools/tool results, usage,
+finish-reason translation, and reasoning-effort mapping. Structured output
+remains explicitly rejected because Anthropic's native contract cannot be
+translated without changing its guarantees.
 Last verified: 2026-09-30
 
 ### Authentication and API
@@ -407,7 +409,7 @@ transparent OpenAI-compatible endpoint.
 ### Request translation
 
 Translate system instructions to the top-level `system` field and preserve
-user/assistant turns as Messages content blocks. Map text, base64/URL/file
+user/assistant turns as Messages content blocks. Map text, base64/HTTPS
 images, tool definitions (`input_schema`), tool calls (`tool_use`), and tool
 results (`tool_result`). Preserve max token controls and model-specific
 thinking/reasoning controls. Client tools return `stop_reason: tool_use` and
@@ -416,11 +418,12 @@ the next request carries the assistant content plus a user `tool_result`.
 ### Responses, streaming, and limits
 
 Anthropic streaming is an SSE event protocol with message/content-block
-events, not OpenAI chat-delta bytes. The adapter must translate text deltas,
-tool-input deltas, thinking blocks, stop reasons, and usage into the gateway's
-canonical stream. Non-streaming usage must retain input/output token counts;
-tool schemas and tool results contribute to input usage. Vision accepts base64,
-URL, or Files API image sources on the direct API.
+events, not OpenAI chat-delta bytes. The adapter translates text deltas,
+tool-input deltas, stop reasons, and usage into the gateway's canonical Chat
+stream; Responses streams are adapted to the corresponding output-text and
+completion events. Non-streaming usage retains input/output token counts;
+tool schemas and tool results contribute to input usage. Vision accepts
+base64 or HTTPS image sources on the direct API.
 
 Anthropic's current thinking model families use model-dependent adaptive or
 extended thinking controls. Unsupported combinations of thinking, tools,

@@ -50,6 +50,9 @@ providers:
   #   base_url: https://openrouter.ai/api
   #   bearer_token:
   #     env: OPENROUTER_API_KEY
+  #   # Optional separate management key for /credits quota discovery.
+  #   management_token:
+  #     env: OPENROUTER_MANAGEMENT_KEY
   #   discover_models: true
   # - id: gemini
   #   type: gemini
@@ -74,6 +77,7 @@ providers:
 # bypass smart routing.
 # router:
 #   model_name: smart
+#   catalog_file: ./catalog-overrides.json
 #   allow_paid_models: true
 #   classifier:
 #     type: model

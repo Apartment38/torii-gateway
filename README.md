@@ -195,6 +195,12 @@ the provider refreshes near-expiry OAuth credentials against the configured
 Codex issuer and never sends them to the normal OpenAI API origin. Use
 `gateway models --config ./config.yaml` to inspect the configured catalog.
 
+Optional catalog metadata overrides can be supplied with
+`router.catalog_file: ./catalog-overrides.json`. The file is a strict JSON
+array of catalog descriptors and is applied after bundled and live provider
+metadata. OpenRouter quota credits require a separate `management_token`; the
+inference bearer token is never reused for management requests.
+
 ## Verify the installation
 
 The health endpoint does not require authentication:

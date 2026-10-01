@@ -103,8 +103,8 @@ textarea { resize: vertical; line-height: 1.5; }
 .provider-card-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .provider-index { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px; background: var(--accent); color: white; font-size: 12px; }
 .remove-provider { border: 0; background: transparent; color: var(--danger); font-size: 12px; }
-.provider-result { width: 280px; min-height: 18px; margin: -6px 0 14px 39px; font-size: 12px; font-weight: 700; }
-.provider-result.pending { color: var(--muted); }
+.provider-result { width: 280px; max-width: calc(100% - 39px); min-height: 18px; margin: -6px 0 14px 39px; font-size: 12px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+.provider-result.pending, .provider-result.unchecked { color: var(--muted); }
 .provider-result.success { color: #16845a; }
 .provider-result.failure { color: var(--danger); }
 .provider-helper { display: grid; gap: 6px; width: min(620px, calc(100% - 39px)); line-height: 1.45; }

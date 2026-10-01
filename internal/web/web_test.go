@@ -3,11 +3,22 @@ package web_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/Apartment38/torii-gateway/internal/web"
 )
+
+func TestConsoleProviderStatusBehavior(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js unavailable; run node --test internal/web/app_test.mjs separately")
+	}
+	if output, err := exec.Command(node, "--test", "app_test.mjs").CombinedOutput(); err != nil {
+		t.Fatalf("console behavior tests failed: %v\n%s", err, output)
+	}
+}
 
 func TestHandlerServesConsoleAndBrandAssets(t *testing.T) {
 	handler := web.Handler()

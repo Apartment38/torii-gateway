@@ -17,6 +17,24 @@ const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
 let serverAPIKeyReference: Record<string, string> | null = null;
 const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key_env: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
+interface ProviderStatus {
+  state: "unchecked" | "pending" | "success" | "failure";
+  message: string;
+}
+const providerStatuses = new WeakMap<Record<string, string | boolean>, ProviderStatus>();
+
+function setProviderStatus(provider: Record<string, string | boolean>, status: ProviderStatus): void {
+  providerStatuses.set(provider, status);
+  const index = providers.indexOf(provider);
+  if (index < 0) return;
+  const result = providerList.querySelector<HTMLDivElement>(`[data-result="${index}"]`);
+  if (result) {
+    result.className = `provider-result ${status.state}`;
+    result.textContent = status.message;
+  }
+  const button = providerList.querySelector<HTMLButtonElement>(`[data-test="${index}"]`);
+  if (button) button.disabled = status.state === "pending";
+}
 
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
@@ -61,8 +79,8 @@ function renderProviders(): void {
   providers.forEach((provider, index) => { if (!provider.id && isKnownProvider(provider)) provider.id = knownProviderID(String(provider.type), index); });
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions">${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : `<button class="test-provider button secondary" type="button" data-test="${index}">Test connection</button>`}${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div></div>
-      <div class="provider-result" data-result="${index}" role="status" aria-live="polite"></div>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div></div>
+      <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
       ${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are stored in the gateway state directory.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. The selected type controls authentication and request behavior.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
@@ -88,9 +106,13 @@ function renderProviders(): void {
       </div></details>`}
     </article>`).join("");
   providerList.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach(button => button.addEventListener("click", () => { providers.splice(Number(button.dataset.remove), 1); renderProviders(); markDirty(); }));
-  providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test), button); }));
+  providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test)); }));
   providerList.querySelectorAll<HTMLButtonElement>("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
+  providers.forEach(provider => {
+    const status = providerStatuses.get(provider);
+    if (status) setProviderStatus(provider, status);
+  });
   initializeTooltips();
 }
 
@@ -99,6 +121,7 @@ function updateProvider(event: Event): void {
   const index = Number(control.dataset.provider);
   const key = control.dataset.key!;
   providers[index][key] = control instanceof HTMLInputElement && control.type === "checkbox" ? control.checked : control.value;
+  setProviderStatus(providers[index], { state: "unchecked", message: "Settings changed · check connection again" });
   if (key === "id") {
     const title = providerList.querySelector<HTMLElement>(`[data-provider-title="${index}"]`);
     if (title) title.textContent = control.value || `Provider ${index + 1}`;
@@ -114,6 +137,7 @@ function updateProvider(event: Event): void {
     if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
     if (knownProviderIDs[control.value]) providers[index].id = knownProviderID(control.value, index);
     renderProviders();
+    void testProvider(index);
   }
   markDirty();
 }
@@ -165,6 +189,7 @@ async function loadServerConfig(): Promise<void> {
     if (!response.ok) return;
     applyConfig(await response.json());
     saveState.textContent = "Loaded from gateway";
+    void testAllProviders();
   } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
@@ -191,52 +216,91 @@ function setNested(target: Record<string, any>, path: string, raw: unknown): voi
   const parts = path.split("."); let cursor = target;
   parts.forEach((part, index) => { if (index === parts.length - 1) cursor[part] = raw; else cursor = cursor[part] ||= {}; });
 }
+function readProviderConfig(provider: Record<string, string | boolean>): Record<string, any> {
+  const output: Record<string, any> = {};
+  Object.entries(provider).forEach(([key, raw]) => {
+    // The API URL is the source of truth; do not overwrite it with fields
+    // retained from the loaded YAML after converting it for the form.
+    if (key === "base_url" || key === "api_path") return;
+    if (key === "discover") { if (raw) output.discover_models = true; return; }
+    if (String(raw).trim() === "") return;
+    const map: Record<string, string> = { api_key_env: "bearer_token", management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" };
+    const mapped = map[key] || key;
+    if (key === "api_url") {
+      const url = new URL(String(raw));
+      if (subscriptionProvider(provider) || provider.type === "ollama" || provider.type === "anthropic") {
+        output.base_url = `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+      } else {
+        output.base_url = `${url.protocol}//${url.host}`;
+        output.api_path = url.pathname === "/" ? "" : url.pathname;
+      }
+      return;
+    }
+    if (key === "models") output.models = String(raw).split(",").map(v => v.trim()).filter(Boolean);
+    else if (key === "headers" || key === "rewrites") {
+      try { output[key === "headers" ? "headers" : "model_rewrites"] = JSON.parse(String(raw)); }
+      catch { output[key === "headers" ? "headers" : "model_rewrites"] = {}; }
+    } else if (key.endsWith("_env")) setNested(output, mapped, { env: raw });
+    else setNested(output, mapped, raw);
+  });
+  return output;
+}
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = { server: {}, state: {}, providers: [], router: { classifier: {}, sessions: {}, quota: {}, selection: {} } };
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
   const apiKeyInput = form.elements.namedItem("server.authentication.api_key.value") as HTMLInputElement;
   if (!apiKeyInput.value.trim() && serverAPIKeyReference) config.server.authentication = { api_key: serverAPIKeyReference };
-  config.providers = providers.map(provider => { const output: Record<string, any> = {}; Object.entries(provider).forEach(([key, raw]) => { if (key === "discover") { if (raw) output.discover_models = true; return; } if (String(raw).trim() === "") return; const map: Record<string, string> = { api_key_env: "bearer_token", management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" }; const mapped = map[key] || key; if (key === "api_url") { const url = new URL(String(raw)); output.base_url = `${url.protocol}//${url.host}`; output.api_path = url.pathname === "/" ? "" : url.pathname; return; } if (key === "models") output.models = String(raw).split(",").map(v => v.trim()).filter(Boolean); else if (key === "headers" || key === "rewrites") { try { output[key === "headers" ? "headers" : "model_rewrites"] = JSON.parse(String(raw)); } catch { output[key === "headers" ? "headers" : "model_rewrites"] = {}; } } else if (key.endsWith("_env")) { setNested(output, mapped, { env: raw }); } else setNested(output, mapped, raw); }); return output; });
+  config.providers = providers.map(readProviderConfig);
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
   return config;
 }
-async function testProvider(index: number, button: HTMLButtonElement): Promise<void> {
-  const result = providerList.querySelector<HTMLSpanElement>(`[data-result="${index}"]`)!;
-  button.disabled = true;
-  result.textContent = "Testing…";
-  result.className = "provider-result pending";
+async function testProvider(index: number): Promise<void> {
+  const provider = providers[index];
+  if (!provider) return;
+  const pending: ProviderStatus = { state: "pending", message: "Checking connection and discovering models…" };
+  setProviderStatus(provider, pending);
   try {
-    const response = await fetch("/gateway/v1/providers/test", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: readConfig().providers[index] }) });
+    if (!provider.id || !provider.api_url) throw new Error("Configure the provider before checking its connection");
+    // Snapshot the draft before awaiting, so a re-render cannot change which
+    // provider this request tests. Ignore responses for edited or removed drafts.
+    const configuration = readProviderConfig(provider);
+    const response = await fetch("/gateway/v1/providers/test", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "connection failed");
-    result.textContent = `Success · ${body.models.length} model${body.models.length === 1 ? "" : "s"} detected`;
-    result.className = "provider-result success";
+    if (body.models !== null && !Array.isArray(body.models)) throw new Error("Invalid model discovery response");
+    const count = body.models?.length || 0;
+    if (providerStatuses.get(provider) !== pending || !providers.includes(provider)) return;
+    const connection = subscriptionProvider(provider) ? "Logged in" : "Connected";
+    setProviderStatus(provider, {
+      state: count > 0 ? "success" : "failure",
+      message: `${connection} · ${count > 0 ? "Working" : "Not working"} · ${count} model${count === 1 ? "" : "s"} discovered${count === 0 ? " (no models available)" : ""}`,
+    });
   } catch (error) {
-    result.textContent = `Failed · ${error instanceof Error ? error.message : "connection failed"}`;
-    result.className = "provider-result failure";
-  } finally { button.disabled = false; }
+    if (providerStatuses.get(provider) !== pending || !providers.includes(provider)) return;
+    setProviderStatus(provider, { state: "failure", message: `Not working · 0 models discovered · ${error instanceof Error ? error.message : "connection failed"}` });
+  }
 }
 async function loginProvider(index: number, button: HTMLButtonElement): Promise<void> {
   const result = providerList.querySelector<HTMLDivElement>(`[data-result="${index}"]`)!;
+  const provider = providers[index];
   button.disabled = true;
-  result.className = "provider-result pending";
-  result.textContent = "Starting login…";
+  setProviderStatus(provider, { state: "pending", message: "Starting login…" });
   try {
-    const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: readConfig().providers[index] }) });
+    const configuration = readProviderConfig(provider);
+    const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "login could not start");
     if (body.helper_url && body.helper_token) {
       renderHelperInstructions(result, body.helper_url, body.helper_token);
-      await pollProviderLogin(String(providers[index].id), result, button, "", true);
+      await pollProviderLogin(provider, result, button, "", true);
       return;
     }
     if (body.verification_url) window.open(body.verification_url, "_blank", "noopener,noreferrer");
     result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
-    await pollProviderLogin(String(providers[index].id), result, button, body.verification_url || "");
+    await pollProviderLogin(provider, result, button, body.verification_url || "");
   } catch (error) {
-    result.className = "provider-result failure";
-    result.textContent = `Failed · ${error instanceof Error ? error.message : "login failed"}`;
+    setProviderStatus(provider, { state: "failure", message: `Not working · 0 models discovered · ${error instanceof Error ? error.message : "login failed"}` });
     button.disabled = false;
   }
 }
@@ -265,25 +329,28 @@ function helperDownloadURL(): string {
   else if (platform.includes("linux")) asset = "torii-auth-linux-amd64";
   return asset ? `/gateway/v1/providers/login/helper/${asset}` : "https://github.com/Apartment38/torii-router/releases/latest";
 }
-async function pollProviderLogin(providerID: string, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
+async function pollProviderLogin(provider: Record<string, string | boolean>, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
+  const providerID = String(provider.id);
   for (let attempt = 0; attempt < 180; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, 2000));
     const response = await fetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
     const body = await response.json();
     if (body.verification_url && body.verification_url !== openedURL) { openedURL = body.verification_url; window.open(openedURL, "_blank", "noopener,noreferrer"); }
-    if (body.status === "success") { result.className = "provider-result success"; result.textContent = body.message || "Login complete"; button.disabled = false; return; }
-    if (body.status === "failure") { result.className = "provider-result failure"; result.textContent = `Failed · ${body.message || "login failed"}`; button.disabled = false; return; }
+    if (body.status === "success") {
+      button.disabled = false;
+      await testProvider(providers.indexOf(provider));
+      return;
+    }
+    if (body.status === "failure") { setProviderStatus(provider, { state: "failure", message: `Not working · 0 models discovered · ${body.message || "login failed"}` }); button.disabled = false; return; }
     if (!helperPending) {
-      result.className = "provider-result pending";
-      result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+      setProviderStatus(provider, { state: "pending", message: body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…" });
     }
   }
-  result.className = "provider-result failure";
-  result.textContent = "Failed · login timed out";
+  setProviderStatus(provider, { state: "failure", message: "Not working · 0 models discovered · login timed out" });
   button.disabled = false;
 }
-function testAllProviders(): void {
-  providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => { void testProvider(Number(button.dataset.test), button); });
+async function testAllProviders(): Promise<void> {
+  await Promise.all(providers.map((_, index) => testProvider(index)));
 }
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
@@ -297,4 +364,4 @@ document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || 
 document.querySelector<HTMLButtonElement>("#reveal-api-key")!.addEventListener("click", event => { const input = document.querySelector<HTMLInputElement>("#server-api-key")!; const button = event.currentTarget as HTMLButtonElement; const visible = input.type === "text"; input.type = visible ? "password" : "text"; button.textContent = visible ? "Show" : "Hide"; });
 document.querySelector<HTMLInputElement>("#server-api-key")!.addEventListener("input", event => { if ((event.target as HTMLInputElement).value) serverAPIKeyReference = null; });
 document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
-renderProviders(); navigate(); void loadServerConfig().then(() => testAllProviders());
+renderProviders(); navigate(); void loadServerConfig();

@@ -149,7 +149,12 @@ async function saveConfig(): Promise<void> {
 
 function navigate(): void {
   const current = location.hash.replace(/^#/, "") || "overview";
-  document.querySelectorAll<HTMLElement>(".page").forEach(page => page.classList.toggle("active", page.id === current));
+  document.querySelectorAll<HTMLElement>(".page").forEach(page => {
+    const active = page.id === current;
+    page.classList.toggle("active", active);
+    page.hidden = !active;
+    page.setAttribute("aria-hidden", String(!active));
+  });
   document.querySelectorAll<HTMLAnchorElement>(".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
 }
 

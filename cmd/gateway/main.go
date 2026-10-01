@@ -972,6 +972,7 @@ func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Re
 		writeJSON(w, http.StatusNotFound, map[string]string{"status": "not_started"})
 		return
 	}
+	status.HelperToken = ""
 	writeJSON(w, http.StatusOK, status)
 }
 
@@ -1008,6 +1009,18 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
 	defer cancel()
 	credential, err := provider.ExchangePKCE(ctx, "https://auth.openai.com", code, flow.Authorization, &http.Client{})
+	if err == nil {
+		identity, validateErr := provider.ValidateCodexIDToken(ctx, credential.IDToken, "https://auth.openai.com", credential.ClientID, flow.Authorization.Nonce, &http.Client{})
+		if validateErr != nil {
+			err = validateErr
+		} else if !containsScope(credential.Scopes, "chatgpt.tokens.use.direct") {
+			err = errors.New("Codex authorization did not grant ChatGPT plan usage")
+		} else {
+			credential.Issuer = identity.Issuer
+			credential.Subject = identity.Subject
+			credential.Email = identity.Email
+		}
+	}
 	if err == nil {
 		store, storeErr := state.NewFlatFileCredentialStore(flow.StateDir)
 		if storeErr != nil {

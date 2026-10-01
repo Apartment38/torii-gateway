@@ -117,7 +117,9 @@ The compose file mounts the host `config.yaml` as a writable Podman bind mount
 with `rw,Z,U`. The `U` option adjusts ownership for the container’s non-root
 user, so Podman may change the host file’s ownership. The web console saves and
 reloads directly to the host `config.yaml` using an atomic replacement. The
-named state volume continues to store credentials and other runtime state.
+named state volume is mounted with `Z,U` as well, so the non-root gateway user
+can create its runtime directories there; Podman may adjust that volume’s
+ownership on first use.
 
 The console is divided into Overview, Server, Providers, Routing, and State &
 Quota pages. **Save & reload** sends the validated configuration to

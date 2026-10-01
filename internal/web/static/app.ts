@@ -22,6 +22,29 @@ function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch 
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider: Record<string, string | boolean>, key: string): string { return provider[key] === false ? "" : "checked"; }
 function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex" || provider.type === "nous"; }
+function initializeTooltips(): void {
+  document.querySelectorAll<HTMLLabelElement>("label[data-tooltip]").forEach(label => {
+    if (label.querySelector(".tooltip-trigger")) return;
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "tooltip-trigger";
+    trigger.textContent = "?";
+    trigger.setAttribute("aria-label", "Show help");
+    trigger.setAttribute("aria-expanded", "false");
+    const content = document.createElement("span");
+    content.className = "tooltip-content";
+    content.setAttribute("role", "tooltip");
+    content.textContent = label.dataset.tooltip || "";
+    trigger.addEventListener("click", event => {
+      event.stopPropagation();
+      document.querySelectorAll("label.tooltip-open").forEach(open => open.classList.remove("tooltip-open"));
+      const open = !label.classList.contains("tooltip-open");
+      label.classList.toggle("tooltip-open", open);
+      trigger.setAttribute("aria-expanded", String(open));
+    });
+    label.append(trigger, content);
+  });
+}
 
 function renderProviders(): void {
   providerList.innerHTML = providers.map((provider, index) => `
@@ -56,6 +79,7 @@ function renderProviders(): void {
   providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test), button); }));
   providerList.querySelectorAll<HTMLButtonElement>("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
+  initializeTooltips();
 }
 
 function updateProvider(event: Event): void {
@@ -207,4 +231,5 @@ window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 document.querySelector<HTMLButtonElement>("#reveal-api-key")!.addEventListener("click", event => { const input = document.querySelector<HTMLInputElement>("#server-api-key")!; const button = event.currentTarget as HTMLButtonElement; const visible = input.type === "text"; input.type = visible ? "password" : "text"; button.textContent = visible ? "Show" : "Hide"; });
 document.querySelector<HTMLInputElement>("#server-api-key")!.addEventListener("input", event => { if ((event.target as HTMLInputElement).value) serverAPIKeyReference = null; });
+document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
 renderProviders(); navigate(); void loadServerConfig().then(() => testAllProviders());

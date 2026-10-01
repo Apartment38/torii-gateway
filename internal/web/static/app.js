@@ -9,6 +9,7 @@ function escapeHTML(value) { return value.replace(/[&<>\"]/g, ch => ({ "&": "&am
 function value(provider, key) { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider, key) { return provider[key] === false ? "" : "checked"; }
 function subscriptionProvider(provider) { return provider.type === "openai-codex" || provider.type === "nous"; }
+function initializeTooltips() { document.querySelectorAll("label[data-tooltip]").forEach(label => { if (label.querySelector(".tooltip-trigger")) return; const trigger = document.createElement("button"); trigger.type = "button"; trigger.className = "tooltip-trigger"; trigger.textContent = "?"; trigger.setAttribute("aria-label", "Show help"); trigger.setAttribute("aria-expanded", "false"); const content = document.createElement("span"); content.className = "tooltip-content"; content.setAttribute("role", "tooltip"); content.textContent = label.dataset.tooltip || ""; trigger.addEventListener("click", event => { event.stopPropagation(); document.querySelectorAll("label.tooltip-open").forEach(open => open.classList.remove("tooltip-open")); const open = !label.classList.contains("tooltip-open"); label.classList.toggle("tooltip-open", open); trigger.setAttribute("aria-expanded", String(open)); }); label.append(trigger, content); }); }
 function renderProviders() {
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card"><div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider, "id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions">${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : `<button class="test-provider button secondary" type="button" data-test="${index}">Test connection</button>`}${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div></div>
@@ -27,6 +28,7 @@ function renderProviders() {
   providerList.querySelectorAll("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test), button); }));
   providerList.querySelectorAll("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
+  initializeTooltips();
 }
 function updateProvider(event) { const control = event.target; const index = Number(control.dataset.provider); const key = control.dataset.key; providers[index][key] = control.type === "checkbox" ? control.checked : control.value; if (key === "id") { const title = providerList.querySelector(`[data-provider-title="${index}"]`); if (title) title.textContent = control.value || `Provider ${index + 1}`; } if (key === "type") renderProviders(); markDirty(); }
 function markDirty() { saveState.textContent = "Unsaved changes"; }
@@ -54,6 +56,7 @@ document.querySelector("#reset-button").addEventListener("click", () => { locati
 document.querySelector("#theme-toggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
 document.querySelector("#reveal-api-key").addEventListener("click", event => { const input = document.querySelector("#server-api-key"); const button = event.currentTarget; const visible = input.type === "text"; input.type = visible ? "password" : "text"; button.textContent = visible ? "Show" : "Hide"; });
 document.querySelector("#server-api-key").addEventListener("input", event => { if (event.target.value) serverAPIKeyReference = null; });
+document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
 form.addEventListener("input", markDirty);
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");

@@ -562,6 +562,11 @@ func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if cfg.Server.Authentication != nil {
+		if secret, resolveErr := cfg.Server.Authentication.APIKey.Resolve(); resolveErr == nil {
+			cfg.Server.Authentication.APIKey = config.SecretRef{Value: secret}
+		}
+	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, err)

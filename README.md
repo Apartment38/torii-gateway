@@ -115,12 +115,9 @@ default, stores all durable gateway state in the named
 `torii_gateway_database` volume at `/data`, and runs as the image's non-root user. Set
 `TORII_PORT` in `.env` to publish a different host port or `TORII_IMAGE` to use
 a prebuilt image. Only the master key and published port are needed in `.env`.
-If an old `.env` already contains `TORII_API_KEY`, Compose passes it through for
-one-time import; remove it after migration. The default deployment no longer
-mounts `/state`; existing installations must apply `compose.migrate.yaml` on the
-first upgrade boot to preserve old usage, Codex identity and other legacy files.
-See [runtime state migration](docs/runtime-state.md). Keep the
-same master key on every restart:
+The default deployment mounts only `/data` and `/config`.
+Existing schemas 1–3 require the [one-time baseline reset](docs/runtime-state.md#one-time-baseline-reset).
+Future updates preserve the database. Keep the same master key on every restart:
 
 ```sh
 # Inspect the temporary setup code, then create your admin in the web console.
@@ -130,11 +127,11 @@ podman compose down
 
 Keep `.env` private; it is ignored by Git and the image build. Prefer a mounted
 master-key secret using `compose.secrets.yaml`; see [Encrypted credential storage](docs/credential-storage.md)
-for Docker/Podman commands, non-root permissions, bootstrap and migration.
+for Docker/Podman commands, non-root permissions, setup and updates.
 The master key is required; an API key is not required at launch.
 Sign in to the console with your administrator username/password. Provider keys entered there
 are encrypted in SQLite; saved values are never returned to the browser.
-Legacy env/file inputs are imported once and no longer track external changes.
+Persisted provider credentials use database references, not YAML value/env/file fields.
 Use **Server → Generate new API key** or `gateway admin api-key --config PATH`
 to generate a replacement. It is shown once and immediately invalidates the old key.
 Docker users must apply `compose.docker.yaml` because Docker does not support
@@ -146,8 +143,7 @@ writable Podman bind mount with `rw,Z,U`; the container reads
 creates a temporary file beside the configuration before atomically replacing
 it. The `U` option adjusts ownership only within `config/` for the container’s
 non-root user, so it does not change ownership across the repository. The
-database volume is owned by the image's non-root user. `/state` is needed only
-temporarily for migration, not for normal operation.
+database volume is owned by the image's non-root user. There is no legacy state mount.
 
 If an existing deployment still has a root-level `config.yaml`, migrate it
 once before restarting Compose:
@@ -266,7 +262,7 @@ routing weights.
 
 Pull the new source, validate the existing configuration, build a replacement
 binary, then restart the process or service that runs the gateway. The config
-file and state directory are not changed by the build:
+file and database are not changed by the build:
 
 ```sh
 git pull --ff-only
@@ -285,46 +281,42 @@ current process, for example:
 If the gateway is managed by systemd, use `systemctl restart
 torii-gateway.service` after installing the new binary. Keep a copy of the
 previous binary if you need to roll back; do not replace `config.yaml`, the
-database or legacy state during an application update. Before this schema-3
-upgrade, back up the database and matching master key separately. Retain the old
-`state.directory` for the first start; see [migration instructions](docs/runtime-state.md).
+database during a future application update. The database-only baseline requires
+a [one-time fresh setup](docs/runtime-state.md#one-time-baseline-reset).
+For subsequent releases, stop Torii and back up persistent storage and configuration;
+keep the master-key backup separate before upgrading.
 
 ### Podman Compose container
 
 The Compose workflow preserves the bind-mounted `config/` directory and named
-`torii_gateway_database` volume while rebuilding the image. For the first upgrade
-from flat-file runtime state, use the migration override **before** starting the
-new image:
+`torii_gateway_database` volume. For manual source-built updates:
 
 ```sh
 podman compose down
-podman compose -f compose.yaml -f compose.migrate.yaml up --build -d
-```
-
-Keep the same project name so it mounts the original state volume. Verify imports
-and follow [the migration guide](docs/runtime-state.md) before removing the old
-mount. Subsequent updates use:
-
-```sh
+# Back up the stopped data/config volumes and the master key separately.
 git pull --ff-only
 podman compose up --build -d
 podman compose ps
 podman compose logs --tail=100 torii-gateway
 ```
 
-For a clean image rebuild, use `podman compose build --no-cache` before
-`podman compose up -d`. To deploy a prebuilt image, set `TORII_IMAGE` in `.env`
-and start without rebuilding:
+Published releases will provide gateway/helper binaries and GHCR images.
+Use an exact release tag or digest from the release page, not a floating tag:
 
 ```sh
-TORII_IMAGE=torii-gateway:release podman compose up --no-build -d
+TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose pull torii-gateway
+TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose up --no-build -d
 ```
+
+Replace `vX.Y.Z` with an actual published release. Keep the same Compose project
+and volume. Docker users append `-f compose.docker.yaml`. Read the complete
+[backup, update and rollback procedure](docs/runtime-state.md) before upgrading.
 
 The gateway validates and reloads configuration saved through the web console;
 rebuilding the application image is only required when updating gateway code.
-Older images reject schema version 3: rollback requires restoring the pre-upgrade
-database and matching master key, not just selecting an older image. Do not remove
-the database volume, or the legacy state volume until migration has been verified.
+Rollback after a schema change requires the matching pre-upgrade database,
+configuration and previous binary/image; simply selecting an older image is
+not sufficient. Never delete the database volume during an ordinary update.
 
 ## Configuration
 
@@ -351,25 +343,22 @@ providers:
 | Field | Required | Description |
 | --- | --- | --- |
 | `server.listen` | yes | TCP `host:port` on which the gateway listens. Use `127.0.0.1:8080` for local-only access or `0.0.0.0:8080` in a container. |
-| `server.authentication.api_key` | migration only | Legacy `value`, `env`, `file`, or database-reference input is imported once, then this section is removed. Gateway authentication is managed entirely in SQLite. |
 
 Administrator login uses HTTP Basic authentication; inference uses the generated
-or imported bearer API key. Anonymous inference is no longer enabled by omitting
-`server.authentication`. Before administrator setup, new installations deny
-inference because no key exists. Existing imported keys continue working.
-The master encryption key is separate and must never appear in YAML.
-See [credential management and migration](docs/credential-storage.md).
+bearer API key. Before administrator setup, inference is denied because no key
+exists. Authentication is managed entirely in SQLite; `server.authentication`
+is no longer a configuration field. The master key must never appear in YAML.
+See [credential management](docs/credential-storage.md).
 
 ### State
 
-`state.directory` is optional and used only to import legacy state files.
 Credentials, usage aggregates, the Codex host ID and benchmark observations use SQLite at `state.database_path`,
 default `/data/torii.db`, overridden by `TORII_DB_PATH`. Credentials are encrypted;
 public usage/identity/benchmark data is not. The database and master key must both
 survive container updates. Usage updates remain in memory during inference and
 flush every second; crashes can lose unflushed counters, especially during write
 failures. Sessions and live quota caches remain memory-only. See
-[runtime state and migration](docs/runtime-state.md) and
+[runtime state and releases](docs/runtime-state.md) and
 [benchmark storage](docs/benchmark-intelligence.md#cache-management-and-refresh).
 
 ### Providers
@@ -410,7 +399,7 @@ providers:
     type: openai_compatible
     base_url: https://inference.example.com
     bearer_token:
-      env: PRIVATE_PROVIDER_TOKEN
+      credential: YOUR_STORED_PRIVATE_PROVIDER_TOKEN_ID
     discover_models: false
     models: [production-model]
     model_rewrites:
@@ -424,9 +413,9 @@ Provider credentials are isolated in a dedicated HTTP client and are not
 forwarded across redirects. The authenticated console accepts a new, masked
 API key and encrypts it in SQLite; YAML receives only a credential reference.
 **Show** reveals only a newly entered value, never an existing stored key.
-Legacy environment/file inputs are imported once, not tracked continually.
+Persisted credentials must use database references.
 Use HTTPS for remote console access. See [credential storage](docs/credential-storage.md)
-for migration, backup and recovery instructions.
+for setup, backup and recovery instructions.
 
 The normal OpenAI API can be enabled with its origin-locked profile:
 
@@ -435,7 +424,7 @@ The normal OpenAI API can be enabled with its origin-locked profile:
     type: openai
     base_url: https://api.openai.com
     bearer_token:
-      env: OPENAI_API_KEY
+      credential: YOUR_STORED_OPENAI_API_KEY_ID
     project: proj_example       # optional
     organization: org_example   # optional
 ```
@@ -498,7 +487,7 @@ providers:
     base_url: https://api.typesafe.ai
     api_path: /v1
     bearer_token:
-      env: JEV_API_KEY
+      credential: YOUR_STORED_JEV_API_KEY_ID
   - id: laya
     type: jev_compatible
     base_url: http://host.containers.internal:8000

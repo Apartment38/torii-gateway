@@ -7,13 +7,7 @@ import (
 	"time"
 )
 
-func migrateBenchmarks(db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	_, err = tx.Exec(`
+const benchmarkSchema = `
  CREATE TABLE benchmark_datasets (
    id TEXT PRIMARY KEY, source_id TEXT NOT NULL, observation_count INTEGER NOT NULL,
    content_hash TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(id,source_id));
@@ -30,16 +24,9 @@ func migrateBenchmarks(db *sql.DB) error {
    PRIMARY KEY(dataset_id,ordinal));
  CREATE INDEX benchmark_model ON benchmark_observations(external_model_id,dataset_id);
  CREATE INDEX benchmark_category ON benchmark_observations(category,benchmark,dataset_id);
- CREATE TABLE benchmark_storage (
-   id INTEGER PRIMARY KEY CHECK(id=1), updated_at TEXT, published INTEGER NOT NULL DEFAULT 0,
-   legacy_import_done INTEGER NOT NULL DEFAULT 0);
+ CREATE TABLE benchmark_storage (id INTEGER PRIMARY KEY CHECK(id=1), updated_at TEXT);
  INSERT INTO benchmark_storage(id) VALUES(1);
- PRAGMA user_version=2;`)
-	if err != nil {
-		return errors.New("cannot migrate benchmark database schema; preserve the database and restore a pre-upgrade backup if necessary")
-	}
-	return tx.Commit()
-}
+`
 
 // BenchmarkConnection uses a separate pool so WAL credential readers do not
 // queue behind benchmark staging. The caller owns and closes this pool.

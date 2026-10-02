@@ -9,8 +9,6 @@ services:
     command: ["serve", "--config", "/config/config.yaml"]
     environment:
       TORII_DB_KEY: ${TORII_DB_KEY:-}
-      # Optional one-time migration for existing .env installs; not needed for setup.
-      TORII_API_KEY: ${TORII_API_KEY:-}
       TORII_CONFIG_BOOTSTRAP: "true"
     extra_hosts:
       - "host.containers.internal:host-gateway"

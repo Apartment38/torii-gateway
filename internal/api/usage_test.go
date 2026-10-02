@@ -22,7 +22,7 @@ func TestUsagePersistenceFailureDoesNotBlockInference(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	counters, err := usage.Open(db, "")
+	counters, err := usage.Open(db)
 	if err != nil {
 		t.Fatal(err)
 	}

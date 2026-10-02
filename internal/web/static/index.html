@@ -108,7 +108,6 @@
           <section id="state" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
             <div class="grid two">
-              <label data-tooltip="Optional path for importing old usage, Codex identity, OAuth and benchmark files. Normal operation stores durable state in SQLite instead.">Legacy migration directory<input name="state.directory" placeholder="Leave empty for new installations" /></label>
               <label data-tooltip="The SQLite database for credentials, usage, Codex identity and benchmarks, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
               <label data-tooltip="How long quota results remain cached before being refreshed. Use a Go duration such as 1m or 30s.">Quota cache TTL<input name="router.quota.cache_ttl" value="1m" placeholder="1m" /></label>
               <label data-tooltip="How long an inactive routing session remains associated with its model. Use a Go duration such as 30m.">Session inactivity timeout<input name="router.sessions.inactivity_timeout" placeholder="30m" /></label>

@@ -7,12 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/state"
@@ -42,7 +38,7 @@ type preparedSource struct {
 	observationMetadata [][]byte
 }
 
-func OpenStore(ctx context.Context, database *state.Database, directory string, logger *slog.Logger) (*Store, error) {
+func OpenStore(ctx context.Context, database *state.Database, logger *slog.Logger) (*Store, error) {
 	if database == nil {
 		return nil, errors.New("benchmark storage requires the application database")
 	}
@@ -62,13 +58,6 @@ func OpenStore(ctx context.Context, database *state.Database, directory string, 
 	defer unlock()
 	if err = s.cleanup(ctx); err != nil {
 		logger.Warn("benchmark_cleanup_failed", "error", err)
-	}
-	legacyPath := ""
-	if strings.TrimSpace(directory) != "" {
-		legacyPath = filepath.Join(directory, "benchmark-intelligence.json")
-	}
-	if err = s.migrateLegacy(ctx, legacyPath); err != nil {
-		logger.Warn("benchmark_legacy_import_failed", "error", err, "message", "Legacy cache retained; inference fallback remains available")
 	}
 	if err = ctx.Err(); err != nil {
 		db.Close()
@@ -313,10 +302,10 @@ func (s *Store) Save(ctx context.Context, snapshot Snapshot) (saveErr error) {
 		return err
 	}
 	defer unlock()
-	return s.savePrepared(ctx, snapshot.UpdatedAt, prepared, false)
+	return s.savePrepared(ctx, snapshot.UpdatedAt, prepared)
 }
 
-func (s *Store) savePrepared(ctx context.Context, updated time.Time, prepared map[string]preparedSource, migration bool) error {
+func (s *Store) savePrepared(ctx context.Context, updated time.Time, prepared map[string]preparedSource) error {
 	if err := s.cleanup(ctx); err != nil {
 		return err
 	}
@@ -369,14 +358,9 @@ func (s *Store) savePrepared(ctx context.Context, updated time.Time, prepared ma
 			return errors.New("cannot publish benchmark source status")
 		}
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE benchmark_storage SET updated_at=?,published=1,legacy_import_done=1 WHERE id=1", stamp(updated))
+	_, err = tx.ExecContext(ctx, "UPDATE benchmark_storage SET updated_at=? WHERE id=1", stamp(updated))
 	if err != nil {
 		return errors.New("cannot publish benchmark storage metadata")
-	}
-	if migration {
-		if err = s.verifyPublished(ctx, tx, updated, prepared); err != nil {
-			return err
-		}
 	}
 	if err = tx.Commit(); err != nil {
 		return errors.New("cannot commit benchmark publication")
@@ -436,109 +420,4 @@ func (s *Store) cleanup(ctx context.Context) error {
 			return nil
 		}
 	}
-}
-
-func readLegacy(path string) (Snapshot, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	defer f.Close()
-	if info, err := f.Stat(); err != nil || info.Size() > maxCacheBytes {
-		return Snapshot{}, errors.New("legacy benchmark cache unreadable or too large")
-	}
-	b, err := io.ReadAll(io.LimitReader(f, maxCacheBytes+1))
-	if err != nil || len(b) > maxCacheBytes {
-		return Snapshot{}, errors.New("legacy benchmark cache unreadable or too large")
-	}
-	var snapshot Snapshot
-	if json.Unmarshal(b, &snapshot) != nil {
-		return Snapshot{}, errors.New("legacy benchmark cache is invalid JSON")
-	}
-	if _, err = prepare(snapshot); err != nil {
-		return Snapshot{}, err
-	}
-	return snapshot, nil
-}
-func (s *Store) migrateLegacy(ctx context.Context, path string) error {
-	var done, published int
-	if err := s.db.QueryRowContext(ctx, "SELECT legacy_import_done,published FROM benchmark_storage WHERE id=1").Scan(&done, &published); err != nil {
-		return errors.New("cannot inspect benchmark migration")
-	}
-	if done != 0 {
-		return nil
-	}
-	var count int
-	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM benchmark_sources").Scan(&count); err != nil {
-		return errors.New("cannot inspect existing benchmark data")
-	}
-	if published != 0 || count != 0 {
-		_, err := s.db.ExecContext(ctx, "UPDATE benchmark_storage SET legacy_import_done=1 WHERE id=1")
-		return err
-	}
-	snapshot, err := readLegacy(path)
-	if errors.Is(err, os.ErrNotExist) {
-		_, err = s.db.ExecContext(ctx, "UPDATE benchmark_storage SET legacy_import_done=1 WHERE id=1")
-		return err
-	}
-	if err != nil {
-		return errors.New("cannot import legacy benchmark cache; verify its version, observations, size and permissions")
-	}
-	prepared, err := prepare(snapshot)
-	if err != nil {
-		return err
-	}
-	if err = s.savePrepared(ctx, snapshot.UpdatedAt, prepared, true); err != nil {
-		return err
-	}
-	slog.Info("benchmark_legacy_import_succeeded", "sources", len(snapshot.Sources), "message", "SQLite is authoritative; legacy JSON was retained unchanged and may be removed after verification")
-	return nil
-}
-func (s *Store) verifyPublished(ctx context.Context, tx *sql.Tx, updated time.Time, prepared map[string]preparedSource) error {
-	var actualUpdated sql.NullString
-	var published, imported int
-	if err := tx.QueryRowContext(ctx, "SELECT updated_at,published,legacy_import_done FROM benchmark_storage WHERE id=1").Scan(&actualUpdated, &published, &imported); err != nil {
-		return errors.New("benchmark migration metadata verification failed")
-	}
-	wantUpdated := sql.NullString{}
-	if t := stamp(updated); t != nil {
-		wantUpdated = sql.NullString{String: t.(string), Valid: true}
-	}
-	if actualUpdated != wantUpdated || published != 1 || imported != 1 {
-		return errors.New("benchmark migration metadata verification failed")
-	}
-	for id, p := range prepared {
-		var typ, status string
-		var attempt, success, dataset sql.NullString
-		var b []byte
-		if err := tx.QueryRowContext(ctx, "SELECT type,last_attempt,last_success,error,metadata,current_dataset FROM benchmark_sources WHERE source_id=?", id).Scan(&typ, &attempt, &success, &status, &b, &dataset); err != nil {
-			return errors.New("benchmark migration verification failed")
-		}
-		wantAttempt, wantSuccess := sql.NullString{}, sql.NullString{}
-		if t := stamp(p.status.LastAttempt); t != nil {
-			wantAttempt = sql.NullString{String: t.(string), Valid: true}
-		}
-		if t := stamp(p.status.LastSuccess); t != nil {
-			wantSuccess = sql.NullString{String: t.(string), Valid: true}
-		}
-		if typ != p.status.Type || status != p.status.Error || string(b) != string(p.metadata) || attempt != wantAttempt || success != wantSuccess {
-			return errors.New("benchmark migration source verification failed")
-		}
-		if len(p.status.Observations) > 0 {
-			if !dataset.Valid {
-				return errors.New("benchmark migration dataset missing")
-			}
-			// Rows were fully verified before opening the publication transaction.
-			// Verify the published identity/hash here without another full scan under
-			// the write lock. The shared writer gate protects staged rows until commit.
-			var count int
-			var hash string
-			if err := tx.QueryRowContext(ctx, "SELECT observation_count,content_hash FROM benchmark_datasets WHERE id=? AND source_id=?", dataset.String, id).Scan(&count, &hash); err != nil || count != len(p.status.Observations) || hash != p.hash {
-				return errors.New("benchmark migration dataset verification failed")
-			}
-		} else if dataset.Valid {
-			return errors.New("benchmark migration unexpected dataset")
-		}
-	}
-	return nil
 }

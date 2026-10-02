@@ -64,9 +64,9 @@ func TestAdminCreationHashingRotationAndPersistence(t *testing.T) {
 		t.Fatal("restart lost authentication")
 	}
 }
-func TestImportedAPIKeyIsNeverRevealedOrOverwrittenBySetup(t *testing.T) {
+func TestExistingAPIKeyIsNeverRevealedOrOverwrittenBySetup(t *testing.T) {
 	d, _, _ := testDB(t)
-	if err := d.AdoptGatewayAPIKey("old-env-key"); err != nil {
+	if err := d.Put(GatewayAPIKeyID, Owner, "gateway", "authentication", []byte("existing-db-key")); err != nil {
 		t.Fatal(err)
 	}
 	revealed, err := d.CreateAdmin("chosen-user", "long-enough-password")
@@ -74,14 +74,11 @@ func TestImportedAPIKeyIsNeverRevealedOrOverwrittenBySetup(t *testing.T) {
 		t.Fatal("imported key revealed", err)
 	}
 	stored, _ := d.GatewayAPIKey()
-	if stored != "old-env-key" {
+	if stored != "existing-db-key" {
 		t.Fatal("imported key overwritten")
 	}
 	next, err := d.RotateAPIKey()
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err = d.AdoptGatewayAPIKey("changed-env-key"); err != nil {
 		t.Fatal(err)
 	}
 	stored, _ = d.GatewayAPIKey()

@@ -33,45 +33,11 @@ func openCredentials(cfg *config.Config, path string) (*state.Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, keyErr := db.GatewayAPIKey()
-	keyImported, err := db.Imported(state.GatewayAPIKeyID)
-	if err != nil {
+	if err := cfg.BindSecrets(db); err != nil {
 		db.Close()
 		return nil, err
 	}
-	bootstrap := cfg.Server.Authentication == nil && os.Getenv("TORII_API_KEY") != "" && keyErr != nil && !keyImported
-	if err := config.MigrateCredentials(cfg, path, db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if cfg.Server.Authentication != nil && keyErr != nil && !keyImported {
-		key, err := cfg.Server.Authentication.APIKey.Resolve()
-		if err != nil {
-			db.Close()
-			return nil, errors.New("cannot import gateway API key")
-		}
-		if _, err := api.NewStaticBearerAuthenticator(key); err != nil {
-			db.Close()
-			return nil, err
-		}
-		if err := db.AdoptGatewayAPIKey(key); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	if bootstrap {
-		value := os.Getenv("TORII_API_KEY")
-		if _, err := api.NewStaticBearerAuthenticator(value); err != nil {
-			db.Close()
-			return nil, err
-		}
-		if err := db.AdoptGatewayAPIKey(value); err != nil {
-			db.Close()
-			return nil, errors.New("cannot import legacy gateway API key")
-		}
-	}
-	config.RemoveLegacyAuthentication(cfg, path)
-	if err := db.InitializeCodexHostID(context.Background(), cfg.State.Directory); err != nil {
+	if err := db.InitializeCodexHostID(context.Background()); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -83,12 +49,11 @@ func (r *handlerRuntime) loadConfig() (*config.Config, error) {
 		return nil, err
 	}
 	if r.credentials != nil {
-		err = cfg.AttachStoredSecrets(r.credentials)
-		cfg.Server.Authentication = nil
+		err = cfg.BindSecrets(r.credentials)
 	}
 	return cfg, err
 }
-func (r *handlerRuntime) oauthStore(directory string) (state.CredentialStore, error) {
+func (r *handlerRuntime) oauthStore() (state.CredentialStore, error) {
 	if r.credentials != nil {
 		return r.credentials, nil
 	}

@@ -14,7 +14,7 @@ func TestIntelligenceConfigurationStrictDecodeAndDefaults(t *testing.T) {
 	yaml := `server:
   listen: 127.0.0.1:8080
 state:
-  directory: ./state
+  database_path: /data/torii.db
 providers:
   - id: local
     type: ollama

@@ -123,7 +123,7 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		}
 		defer db.Close()
 		for _, providerConfig := range cfg.Providers {
-			upstream, buildErr := buildProviderWithState(providerConfig, cfg.State.Directory, db)
+			upstream, buildErr := buildProviderWithState(providerConfig, db)
 			if buildErr != nil {
 				return fmt.Errorf("initialize provider %q: %w", providerConfig.ID, buildErr)
 			}
@@ -477,13 +477,11 @@ type providerLogin struct {
 type providerLoginFlow struct {
 	Authorization provider.PKCEAuthorization
 	Provider      config.ProviderConfig
-	StateDir      string
 }
 
 type providerLoginSession struct {
 	TokenHash string
 	Provider  config.ProviderConfig
-	StateDir  string
 	HostID    string
 	ClientID  string
 	IDToken   string
@@ -568,29 +566,15 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		database = runtime.credentials
 	}
 	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
-	if cfg.Server.Authentication != nil {
-		apiKey, err := cfg.Server.Authentication.APIKey.Resolve()
-		if err != nil {
-			return nil, fmt.Errorf("resolve server API key: %w", err)
-		}
-		configured, err := api.NewStaticBearerAuthenticator(apiKey)
-		if err != nil {
-			return nil, err
-		}
-		authenticator = configured
-		if cfg.Credentials != nil {
-			authenticator = api.CredentialBearerAuthenticator{Resolve: cfg.Server.Authentication.APIKey.Resolve}
-		}
-	}
 	var managementAuth api.ClientAuthenticator = authenticator
-	if cfg.Credentials != nil {
-		authenticator = api.CredentialBearerAuthenticator{Resolve: cfg.Credentials.GatewayAPIKey}
-		managementAuth = api.NewBasicAdminAuthenticator(cfg.Credentials.VerifyAdmin)
+	if database != nil {
+		authenticator = api.CredentialBearerAuthenticator{Resolve: database.GatewayAPIKey}
+		managementAuth = api.NewBasicAdminAuthenticator(database.VerifyAdmin)
 	}
 
 	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
 	for _, providerConfig := range cfg.Providers {
-		upstream, err := buildProviderWithState(providerConfig, cfg.State.Directory, database)
+		upstream, err := buildProviderWithState(providerConfig, database)
 		if err != nil {
 			return nil, fmt.Errorf("initialize provider %q: %w", providerConfig.ID, err)
 		}
@@ -730,12 +714,12 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	if runtime != nil {
 		runtime.usageMu.Lock()
 		if runtime.usageStore == nil {
-			runtime.usageStore, usageErr = usage.Open(database, cfg.State.Directory)
+			runtime.usageStore, usageErr = usage.Open(database)
 		}
 		usageStore = runtime.usageStore
 		runtime.usageMu.Unlock()
 	} else {
-		usageStore, usageErr = usage.Open(database, cfg.State.Directory)
+		usageStore, usageErr = usage.Open(database)
 	}
 	if usageErr != nil {
 		if benchmarkManager != nil {
@@ -830,12 +814,6 @@ func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
-	_ = cfg.VisitSecrets(func(_, _, _ string, ref *config.SecretRef) error {
-		if ref.Credential == "" {
-			*ref = config.SecretRef{Credential: "migration-required"}
-		}
-		return nil
-	})
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, err)
@@ -859,7 +837,7 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 	decoder.KnownFields(true)
 	var next config.Config
 	if err := decoder.Decode(&next); err != nil {
-		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode configuration: %w", err))
+		writeConfigError(w, http.StatusBadRequest, errors.New("invalid configuration document (input omitted for credential safety)"))
 		return
 	}
 	var extra any
@@ -867,7 +845,7 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			writeConfigError(w, http.StatusBadRequest, errors.New("multiple configuration documents are not allowed"))
 		} else {
-			writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode configuration: %w", err))
+			writeConfigError(w, http.StatusBadRequest, errors.New("invalid configuration document (input omitted for credential safety)"))
 		}
 		return
 	}
@@ -879,14 +857,6 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		current, err := r.loadConfig()
 		if err != nil {
 			writeConfigError(w, 500, errors.New("cannot load active configuration"))
-			return
-		}
-		if current.Server.Authentication != nil && next.Server.Authentication == nil {
-			writeConfigError(w, 400, errors.New("management authentication cannot be removed through the console"))
-			return
-		}
-		if next.Server.Authentication != nil {
-			writeConfigError(w, 400, errors.New("gateway API keys are managed through admin api-key, not configuration"))
 			return
 		}
 		if current.State.DatabasePath != next.State.DatabasePath {
@@ -922,14 +892,14 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 		Provider config.ProviderConfig `yaml:"provider"`
 	}
 	if err := decoder.Decode(&request); err != nil {
-		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode provider: %w", err))
+		writeConfigError(w, http.StatusBadRequest, errors.New("invalid provider document (input omitted for credential safety)"))
 		return
 	}
 	if request.Provider.ID == "" {
 		writeConfigError(w, http.StatusBadRequest, errors.New("provider.id is required"))
 		return
 	}
-	current, err := r.loadConfig()
+	_, err := r.loadConfig()
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
 		return
@@ -946,7 +916,7 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 		}
 		request.Provider = draft.Providers[0]
 	}
-	upstream, err := buildProviderWithState(request.Provider, current.State.Directory, r.credentials)
+	upstream, err := buildProviderWithState(request.Provider, r.credentials)
 	if err != nil {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("initialize provider: %w", err))
 		return
@@ -979,7 +949,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		ProviderID string    `json:"provider_id" yaml:"provider_id"`
 	}
 	if err := yaml.NewDecoder(io.LimitReader(req.Body, 64<<10)).Decode(&request); err != nil {
-		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode login request: %w", err))
+		writeConfigError(w, http.StatusBadRequest, errors.New("invalid login document (input omitted for credential safety)"))
 		return
 	}
 	var providerConfig config.ProviderConfig
@@ -988,7 +958,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		providerID = request.Provider.Value
 	} else if request.Provider.Kind != 0 {
 		if err := request.Provider.Decode(&providerConfig); err != nil {
-			writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode provider: %w", err))
+			writeConfigError(w, http.StatusBadRequest, errors.New("invalid provider document (input omitted for credential safety)"))
 			return
 		}
 		if providerID == "" {
@@ -1031,7 +1001,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 			return
 		}
 		if !isLoopbackRequest(req) {
-			r.startRemoteCodexLogin(w, req, providerConfig, current.State.Directory)
+			r.startRemoteCodexLogin(w, req, providerConfig)
 			return
 		}
 		hostID, hostErr := r.credentials.CodexHostID(req.Context())
@@ -1057,7 +1027,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 			writeJSON(w, http.StatusOK, existing)
 			return
 		}
-		r.loginFlows[authorization.State] = providerLoginFlow{Authorization: authorization, Provider: providerConfig, StateDir: current.State.Directory}
+		r.loginFlows[authorization.State] = providerLoginFlow{Authorization: authorization, Provider: providerConfig}
 		r.logins[providerConfig.ID] = providerLogin{Status: "pending", Message: "Waiting for authorization", VerificationURL: authorization.AuthorizationURL}
 		r.loginMu.Unlock()
 		writeJSON(w, http.StatusAccepted, providerLogin{Status: "pending", Message: "Open the OpenAI authorization page", VerificationURL: authorization.AuthorizationURL})
@@ -1075,10 +1045,10 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 	r.logins[providerConfig.ID] = providerLogin{Status: "pending", Message: "Waiting for authorization"}
 	r.loginMu.Unlock()
 	writeJSON(w, http.StatusAccepted, providerLogin{Status: "pending", Message: "Waiting for authorization"})
-	go r.completeProviderLogin(providerConfig, current.State.Directory)
+	go r.completeProviderLogin(providerConfig)
 }
 
-func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.Request, providerConfig config.ProviderConfig, stateDir string) {
+func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.Request, providerConfig config.ProviderConfig) {
 	hostID, err := r.credentials.CodexHostID(req.Context())
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", err))
@@ -1103,7 +1073,7 @@ func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.
 		writeJSON(w, http.StatusAccepted, existing)
 		return
 	}
-	r.loginSessions[tokenHash] = providerLoginSession{TokenHash: tokenHash, Provider: providerConfig, StateDir: stateDir, HostID: hostID, ClientID: clientID, IDToken: idToken, ExpiresAt: expiresAt}
+	r.loginSessions[tokenHash] = providerLoginSession{TokenHash: tokenHash, Provider: providerConfig, HostID: hostID, ClientID: clientID, IDToken: idToken, ExpiresAt: expiresAt}
 	status := providerLogin{Status: "pending", Message: "Run the Torii Auth Helper on the computer with your browser", HelperURL: providerLoginSessionURL(req), HelperToken: token, ExpiresAt: expiresAt}
 	r.logins[providerConfig.ID] = status
 	r.loginMu.Unlock()
@@ -1171,7 +1141,7 @@ func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Re
 		Scopes       []string  `json:"scopes"`
 	}
 	if err := json.NewDecoder(io.LimitReader(req.Body, 1<<20)).Decode(&imported); err != nil {
-		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("decode Codex credential: %w", err))
+		writeConfigError(w, http.StatusBadRequest, errors.New("invalid Codex credential document (input omitted for credential safety)"))
 		return
 	}
 	if imported.AccessToken == "" || imported.RefreshToken == "" || imported.ClientID == "" || imported.HostID == "" {
@@ -1186,7 +1156,7 @@ func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Re
 		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not match this login session"))
 		return
 	}
-	store, err := r.oauthStore(session.StateDir)
+	store, err := r.oauthStore()
 	if err == nil {
 		err = store.Save(session.Provider.ID, &state.Credential{AccessToken: imported.AccessToken, RefreshToken: imported.RefreshToken, TokenType: imported.TokenType, ExpiresAt: imported.ExpiresAt, AccountID: imported.AccountID, Endpoint: session.Provider.BaseURL, ClientID: imported.ClientID, IDToken: imported.IDToken, Issuer: imported.Issuer, Subject: imported.Subject, Email: imported.Email, HostID: imported.HostID, Scopes: imported.Scopes})
 	}
@@ -1322,7 +1292,7 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 		}
 	}
 	if err == nil {
-		store, storeErr := r.oauthStore(flow.StateDir)
+		store, storeErr := r.oauthStore()
 		if storeErr != nil {
 			err = storeErr
 		} else {
@@ -1339,8 +1309,8 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 	_, _ = io.WriteString(w, "<html><body><h1>Torii Gateway login complete</h1><p>You may close this window and return to the console.</p></body></html>")
 }
 
-func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderConfig, stateDirectory string) {
-	store, err := r.oauthStore(stateDirectory)
+func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderConfig) {
+	store, err := r.oauthStore()
 	if err != nil {
 		r.setProviderLogin(providerConfig.ID, providerLogin{Status: "failure", Message: err.Error()})
 		return
@@ -1486,10 +1456,10 @@ func loadCatalogOverrides(path string) ([]catalog.Descriptor, error) {
 }
 
 func buildProvider(cfg config.ProviderConfig) (provider.OpenAIProvider, error) {
-	return buildProviderWithState(cfg, "")
+	return buildProviderWithState(cfg)
 }
 
-func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string, databases ...*state.Database) (provider.OpenAIProvider, error) {
+func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Database) (provider.OpenAIProvider, error) {
 	var db *state.Database
 	if len(databases) > 0 {
 		db = databases[0]

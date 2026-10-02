@@ -2,119 +2,150 @@ package state
 
 import (
 	"bytes"
-	"context"
+	"database/sql"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func legacySchema(t *testing.T, d *Database) {
-	t.Helper()
-	_, err := d.db.Exec(`DROP TABLE usage_aggregates; DROP TABLE application_settings; DROP TABLE benchmark_observations; DROP TABLE benchmark_sources; DROP TABLE benchmark_datasets; DROP TABLE benchmark_storage; PRAGMA user_version=1;`)
-	if err != nil {
-		t.Fatal(err)
+func TestFreshBaselineAndNoImportMetadata(t *testing.T) {
+	d, _, _ := testDB(t)
+	var version, count int
+	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
+		t.Fatal(version, err)
+	}
+	if err := d.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='imports'").Scan(&count); err != nil || count != 0 {
+		t.Fatal("legacy imports table", err)
+	}
+	if _, err := d.db.Exec("SELECT published,legacy_import_done FROM benchmark_storage"); err == nil {
+		t.Fatal("legacy columns retained")
 	}
 }
-
-func TestBenchmarkSchemaUpgradePreservesEncryptedCredentials(t *testing.T) {
-	d, path, key := testDB(t)
-	if err := d.Put("legacy-key", Owner, "p", "api_key", []byte("original-secret")); err != nil {
+func TestPreBaselineAndNewerSchemasRejectedUnchanged(t *testing.T) {
+	for _, version := range []int{0, 1, 2, 3, 5} {
+		t.Run(string(rune('0'+version)), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "existing.db")
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec("CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('original')"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec("PRAGMA user_version=" + string(rune('0'+version))); err != nil {
+				t.Fatal(err)
+			}
+			bad, err := OpenDatabase(path, bytes.Repeat([]byte{7}, 32))
+			if err == nil {
+				bad.Close()
+				t.Fatal("unsupported database accepted")
+			}
+			var value string
+			var got int
+			if err := db.QueryRow("SELECT value FROM preserved").Scan(&value); err != nil || value != "original" {
+				t.Fatal("old data changed", err)
+			}
+			if err := db.QueryRow("PRAGMA user_version").Scan(&got); err != nil || got != version {
+				t.Fatal("old schema changed", err)
+			}
+			var journal string
+			if err := db.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil || journal != "delete" {
+				t.Fatal("rejected database changed journal mode", err)
+			}
+		})
+	}
+}
+func TestFutureSchemaMigrationPreservesDataAndRetries(t *testing.T) {
+	d, _, _ := testDB(t)
+	if err := d.Put("key", Owner, "provider", "api_key", []byte("keep-secret")); err != nil {
 		t.Fatal(err)
 	}
 	var before []byte
-	if err := d.db.QueryRow("SELECT ciphertext FROM credentials WHERE id='legacy-key'").Scan(&before); err != nil {
+	if err := d.db.QueryRow("SELECT ciphertext FROM credentials WHERE id='key'").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	legacySchema(t, d)
-	d.Close()
-	// Key verification precedes schema writes.
-	if wrong, err := OpenDatabase(path, bytes.Repeat([]byte{9}, 32)); err == nil {
-		wrong.Close()
-		t.Fatal("wrong key accepted")
-	}
-	upgraded, err := OpenDatabase(path, key)
-	if err != nil {
+	steps := []schemaMigration{{5, "CREATE TABLE future_state(value TEXT); INSERT INTO future_state VALUES('new')"}}
+	if err := migrateSchema(d.db, 4, 5, steps); err != nil {
 		t.Fatal(err)
 	}
-	defer upgraded.Close()
-	var version int
-	if err := upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 3 {
-		t.Fatalf("version=%d: %v", version, err)
+	if err := migrateSchema(d.db, 5, 5, steps); err != nil {
+		t.Fatal(err)
 	}
 	var after []byte
-	if err := upgraded.db.QueryRow("SELECT ciphertext FROM credentials WHERE id='legacy-key'").Scan(&after); err != nil || !bytes.Equal(before, after) {
-		t.Fatal("credential rewritten", err)
+	if err := d.db.QueryRow("SELECT ciphertext FROM credentials WHERE id='key'").Scan(&after); err != nil || !bytes.Equal(before, after) {
+		t.Fatal("credential changed", err)
 	}
-	got, err := upgraded.Get("legacy-key", Owner)
-	if err != nil || string(got) != "original-secret" {
-		t.Fatal("credential lost", err)
+	if err := migrateSchema(d.db, 5, 6, append(steps, schemaMigration{6, "CREATE TABLE partial(value TEXT); INSERT INTO missing VALUES(1)"})); err == nil {
+		t.Fatal("failure accepted")
 	}
-	pool, err := upgraded.BenchmarkConnection()
-	if err != nil {
+	var version, count int
+	d.db.QueryRow("PRAGMA user_version").Scan(&version)
+	d.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='partial'").Scan(&count)
+	if version != 5 || count != 0 {
+		t.Fatal("partial upgrade committed")
+	}
+	if err := migrateSchema(d.db, 5, 6, append(steps, schemaMigration{6, "CREATE TABLE partial(value TEXT)"})); err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
-	for query, want := range map[string]string{"PRAGMA journal_mode": "wal", "PRAGMA busy_timeout": "5000", "PRAGMA foreign_keys": "1", "PRAGMA synchronous": "2"} {
-		var got string
-		if err := pool.QueryRow(query).Scan(&got); err != nil || got != want {
-			t.Fatalf("%s=%s: %v", query, got, err)
-		}
+}
+func TestMissingMigrationPathMakesNoWrites(t *testing.T) {
+	d, _, _ := testDB(t)
+	if err := migrateSchema(d.db, 4, 6, []schemaMigration{{5, "CREATE TABLE unwanted(value TEXT)"}}); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatal(err)
 	}
-	upgraded.Close()
-	if err := pool.PingContext(context.Background()); err != nil {
-		t.Fatal("benchmark pool is not independently owned", err)
+	var count int
+	d.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='unwanted'").Scan(&count)
+	if count != 0 {
+		t.Fatal("incomplete path made writes")
 	}
 }
 
-func TestBenchmarkSchemaFailureRollsBackAndWrongKeyDoesNotMigrate(t *testing.T) {
+func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 	d, path, key := testDB(t)
-	legacySchema(t, d)
-	if err := d.Put("key", Owner, "p", "api_key", []byte("secret")); err != nil {
+	if err := d.Put("key", Owner, "provider", "api_key", []byte("preserved")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.db.Exec("CREATE TABLE benchmark_sources(conflicting TEXT)"); err != nil {
-		t.Fatal(err)
-	}
-	if wrong, err := OpenDatabase(path, bytes.Repeat([]byte{9}, 32)); err == nil {
-		wrong.Close()
+	d.Close()
+	steps := []schemaMigration{{5, "CREATE TABLE future_state(value TEXT)"}}
+	if bad, err := openDatabase(path, bytes.Repeat([]byte{9}, 32), 5, steps); err == nil {
+		bad.Close()
 		t.Fatal("wrong key accepted")
 	}
-	var version, tables int
-	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 1 {
-		t.Fatal("wrong key mutated schema", err)
-	}
-	if failed, err := OpenDatabase(path, key); err == nil {
-		failed.Close()
-		t.Fatal("conflicting schema accepted")
-	}
-	if err := d.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='benchmark_datasets'").Scan(&tables); err != nil || tables != 0 {
-		t.Fatal("partial migration committed", err)
-	}
-	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 1 {
-		t.Fatal("failed migration changed version", err)
-	}
-	if got, err := d.Get("key", Owner); err != nil || string(got) != "secret" {
-		t.Fatal("credential affected by failed migration", err)
-	}
-	if _, err := d.db.Exec("DROP TABLE benchmark_sources"); err != nil {
-		t.Fatal(err)
-	}
-	retried, err := OpenDatabase(path, key)
+	original, err := OpenDatabase(path, key)
 	if err != nil {
-		t.Fatal("migration retry failed", err)
+		t.Fatal("wrong key changed schema", err)
 	}
-	defer retried.Close()
-}
-
-func TestFutureSchemaRejectedWithoutModification(t *testing.T) {
-	d, path, key := testDB(t)
-	if _, err := d.db.Exec("PRAGMA user_version=4"); err != nil {
+	var count int
+	original.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='future_state'").Scan(&count)
+	if count != 0 {
+		t.Fatal("migration ran before authentication")
+	}
+	original.Close()
+	upgraded, err := openDatabase(path, key, 5, steps)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if future, err := OpenDatabase(path, key); err == nil {
-		future.Close()
-		t.Fatal("future schema accepted")
+	value, err := upgraded.Get("key", Owner)
+	if err != nil || string(value) != "preserved" {
+		t.Fatal("upgrade lost credential", err)
 	}
+	upgraded.Close()
+	restarted, err := openDatabase(path, key, 5, steps)
+	if err != nil {
+		t.Fatal("upgrade restart", err)
+	}
+	restarted.Close()
+	fresh, err := openDatabase(filepath.Join(t.TempDir(), "fresh.db"), key, 5, steps)
+	if err != nil {
+		t.Fatal("fresh upgrade", err)
+	}
+	defer fresh.Close()
 	var version int
-	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
-		t.Fatal("future schema modified", err)
+	if err := fresh.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 5 {
+		t.Fatal("fresh skipped migration", err)
+	}
+	if _, err := fresh.db.Exec("SELECT value FROM future_state"); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -62,7 +62,7 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 	if !cfg.Intelligence.Enabled {
 		return nil, nil
 	}
-	store, err := intelligence.OpenStore(context.Background(), cfg.Credentials, cfg.State.Directory, nil)
+	store, err := intelligence.OpenStore(context.Background(), cfg.Credentials, nil)
 	if err != nil {
 		return nil, err
 	}

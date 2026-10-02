@@ -146,35 +146,3 @@ func TestMasterKeyValidationPrecedence(t *testing.T) {
 		t.Fatal("environment fallback", err)
 	}
 }
-func TestImportTransactionIdempotenceAndDeletionTombstone(t *testing.T) {
-	d, _, _ := testDB(t)
-	imports := []Import{{ID: "legacy/key", Service: "p", Purpose: "api_key", Value: []byte("first")}}
-	if err := d.ImportOnce(imports); err != nil {
-		t.Fatal(err)
-	}
-	imports[0].Value = []byte("second")
-	if err := d.ImportOnce(imports); err != nil {
-		t.Fatal(err)
-	}
-	b, _ := d.Get("legacy/key", Owner)
-	if string(b) != "first" {
-		t.Fatal("import overwrote credential")
-	}
-	d.DeleteSecret("legacy/key", Owner)
-	d.ImportOnce(imports)
-	if _, err := d.Get("legacy/key", Owner); err == nil {
-		t.Fatal("legacy input resurrected deletion")
-	}
-	// A constraint failure after the first insert rolls back the complete import.
-	_, err := d.db.Exec(`CREATE TRIGGER reject_import BEFORE INSERT ON imports WHEN NEW.id='reject' BEGIN SELECT RAISE(ABORT,'test'); END`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = d.ImportOnce([]Import{{ID: "before", Service: "p", Purpose: "key", Value: []byte("a")}, {ID: "reject", Service: "p", Purpose: "key", Value: []byte("b")}})
-	if err == nil {
-		t.Fatal("failure missing")
-	}
-	if _, err = d.Get("before", Owner); err == nil {
-		t.Fatal("partial migration committed")
-	}
-}

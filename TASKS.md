@@ -111,7 +111,8 @@ Decisions:
 ### TASK-019 — Add secure persistent credential storage
 
 Goal:
-Persist provider-scoped OAuth credentials safely below the configured state directory.
+Persist provider-scoped OAuth credentials safely. The original file-based implementation
+recorded below is historical and has been superseded by encrypted SQLite schema 4.
 
 Completed:
 - added a versioned provider-bound credential record and store interface
@@ -485,7 +486,7 @@ OAuth credentials.
 4. Require an external secret reference for the normal OpenAI API key. Bind
    that key, any project/organization headers, the HTTP client, and the
    verified normal-API origin together. Never read credentials from
-   `state.directory/auth`, and never accept a ChatGPT/Codex OAuth credential.
+   legacy OAuth files, and never accept a ChatGPT/Codex OAuth credential.
 5. Add strict configuration tests, fake-server discovery and inference tests,
    JSON and SSE passthrough tests, model-rewrite tests, redirect/origin
    isolation tests, and explicit tests proving a stored `openai-codex`

@@ -27,7 +27,7 @@ func storageDatabase(t *testing.T) (*state.Database, string) {
 }
 func storageOpen(t *testing.T, db *state.Database, dir string) *Store {
 	t.Helper()
-	s, err := OpenStore(context.Background(), db, dir, options().Logger)
+	s, err := OpenStore(context.Background(), db, options().Logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,114 +258,27 @@ func TestSQLiteSerializationCancellationForeignKeysAndCredentialReaders(t *testi
 	sameSnapshot(t, before, mustLoad(t, readStore))
 }
 
-func writeLegacy(t *testing.T, dir string, v Snapshot) []byte {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "benchmark-intelligence.json"), b, 0600); err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-func TestLegacyImportIsVerifiedIdempotentAndLeavesJSONUnchanged(t *testing.T) {
+func TestDatabaseStorageIgnoresLegacyFiles(t *testing.T) {
 	db, dir := storageDatabase(t)
-	original := writeLegacy(t, dir, storageSnapshot(3))
+	path := filepath.Join(dir, "benchmark-intelligence.json")
+	original := []byte("not valid JSON; never read")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
 	s := storageOpen(t, db, dir)
-	before := mustLoad(t, s)
-	if len(before.Sources["a"].Observations) != 3 {
-		t.Fatal("legacy cache not imported")
+	if len(mustLoad(t, s).Sources) != 0 {
+		t.Fatal("imported a legacy cache")
 	}
-	file, err := os.ReadFile(filepath.Join(dir, "benchmark-intelligence.json"))
-	if err != nil || !bytes.Equal(file, original) {
+	mustSave(t, s, storageSnapshot(3))
+	s.Close()
+	s = storageOpen(t, db, dir)
+	if len(mustLoad(t, s).Sources["a"].Observations) != 3 {
+		t.Fatal("database persistence failed")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, original) {
 		t.Fatal("legacy file changed", err)
-	}
-	s.Close()
-	writeLegacy(t, dir, storageSnapshot(5))
-	s = storageOpen(t, db, dir)
-	sameSnapshot(t, before, mustLoad(t, s))
-	// Even without its marker, an established SQLite dataset is authoritative.
-	if _, err := s.db.Exec("UPDATE benchmark_storage SET legacy_import_done=0"); err != nil {
-		t.Fatal(err)
-	}
-	s.Close()
-	s = storageOpen(t, db, dir)
-	sameSnapshot(t, before, mustLoad(t, s))
-	var done int
-	if err := s.db.QueryRow("SELECT legacy_import_done FROM benchmark_storage").Scan(&done); err != nil || done != 1 {
-		t.Fatal("missing import marker", err)
-	}
-}
-
-func TestLegacyImportFailureCanRetryWithoutPartialPublication(t *testing.T) {
-	for _, failure := range []string{"invalid-json", "unsupported-version", "invalid-score", "publication"} {
-		t.Run(failure, func(t *testing.T) {
-			db, dir := storageDatabase(t)
-			v := storageSnapshot(300)
-			if failure == "unsupported-version" {
-				v.Version = 99
-			}
-			if failure == "invalid-score" {
-				a := v.Sources["a"]
-				a.Observations[0].Normalized = ptr(2.0)
-				v.Sources["a"] = a
-			}
-			original := writeLegacy(t, dir, v)
-			if failure == "invalid-json" {
-				original = []byte("invalid json")
-				if err := os.WriteFile(filepath.Join(dir, "benchmark-intelligence.json"), original, 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			pool, err := db.BenchmarkConnection()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer pool.Close()
-			if failure == "publication" {
-				if _, err := pool.Exec(`CREATE TRIGGER fail_import BEFORE UPDATE ON benchmark_storage BEGIN SELECT RAISE(ABORT,'test'); END`); err != nil {
-					t.Fatal(err)
-				}
-			}
-			s := storageOpen(t, db, dir)
-			if len(mustLoad(t, s).Sources) != 0 {
-				t.Fatal("failed import published partial data")
-			}
-			var done int
-			if err := pool.QueryRow("SELECT legacy_import_done FROM benchmark_storage").Scan(&done); err != nil || done != 0 {
-				t.Fatal("failed import marked complete", err)
-			}
-			file, err := os.ReadFile(filepath.Join(dir, "benchmark-intelligence.json"))
-			if err != nil || !bytes.Equal(file, original) {
-				t.Fatal("failed import modified recovery file", err)
-			}
-			if _, err := pool.Exec("DROP TRIGGER IF EXISTS fail_import"); err != nil {
-				t.Fatal(err)
-			}
-			s.Close()
-			writeLegacy(t, dir, storageSnapshot(300))
-			s = storageOpen(t, db, dir)
-			if len(mustLoad(t, s).Sources["a"].Observations) != 300 || sqlCount(t, s, "benchmark_datasets") != 1 {
-				t.Fatal("import retry failed")
-			}
-		})
-	}
-}
-
-func TestLegacyCacheSizeLimitRejectsSparseOversizedFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "benchmark-intelligence.json")
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Truncate(maxCacheBytes + 1); err != nil {
-		f.Close()
-		t.Fatal(err)
-	}
-	f.Close()
-	if _, err := readLegacy(path); err == nil {
-		t.Fatal("oversized cache accepted")
 	}
 }
 

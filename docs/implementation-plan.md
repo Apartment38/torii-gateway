@@ -1,6 +1,10 @@
 # Torii Gateway
 A Personal Lightweight Intelligent LLM Gateway & Router.
 
+> Historical version-1 design, not the current storage/deployment specification.
+> Flat-file persistence described below has been removed. See
+> [the database-only baseline and release policy](runtime-state.md).
+
 ## Version 1 Implementation Plan
 
 ### Status

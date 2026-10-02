@@ -24,11 +24,11 @@ func benchmarkConfig(t *testing.T, url string) *config.Config {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := db.AdoptGatewayAPIKey("test-gateway-key"); err != nil {
+	if err := db.Put(state.GatewayAPIKeyID, state.Owner, "gateway", "authentication", []byte("test-gateway-key")); err != nil {
 		t.Fatal(err)
 	}
 	discover := false
-	return &config.Config{Credentials: db, Server: config.ServerConfig{Listen: "127.0.0.1:8080", Authentication: &config.ServerAuthenticationConfig{APIKey: config.SecretRef{Value: "test-gateway-key"}}}, State: config.StateConfig{Directory: t.TempDir()}, Providers: []config.ProviderConfig{{ID: "local", Type: "openai_compatible", BaseURL: "https://example.test", DiscoverModels: &discover, Models: []string{"model"}}}, Intelligence: config.IntelligenceConfig{Enabled: true, Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "bench", Type: "benchlm", Enabled: true, URL: url}}}}}
+	return &config.Config{Credentials: db, Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{{ID: "local", Type: "openai_compatible", BaseURL: "https://example.test", DiscoverModels: &discover, Models: []string{"model"}}}, Intelligence: config.IntelligenceConfig{Enabled: true, Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "bench", Type: "benchlm", Enabled: true, URL: url}}}}}
 }
 
 func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testing.T) {
@@ -41,12 +41,26 @@ func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testin
 	}))
 	defer upstream.Close()
 	cfg := benchmarkConfig(t, upstream.URL)
-	cfg.Intelligence.Sources = append(cfg.Intelligence.Sources, config.BenchmarkSourceConfig{SourceSettings: intelligence.SourceSettings{ID: "missing-key", Type: "artificial_analysis", Enabled: true}, APIKey: &config.SecretRef{Env: "TORII_TEST_NONEXISTENT_BENCHMARK_KEY"}})
-	path := filepath.Join(cfg.State.Directory, "config.yaml")
+	t.Setenv("TORII_DB_PATH", "")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	// CLI and handler must open the same database, not import a YAML key.
+	pool, err := cfg.Credentials.StateConnection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var filename string
+	var seq int
+	var name string
+	if err := pool.QueryRow("PRAGMA database_list").Scan(&seq, &name, &filename); err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+	cfg.State.DatabasePath = filename
+	cfg.Intelligence.Sources = append(cfg.Intelligence.Sources, config.BenchmarkSourceConfig{SourceSettings: intelligence.SourceSettings{ID: "missing-key", Type: "artificial_analysis", Enabled: true}, APIKey: &config.SecretRef{Credential: "nonexistent-benchmark-key"}})
 	if err := persistConfig(path, cfg); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &handlerRuntime{configPath: path}
+	runtime := &handlerRuntime{configPath: path, credentials: cfg.Credentials}
 	defer runtime.closeUsage()
 	handler, err := buildHandlerWithRuntime(cfg, path, runtime)
 	if err != nil {
@@ -74,7 +88,7 @@ func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testin
 	}
 	server := httptest.NewServer(runtime)
 	defer server.Close()
-	// CLI imports its authentication key through the database; the running
+	// CLI reads its authentication key from the same database; the running
 	// handler's missing source still demonstrates independent refresh failure.
 	cfg.Intelligence.Sources = cfg.Intelligence.Sources[:1]
 	if err := persistConfig(path, cfg); err != nil {
@@ -98,13 +112,13 @@ func TestBenchmarkWorkerOnlyStartsForActiveHandlerAndStopsOnReload(t *testing.T)
 	defer upstream.Close()
 	cfg := benchmarkConfig(t, upstream.URL)
 	cfg.Intelligence.RefreshInterval = "10ms"
-	path := filepath.Join(cfg.State.Directory, "config.yaml")
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := persistConfig(path, cfg); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	runtime := &handlerRuntime{configPath: path, background: ctx}
+	runtime := &handlerRuntime{configPath: path, credentials: cfg.Credentials, background: ctx}
 	defer runtime.closeUsage()
 	handler, err := buildHandlerWithRuntime(cfg, path, runtime)
 	if err != nil {

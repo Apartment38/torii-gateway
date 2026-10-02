@@ -143,8 +143,8 @@ Run:
 
 Create the native Podman secret first with `podman secret create torii_db_key
 secrets/torii_db_key`. The example's read-only YAML disables console saves; use a
-writable directory mount at `/config` when testing saves. Existing installations
-must temporarily mount their original state directory during migration; see
+writable directory mount at `/config` when testing saves. Pre-baseline installations
+require a one-time fresh setup; later updates preserve the database. See
 [runtime state](runtime-state.md).
 
 ## Health Check

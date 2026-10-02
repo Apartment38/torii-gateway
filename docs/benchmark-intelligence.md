@@ -57,7 +57,7 @@ intelligence:
     - id: aa
       type: artificial_analysis
       enabled: true
-      api_key: {env: ARTIFICIAL_ANALYSIS_API_KEY}
+      api_key: {credential: YOUR_STORED_CREDENTIAL_ID}
     - id: arena
       type: lmarena
       enabled: true
@@ -98,17 +98,10 @@ HTTP requests time out separately from the complete source import. Sources run
 independently and concurrently. A failed source retains its previous successful
 dataset, with a failure status; successful sources still update.
 
-Keys use `{credential: ID}` references from the Credentials page. Legacy `env`,
-`file`, and `value` inputs are imported once into encrypted SQLite. Authenticated
-inline submissions are encrypted before saving, and configuration reads return
-references only. See [Encrypted credential storage](credential-storage.md).
-
-An omitted `routing` section has zero weights and is inspection-only. To use
-task weights, configure the existing semantic classifier: its `task_type`
-selects the task's capability weights. Without classification, Torii uses
-general/default capability weights; it does not guess coding from keywords.
-Task weights replace the global capability map for that task. Operational
-weights are shared. No required category is inferred from the name of a source.
+Keys use `{credential: ID}` references from the Credentials page.
+Authenticated direct submissions are encrypted before saving; configuration
+reads return references only. YAML value/env/file credentials are not supported.
+See [Encrypted credential storage](credential-storage.md).
 
 ## Importing a Hugging Face leaderboard
 
@@ -254,24 +247,13 @@ are active; competing writes may wait for SQLite's write lock. Pools are closed
 when handlers are replaced or discarded. The logical cache remains limited to
 128 MiB, in addition to the existing upstream response and row limits.
 
-On first startup **with intelligence enabled**, Torii imports a valid legacy
-`state.directory/benchmark-intelligence.json` into an empty benchmark store.
-The import is verified and its completion marker is committed with publication.
-The JSON file is left unchanged for recovery; after verifying the management
-API, remove it manually if desired. Established SQLite data always wins, even
-if an old JSON file remains. Missing files mean an empty initial cache; invalid,
-unsupported or oversized files produce a warning and keep the import eligible
-for retry. Fix the file and restart before a successful refresh establishes
-SQLite as authoritative. Corrupt cached observations are logged and ignored so
-the existing inference fallback remains available.
+A fresh database starts with an empty benchmark store. There are no JSON-cache
+imports. Corrupt cached observations are logged and ignored so inference
+fallback remains available.
 
-Back up the database with its original master key before upgrading. Schema
-upgrades run only after credential key verification. Older binaries reject
-the current schema version 3: rollback requires restoring the **pre-upgrade database** and
-its matching master key, plus the retained JSON cache and configuration. See
-[backup instructions](credential-storage.md#backup-recovery-and-security-boundary).
-The default container no longer mounts `/state`: import legacy benchmark JSON
-while the migration override is active. See [runtime migration](runtime-state.md).
+The database-only baseline is schema 4. See
+[runtime state and releases](runtime-state.md) for the one-time reset, future
+database-preserving upgrades, consistent backups and rollback instructions.
 
 Cached data stays in use during refresh. Freshness is recalculated in the
 background at least once a minute (or the shorter configured refresh interval),

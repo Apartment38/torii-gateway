@@ -1,8 +1,6 @@
 package state
 
 import (
-	"bytes"
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -38,10 +36,6 @@ type SecretMetadata struct {
 	UpdatedAt  string `json:"updated_at"`
 	KeyVersion int    `json:"key_version"`
 }
-type Import struct {
-	ID, Service, Purpose string
-	Value                []byte
-}
 
 func MasterKey() ([]byte, error) {
 	path := os.Getenv("TORII_DB_KEY_FILE")
@@ -68,6 +62,10 @@ func MasterKey() ([]byte, error) {
 }
 
 func OpenDatabase(path string, key []byte) (*Database, error) {
+	return openDatabase(path, key, SchemaVersion, schemaMigrations)
+}
+
+func openDatabase(path string, key []byte, target int, migrations []schemaMigration) (*Database, error) {
 	if path == "" || strings.ContainsAny(path, "?#\x00") || strings.HasPrefix(path, "file:") || path == ":memory:" {
 		return nil, errors.New("database path must be a filesystem path, not a SQLite URI")
 	}
@@ -115,40 +113,33 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 			db.Close()
 		}
 	}()
+	var version, tables int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return nil, err
+	}
+	if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
+		return nil, err
+	}
+	if err := checkSchema(version, tables, target); err != nil {
+		return nil, err
+	}
 	for _, pragma := range []string{"PRAGMA busy_timeout=5000", "PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL"} {
 		if _, err := db.Exec(pragma); err != nil {
 			return nil, errors.New("cannot configure credential database")
 		}
 	}
-	var version int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return nil, err
-	}
-	if version > 3 {
-		return nil, errors.New("database schema is newer than this gateway; restore a compatible backup or upgrade the gateway")
-	}
 	if version == 0 {
-		tx, err := db.Begin()
-		if err != nil {
+		if err := d.initializeSchema(); err != nil {
 			return nil, err
 		}
-		defer tx.Rollback()
-		_, err = tx.Exec(`CREATE TABLE credentials (id TEXT PRIMARY KEY, owner TEXT NOT NULL, service TEXT NOT NULL, purpose TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, key_version INTEGER NOT NULL, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, tag BLOB NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, UNIQUE(key_version,nonce)); CREATE TABLE imports (id TEXT PRIMARY KEY REFERENCES credentials(id)); PRAGMA user_version=1;`)
-		if err != nil {
-			return nil, errors.New("cannot migrate credential database schema")
-		}
-		if err = tx.Commit(); err != nil {
-			return nil, err
-		}
+		version = BaselineSchemaVersion
 	}
 	var count int
 	if err := db.QueryRow("SELECT count(*) FROM credentials").Scan(&count); err != nil {
 		return nil, err
 	}
 	if count == 0 {
-		if err := d.Put("__key_check", Owner, "gateway", "key_check", []byte("torii-key-check-v1")); err != nil {
-			return nil, err
-		}
+		return nil, errors.New("database key verification record is missing; restore a valid database backup")
 	}
 	rows, err := db.Query("SELECT id,owner,service,purpose,key_version,nonce,ciphertext,tag FROM credentials WHERE deleted=0")
 	if err != nil {
@@ -172,16 +163,9 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Verify the existing master key before applying the benchmark migration.
-	if version < 2 {
-		if err := migrateBenchmarks(db); err != nil {
-			return nil, err
-		}
-	}
-	if version < 3 {
-		if err := migrateRuntimeState(db); err != nil {
-			return nil, err
-		}
+	// Authenticate every encrypted record before any future schema upgrade.
+	if err := migrateSchema(db, version, target, migrations); err != nil {
+		return nil, err
 	}
 	for _, p := range []string{path + "-wal", path + "-shm"} {
 		if err := os.Chmod(p, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -294,63 +278,6 @@ func (d *Database) Metadata(id, owner string) (SecretMetadata, error) {
 	return m, err
 }
 
-// ImportOnce never overwrites records, including tombstones. All values are
-// encrypted and decrypted for verification before a single transaction commits.
-func (d *Database) ImportOnce(values []Import) error {
-	tx, err := d.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, v := range values {
-		inserted := false
-		var found int
-		err := tx.QueryRow("SELECT 1 FROM imports WHERE id=?", v.ID).Scan(&found)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		err = tx.QueryRow("SELECT 1 FROM credentials WHERE id=?", v.ID).Scan(&found)
-		if errors.Is(err, sql.ErrNoRows) {
-			if err = d.write(tx, v.ID, Owner, v.Service, v.Purpose, v.Value); err != nil {
-				return errors.New("credential import failed")
-			}
-			inserted = true
-		} else if err != nil {
-			return err
-		}
-		var owner, service, purpose string
-		var version int
-		var n, c, t []byte
-		if err = tx.QueryRow("SELECT owner,service,purpose,key_version,nonce,ciphertext,tag FROM credentials WHERE id=?", v.ID).Scan(&owner, &service, &purpose, &version, &n, &c, &t); err != nil {
-			return err
-		}
-		if owner != Owner || service != v.Service || purpose != v.Purpose {
-			return errors.New("credential import ownership or purpose mismatch")
-		}
-		plaintext, decryptErr := d.decrypt(v.ID, owner, service, purpose, version, n, c, t)
-		if decryptErr != nil {
-			return decryptErr
-		}
-		if inserted && !bytes.Equal(plaintext, v.Value) {
-			return errors.New("credential import verification failed")
-		}
-		if _, err = tx.Exec("INSERT INTO imports(id) VALUES(?)", v.ID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-func (d *Database) Imported(id string) (bool, error) {
-	var n int
-	err := d.db.QueryRow("SELECT 1 FROM imports WHERE id=?", id).Scan(&n)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	return err == nil, err
-}
 func (d *Database) Load(providerID string) (*Credential, error) {
 	b, err := d.Get("oauth/"+providerID, Owner)
 	if err != nil {

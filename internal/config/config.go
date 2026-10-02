@@ -66,19 +66,11 @@ type SelectionConfig struct {
 
 // ServerConfig controls the gateway listener.
 type ServerConfig struct {
-	Listen         string                      `yaml:"listen"`
-	Authentication *ServerAuthenticationConfig `yaml:"authentication,omitempty"`
+	Listen string `yaml:"listen"`
 }
 
-// ServerAuthenticationConfig identifies the secret used to authenticate
-// clients. Authentication enforcement is implemented separately.
-type ServerAuthenticationConfig struct {
-	APIKey SecretRef `yaml:"api_key"`
-}
-
-// StateConfig identifies the database and optional legacy migration directory.
+// StateConfig identifies the persistent application database.
 type StateConfig struct {
-	Directory    string `yaml:"directory,omitempty"`
 	DatabasePath string `yaml:"database_path,omitempty"`
 }
 
@@ -123,6 +115,14 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load configuration %q: %w", path, err)
 	}
+	if err := cfg.VisitSecrets(func(_, _, _ string, ref *SecretRef) error {
+		if ref.Credential == "" || ref.Env != "" || ref.File != "" || ref.Value != "" {
+			return errors.New("persisted credentials must use database references; configure credentials through the authenticated console")
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -165,11 +165,6 @@ func (c Config) Validate() error {
 	}
 	if _, _, err := net.SplitHostPort(c.Server.Listen); err != nil {
 		return fmt.Errorf("server.listen must be a host:port address: %w", err)
-	}
-	if c.Server.Authentication != nil {
-		if err := c.Server.Authentication.APIKey.Validate(); err != nil {
-			return fmt.Errorf("server.authentication.api_key: %w", err)
-		}
 	}
 	if len(c.Providers) == 0 {
 		return errors.New("at least one provider is required")

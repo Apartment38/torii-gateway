@@ -81,7 +81,7 @@ func TestUsageSharedAcrossReloadAndDiscardedConfig(t *testing.T) {
 
 func TestHTTPDrainPrecedesFinalUsageFlush(t *testing.T) {
 	db := runtimeStateDB(t)
-	counters, err := usage.Open(db, "")
+	counters, err := usage.Open(db)
 	if err != nil {
 		t.Fatal(err)
 	}

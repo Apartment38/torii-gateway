@@ -45,7 +45,7 @@ func manager(t *testing.T, sources []Source, opts Options) (*Manager, *Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	store, err := OpenStore(context.Background(), db, dir, opts.Defaults().Logger)
+	store, err := OpenStore(context.Background(), db, opts.Defaults().Logger)
 	if err != nil {
 		t.Fatal(err)
 	}

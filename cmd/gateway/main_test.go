@@ -29,14 +29,14 @@ func runtimeStateDB(t *testing.T) *state.Database {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := db.InitializeCodexHostID(context.Background(), ""); err != nil {
+	if err := db.InitializeCodexHostID(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	return db
 }
-func legacyTestUsage(t *testing.T) *usage.Store {
+func testUsage(t *testing.T) *usage.Store {
 	t.Helper()
-	s, err := usage.Open(runtimeStateDB(t), "")
+	s, err := usage.Open(runtimeStateDB(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,14 +90,14 @@ func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
 	}))
 	defer server.Close()
 	discover := false
-	cfg := &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, State: config.StateConfig{Directory: t.TempDir()}, Providers: []config.ProviderConfig{
+	cfg := &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{
 		{ID: "chat", Type: "openai_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"chat-model"}},
 		{ID: "laya", Type: "jev_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"english"}, BearerToken: &config.SecretRef{Value: "laya-key"}},
 	}, Router: config.RouterConfig{Classifier: config.ClassifierConfig{Type: "jev", Transport: "provider", Provider: "laya", Model: "english", OnFailure: "fail"}}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &handlerRuntime{usageStore: legacyTestUsage(t)}
+	runtime := &handlerRuntime{usageStore: testUsage(t)}
 	handler, err := buildHandlerWithRuntime(cfg, "", runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 	defer db.Close()
 	r.credentials = db
 	defer r.closeUsage()
-	updated := fmt.Sprintf(`{"server":{"listen":"127.0.0.1:8080"},"state":{"directory":%q},"providers":[{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}],"router":{"classifier":{"type":"disabled"}}}`, filepath.Dir(path), server.URL, key)
+	updated := fmt.Sprintf(`{"server":{"listen":"127.0.0.1:8080"},"providers":[{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}],"router":{"classifier":{"type":"disabled"}}}`, server.URL, key)
 	put := httptest.NewRecorder()
 	r.putConfig(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(updated)))
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
@@ -214,7 +214,6 @@ func TestCodexConnectionTestDoesNotTreatFallbackAsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.State.Directory = directory
 	if err := persistConfig(path, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -264,19 +263,26 @@ func TestGatewayProcessServesAuthenticatedModels(t *testing.T) {
 	configPath := filepath.Join(directory, "config.yaml")
 	configuration := fmt.Sprintf(`server:
   listen: %s
-  authentication:
-    api_key:
-      env: TEST_GATEWAY_API_KEY
-state:
-  directory: %s
 providers:
   - id: local
     type: ollama
     base_url: %s
-`, address, directory, upstream.URL)
+`, address, upstream.URL)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
+	db, err := state.OpenDatabase(filepath.Join(directory, "torii.db"), bytes.Repeat([]byte{0x18}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateAdmin("process-admin", "process-admin-password"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Put(state.GatewayAPIKeyID, state.Owner, "gateway", "authentication", []byte("process-secret")); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
 
 	binary := filepath.Join(directory, "gateway")
 	if runtime.GOOS == "windows" {
@@ -378,30 +384,10 @@ func TestServeHTTPWaitsForActiveRequestDuringShutdown(t *testing.T) {
 	}
 }
 
-func TestBuildHandlerRejectsAPIKeyContainingWhitespace(t *testing.T) {
-	t.Setenv("TEST_GATEWAY_API_KEY", " unusable-key")
-	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
-	configuration := `server:
-  listen: 127.0.0.1:0
-  authentication:
-    api_key:
-      env: TEST_GATEWAY_API_KEY
-state:
-  directory: /tmp/state
-providers:
-  - id: local
-    type: ollama
-    base_url: http://127.0.0.1:11434
-`
-	if err := os.WriteFile(cfgPath, []byte(configuration), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := buildHandler(cfg); err == nil || !strings.Contains(err.Error(), "whitespace") {
-		t.Fatalf("buildHandler() error = %v, want whitespace validation error", err)
+func TestConfigurationRejectsRemovedGatewayAuthentication(t *testing.T) {
+	_, err := config.Decode(strings.NewReader("server:\\n  listen: 127.0.0.1:8080\\n  authentication:\\n    api_key: {value: obsolete}\\n"))
+	if err == nil {
+		t.Fatal("removed YAML gateway authentication accepted")
 	}
 }
 
@@ -409,10 +395,6 @@ func TestRuntimeConfigEndpointPersistsAndReloads(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	initial := `server:
   listen: 127.0.0.1:8080
-  authentication:
-    api_key: {value: test-management-key}
-state:
-  directory: STATE_DIR
 providers:
   - id: local
     type: openai_compatible
@@ -420,7 +402,6 @@ providers:
     discover_models: false
     models: [model]
 `
-	initial = strings.Replace(initial, "STATE_DIR", filepath.Dir(configPath), 1)
 	if err := os.WriteFile(configPath, []byte(initial), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +409,11 @@ providers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &handlerRuntime{configPath: configPath, usageStore: legacyTestUsage(t)}
+	runtime := &handlerRuntime{configPath: configPath, credentials: runtimeStateDB(t)}
+	defer runtime.closeUsage()
+	if _, err := runtime.credentials.CreateAdmin("config-admin", "config-admin-password"); err != nil {
+		t.Fatal(err)
+	}
 	handler, err := buildHandlerWithRuntime(cfg, configPath, runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -437,16 +422,16 @@ providers:
 
 	get := httptest.NewRecorder()
 	getReq := httptest.NewRequest(http.MethodGet, "/gateway/v1/config", nil)
-	getReq.Header.Set("Authorization", "Bearer test-management-key")
+	getReq.SetBasicAuth("config-admin", "config-admin-password")
 	handler.ServeHTTP(get, getReq)
 	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"listen":"127.0.0.1:8080"`) {
 		t.Fatalf("GET config = %d %s", get.Code, get.Body.String())
 	}
 
-	updated := []byte(`{"server":{"listen":"127.0.0.1:9090","authentication":{"api_key":{"value":"test-management-key"}}},"state":{"directory":"` + filepath.Dir(configPath) + `"},"providers":[{"id":"local","type":"openai_compatible","base_url":"https://example.test","discover_models":false,"models":["model"]}]}`)
+	updated := []byte(`{"server":{"listen":"127.0.0.1:9090"},"providers":[{"id":"local","type":"openai_compatible","base_url":"https://example.test","discover_models":false,"models":["model"]}]}`)
 	put := httptest.NewRecorder()
 	putReq := httptest.NewRequest(http.MethodPut, "/gateway/v1/config", bytes.NewReader(updated))
-	putReq.Header.Set("Authorization", "Bearer test-management-key")
+	putReq.SetBasicAuth("config-admin", "config-admin-password")
 	handler.ServeHTTP(put, putReq)
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
 		t.Fatalf("PUT config = %d %s", put.Code, put.Body.String())
@@ -463,19 +448,15 @@ providers:
 func TestRemoteCodexLoginSessionImportsOnce(t *testing.T) {
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "config.yaml")
-	configuration := fmt.Sprintf(`server:
+	configuration := `server:
   listen: 127.0.0.1:8080
-  authentication:
-    api_key: {value: test-management-key}
-state:
-  directory: %s
 providers:
   - id: openai-codex
     type: openai-codex
     base_url: https://chatgpt.com/backend-api/codex
     discover_models: false
     models: [gpt-5.5]
-`, directory)
+`
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -485,16 +466,12 @@ providers:
 	}
 	runtime := &handlerRuntime{configPath: configPath, credentials: runtimeStateDB(t)}
 	defer runtime.closeUsage()
-	if err := config.MigrateCredentials(cfg, configPath, runtime.credentials); err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.credentials.AdoptGatewayAPIKey("test-management-key"); err != nil {
+	if err := runtime.credentials.Put(state.GatewayAPIKeyID, state.Owner, "gateway", "authentication", []byte("test-management-key")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.credentials.CreateAdmin("test-admin", "test-admin-password"); err != nil {
 		t.Fatal(err)
 	}
-	config.RemoveLegacyAuthentication(cfg, configPath)
 	handler, err := buildHandlerWithRuntime(cfg, configPath, runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -602,7 +579,7 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 	t.Setenv("TORII_DB_PATH", filepath.Join(t.TempDir(), "torii.db"))
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "config.yaml")
-	configuration := fmt.Sprintf("server:\n  listen: 127.0.0.1:0\nstate:\n  directory: %s\nproviders:\n  - id: openai\n    type: openai_compatible\n    base_url: https://api.example.test\n    discover_models: false\n    models: [model]\n", directory)
+	configuration := fmt.Sprintf("server:\n  listen: 127.0.0.1:0\nstate:\n  database_path: %s\nproviders:\n  - id: openai\n    type: openai_compatible\n    base_url: https://api.example.test\n    discover_models: false\n    models: [model]\n", directory)
 	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}

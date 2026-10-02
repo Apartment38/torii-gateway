@@ -44,8 +44,8 @@ service is required.
 
 All credential payloads, including OAuth records, use versioned encrypted SQLite
 storage at `/data/torii.db` (configurable). AES-256-GCM encryption uses an external
-master key; WAL, busy timeout and foreign keys are enabled. Legacy YAML and
-`state.directory/auth` records migrate transactionally. See
+master key; WAL, busy timeout and foreign keys are enabled. Schema 4 is the
+fresh database-only baseline; future transactional upgrades preserve its data. See
 [credential storage](credential-storage.md) for key management and recovery.
 
 ## Request Flow
@@ -271,24 +271,23 @@ Persistent state normally includes:
 
     /data/torii.db
 
-Legacy usage, host identity and benchmark files under optional `state.directory`
-are migration inputs, retained unchanged after import. SQLite schema version 3
-adds usage aggregates and application settings to the existing source/status,
-dataset generation, observation, and import metadata tables. Only each source's
-latest published generation is retained. Staged generations become visible through
-one short pointer-publication transaction; failed imports preserve active data.
+SQLite schema 4 contains credential, source/status, dataset generation,
+observation, usage and application-setting tables. It contains no legacy import
+metadata. Only each source's latest published generation is retained.
+Staged generations become visible through one short pointer-publication
+transaction; failed publication preserves active data.
 
-Configuration is not stored in the state directory.
-See [runtime-state migration and durability](runtime-state.md).
+Nonsensitive configuration remains in YAML outside the database.
+See [runtime-state baseline and durability](runtime-state.md).
 
 ## Configuration
 
 Configuration is loaded from one YAML document at startup. Unknown fields,
 duplicate provider IDs, malformed listener addresses, invalid provider URLs,
 and unsupported provider types cause loading to fail. The currently
-implemented schema supports the server listener, state directory, configured
+implemented schema supports the server listener, database path, configured
 providers, and routing controls. Secret references select encrypted database
-IDs; legacy inline/env/file inputs are imported once at startup. Gateway admin
+IDs; persisted inline/env/file inputs are rejected. Gateway admin
 authentication and the inference key are stored only in SQLite. Unsupported provider families and unknown
 configuration fields remain rejected.
 

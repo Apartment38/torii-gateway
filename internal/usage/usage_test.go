@@ -3,13 +3,11 @@ package usage
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +27,7 @@ func database(t *testing.T) (*state.Database, string) {
 }
 func store(t *testing.T, db *state.Database, dir string, worker bool) *Store {
 	t.Helper()
-	s, err := Open(db, dir)
+	s, err := Open(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,96 +230,28 @@ func TestConcurrentAddsAndCancelledShutdown(t *testing.T) {
 		t.Fatal("failed final flush altered saved totals")
 	}
 }
-func legacy(t *testing.T, dir string, models map[string]Aggregate) []byte {
-	t.Helper()
-	b, err := json.Marshal(file{Version: 1, Models: models})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "usage.json"), b, 0600); err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-func TestLegacyUsageImportExactVerifiedIdempotentAndAuthoritative(t *testing.T) {
+func TestDatabaseUsageIgnoresLegacyFiles(t *testing.T) {
 	db, dir := database(t)
-	models := map[string]Aggregate{"model": {Requests: math.MaxUint64, InputTokens: math.MaxUint64, OutputTokens: math.MaxUint64, EstimatedCost: 1.25, LastRequestAt: time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)}, "other": {}}
-	original := legacy(t, dir, models)
-	s := store(t, db, dir, false)
-	if !reflect.DeepEqual(s.Snapshot(), models) {
-		t.Fatal("import changed exact values")
-	}
-	file, err := os.ReadFile(filepath.Join(dir, "usage.json"))
-	if err != nil || !bytes.Equal(file, original) {
-		t.Fatal("legacy file changed", err)
-	}
-	s.Close(context.Background())
-	legacy(t, dir, map[string]Aggregate{"model": {Requests: 3}})
-	reopened := store(t, db, dir, false)
-	if !reflect.DeepEqual(reopened.Snapshot(), models) {
-		t.Fatal("legacy counters overwrote database")
-	}
-	if _, err := reopened.db.Exec("DELETE FROM application_settings WHERE key='usage_import_complete'"); err != nil {
+	path := filepath.Join(dir, "usage.json")
+	original := []byte("invalid JSON; never read")
+	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	reopened.Close(context.Background())
-	if !reflect.DeepEqual(store(t, db, dir, false).Snapshot(), models) {
-		t.Fatal("missing marker overwrote established counters")
-	}
-}
-func TestLegacyUsageFailuresRollbackAndRetry(t *testing.T) {
-	for _, failure := range []string{"invalid-json", "version", "negative", "transaction"} {
-		t.Run(failure, func(t *testing.T) {
-			db, dir := database(t)
-			models := map[string]Aggregate{"model": {Requests: 4, EstimatedCost: 2}}
-			original := legacy(t, dir, models)
-			if failure == "invalid-json" {
-				original = []byte("invalid")
-			} else if failure == "version" {
-				original = []byte(`{"version":99,"models":{}}`)
-			} else if failure == "negative" {
-				original = []byte(`{"version":1,"models":{"model":{"estimated_cost":-1}}}`)
-			}
-			if err := os.WriteFile(filepath.Join(dir, "usage.json"), original, 0600); err != nil {
-				t.Fatal(err)
-			}
-			pool, err := db.StateConnection()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer pool.Close()
-			if failure == "transaction" {
-				if _, err := pool.Exec(`CREATE TRIGGER reject_import BEFORE INSERT ON application_settings WHEN NEW.key='usage_import_complete' BEGIN SELECT RAISE(ABORT,'test'); END`); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if bad, err := Open(db, dir); err == nil {
-				bad.Close(context.Background())
-				t.Fatal("bad migration accepted")
-			}
-			var count int
-			if err := pool.QueryRow("SELECT count(*) FROM usage_aggregates").Scan(&count); err != nil || count != 0 {
-				t.Fatal("partial import persisted", err)
-			}
-			file, err := os.ReadFile(filepath.Join(dir, "usage.json"))
-			if err != nil || !bytes.Equal(file, original) {
-				t.Fatal("failed import modified input", err)
-			}
-			if _, err := pool.Exec("DROP TRIGGER IF EXISTS reject_import"); err != nil {
-				t.Fatal(err)
-			}
-			legacy(t, dir, models)
-			if got := store(t, db, dir, false).Snapshot(); !reflect.DeepEqual(got, models) {
-				t.Fatal("migration retry failed")
-			}
-		})
-	}
-}
-func TestOmittedLegacyDirectoryDoesNotReadWorkingDirectory(t *testing.T) {
-	db, dir := database(t)
-	legacy(t, dir, map[string]Aggregate{"wrong": {Requests: 10}})
 	t.Chdir(dir)
-	if len(store(t, db, "", false).Snapshot()) != 0 {
-		t.Fatal("omitted directory imported from CWD")
+	s := store(t, db, dir, false)
+	if len(s.Snapshot()) != 0 {
+		t.Fatal("imported legacy usage")
+	}
+	add(t, s, "model")
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	restarted := store(t, db, dir, false)
+	if got, _ := restarted.Get("model"); got.Requests != 1 {
+		t.Fatal("usage not persisted")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, original) {
+		t.Fatal("legacy file changed", err)
 	}
 }

@@ -81,7 +81,7 @@ func TestBenchmarkIngestionChangesSmartRoutingWithoutFetchingOnInference(t *test
 		t.Fatal(err)
 	}
 	defer database.Close()
-	store, err := intelligence.OpenStore(context.Background(), database, dir, nil)
+	store, err := intelligence.OpenStore(context.Background(), database, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestBenchmarkIngestionChangesSmartRoutingWithoutFetchingOnInference(t *test
 	policy.Intelligence = router.IntelligenceWeights{TaskWeights: map[string]map[string]float64{"coding": {intelligence.Coding: 1}}}
 	handler.SetSelectionPolicy(policy)
 	check("closed-store", "smart", "model-b")
-	store, err = intelligence.OpenStore(context.Background(), database, dir, nil)
+	store, err = intelligence.OpenStore(context.Background(), database, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

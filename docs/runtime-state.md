@@ -1,102 +1,141 @@
-# SQLite runtime state and migration
+# Database baseline, updates and recovery
 
-All normal durable state uses `state.database_path` (default `/data/torii.db`):
-encrypted credentials/admin records/API keys, public benchmark observations,
-per-model usage aggregates and the stable Codex host ID. Configuration stays in
-YAML and the master key stays outside the database. Sessions, live quota caches
-and pending login flows remain memory-only.
+Torii's database-only baseline is SQLite schema **4**. Fresh installations
+create this schema directly. Schemas 1–3 and nonempty unversioned databases are
+rejected without an automatic import, deletion or reset. Future releases retain
+schema 4 as their supported starting point and preserve data through sequential,
+transactional database migrations. Unsupported newer schemas are also rejected.
 
-SQLite schema version 3 adds `usage_aggregates` and `application_settings`.
-Counters use decimal-text columns to preserve the full unsigned 64-bit range;
-cost uses a finite non-negative number. Usage and host identity are not secrets
-and are not encrypted. Existing credential ciphertext and benchmark data do not
-change during the upgrade, which runs only after master-key verification.
+All durable application state uses `state.database_path`, default
+`/data/torii.db`: encrypted administrator/credential/API-key/OAuth records,
+public benchmark observations and provenance, usage aggregates and Codex host
+identity. Nonsensitive configuration remains in YAML; the master key stays
+outside the database. Sessions, live quota caches and pending login flows remain
+memory-only. There is no `state.directory` or flat-file credential/cache importer.
 
-## Background usage persistence
+## One-time baseline reset
 
-Requests update a shared in-memory aggregate immediately. A single worker flushes
-dirty model totals every second, using an independent SQLite pool and batches of
-at most 250 models. Retries upsert absolute totals, not increments, preventing
-double counting. Updates arriving during a flush remain pending for the next
-batch. Configuration reloads share the same store and worker.
+This is the only planned reset. It deliberately does **not** preserve old
+credentials, OAuth sessions, usage totals, benchmark caches or Codex identity.
+The previous installation remains recoverable from its archived storage and
+matching binary/key. Torii never performs this reset automatically.
 
-Normal crash loss is approximately one second of usage, plus flush time. A busy
-or unavailable database can extend this window: failed writes retain pending
-totals and produce rate-limited `usage_flush_failed` warnings. They do not delay
-inference responses. Shutdown first drains HTTP requests, then stops the worker
-and attempts a final flush with a separate 10-second deadline; an unsuccessful
-flush emits `usage_shutdown_flush_failed` and returns an error. Forced termination
-cannot guarantee a final flush. This is routing accounting, not an audit-grade
-billing ledger. Current non-streaming usage collection behavior is unchanged;
-streamed responses still do not contribute usage counters.
-
-## Existing installations: migrate before the first upgrade boot
-
-The new default container configuration mounts only `/data` and `/config`.
-It does **not** automatically find an old `/state` volume. Without that volume,
-Torii cannot import its counters or host identity. Do not start the new image
-without migration mounts if you need those old values preserved.
-
-1. Stop the gateway without deleting volumes (`podman compose down`, **not**
-   `down -v`). Back up the database/WAL/SHM, configuration and original state
-   volume; back up the original master key separately. See
-   [consistent backups](credential-storage.md#backup-recovery-and-security-boundary).
-2. Keep `state.directory: /state` in the old YAML and use the same Compose project
-   name/directory as before. Verify the original volume with `podman volume ls`;
-   normally its name is `<project>_torii_gateway_state`. If the project name
-   changed, point the migration override's volume at the original name using
-   `external: true` and `name: ORIGINAL_VOLUME_NAME`. Files must be readable by
-   the container's UID/GID 65532; legacy OAuth directories also need that ownership
-   for permission checks and cleanup. Resolve ownership only on that specific volume,
-   never recursively on the repository.
-3. Start with the migration override:
+1. Stop the old gateway gracefully; do not use `compose down -v`.
+2. Archive its configuration and complete stopped data volume/directory,
+   including any WAL/SHM files. Back up its matching master key separately.
+   Protect old plaintext files/backups as sensitive material.
+3. Provision a **new, empty database location/volume** and fresh configuration.
+   Do not point the new release at the old database. Do not copy old credential
+   IDs, `server.authentication`, `state.directory`, or YAML value/env/file keys.
+4. Containers can start without an initial configuration. One approach is to
+   retain the old named volumes and launch a new Compose project after moving
+   the old `config/` directory to a verified, unused archive path:
 
    ```sh
-   podman compose -f compose.yaml -f compose.migrate.yaml up --build -d
+   podman compose down
+   # After backups: archive the old config directory without overwriting anything.
+   test ! -e ./config.pre-baseline
+   mv ./config ./config.pre-baseline
+   mkdir -p config
+   podman compose -p torii-baseline up --build -d
    ```
 
-   Append `-f compose.secrets.yaml` if you use file secrets. For Docker, use
-   `docker compose -f compose.yaml -f compose.docker.yaml -f compose.migrate.yaml`
-   with the same `up --build -d` command (and secret override if applicable).
-   Extend the migration override for any additional legacy credential environment
-   variables your YAML references.
-4. Verify the imports. Usage logs `usage_legacy_import_succeeded`; the public host
-   ID is visible through an authenticated Codex helper login session. Alternatively,
-   inspect a consistent SQLite backup using:
+   This creates a new project-scoped database volume and retains the original.
+   Use this same project name for every subsequent update. Append secret/Docker
+   overrides as appropriate. If no old config directory exists, omit its move.
+   For local builds, archive the old database directory and use a new database
+   path with fresh YAML copied from the example.
+5. Keep your existing master key, or provision a new key only for this empty
+   database. Retain the old key with the old backup if you choose a new one.
+6. Create an administrator through terminal setup or the console's one-time
+   setup code. Save the generated API key: it is displayed only once. Update
+   inference clients, re-enter provider credentials, and sign in to subscriptions.
+   Refresh benchmarks rather than importing old JSON.
+7. Verify console login, model discovery, inference and benchmark status before
+   separately retiring old storage. Torii does not delete any legacy files.
 
-   ```sql
-   SELECT model_id, requests, input_tokens, output_tokens, estimated_cost FROM usage_aggregates;
-   SELECT value FROM application_settings WHERE key = 'codex_host_id';
+`TORII_API_KEY` is no longer read or passed through Compose. The master-key
+source and published port are the only required environment settings; database
+path and image overrides remain optional. Credential entry and OAuth helper
+transfer remain supported normal operations, not legacy migration features.
+
+## Future manual updates
+
+Application release versions, SQLite schema versions and encryption key versions
+are separate. `gateway version` reports the application build and supported
+schema range without opening a database or requiring its master key.
+
+1. Read release notes for schema/configuration changes and prerequisites.
+2. Record the current binary version or exact container tag/digest, Compose
+   project name and volume identities.
+3. Stop gracefully and make a coherent backup of the **entire stopped data
+   directory/volume**, plus configuration. Preserve any WAL/SHM files together.
+   Back up the master key separately with restrictive access. Never copy only
+   the main database while Torii is running.
+4. Verify checksums when downloading a gateway binary. Retain the previous
+   binary. Container releases are `ghcr.io/apartment38/torii-gateway:vX.Y.Z`,
+   for Linux amd64/arm64; pin a real version or its published digest.
+5. Replace the binary/image, preserving configuration, database volume and
+   master key. For a prebuilt Podman image:
+
+   ```sh
+   TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose pull torii-gateway
+   TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose up --no-build -d
+   podman compose ps
+   podman compose logs --tail=100 torii-gateway
    ```
 
-   Enable benchmark intelligence while the old volume remains mounted if its
-   legacy JSON also needs importing, then inspect the management API. Existing
-   OAuth JSON credentials migrate into encrypted records as before.
-5. Imported usage and host-ID files remain unchanged for recovery. Established
-   SQLite state always wins on later starts, preventing stale files from resetting
-   counters or identity. Invalid/unreadable usage or host-ID files stop startup
-   with actionable errors; repair them and retry. No partial usage import or
-   completion marker is committed on failure. Missing files initialize empty
-   usage/new identity. A new host ID is preserved across logout and restart.
-6. Before dropping `/state`, move any operator-managed files referenced by
-   relative paths (such as catalog overrides) into `/config` or another deliberate
-   mount and update their YAML paths to absolute paths. The default container
-   working directory is now `/data`; the migration override preserves `/state`.
-7. Remove `state.directory` from YAML, stop the migration deployment, then recreate
-   with the base Compose file and your normal secret/Docker overrides. Do not
-   delete the old volume until verification and backups are complete. Retire old
-   plaintext credential backups securely after migration.
+   Replace the example version with a published release. Supply the same
+   `-p` and `-f` options as the existing deployment. Docker users use
+   `compose.docker.yaml`. Source-built deployments use `up --build -d`
+   after selecting the release's source tag.
+6. Startup verifies encrypted records with the original master key before
+   applying database upgrades. Each step commits its changes and schema version
+   together. Missing migration steps fail before any upgrade writes; a failed
+   step rolls back and stops startup. Earlier successful steps remain committed.
+7. Verify health, administrator login, model discovery, inference, credentials,
+   benchmark status and usage totals. Keep the backup through verification.
 
-Local builds use the same migration: retain the old `state.directory` for the
-first start, keep the original database/key, verify imports, then remove the
-directory setting. It is optional and migration-only; an omitted value never
-searches the process working directory. Changing it through the console does not
-re-import established usage; migration is a startup operation.
+No automatic downloader, installer or schema downgrade is introduced.
+A failed upgrade never triggers database recreation. Lost master keys require
+their separate backup; no key replacement can decrypt existing credentials.
 
 ## Rollback
 
-Older binaries reject schema version 3. Stop Torii and restore the pre-upgrade
-database with its matching key, configuration and legacy state volume before
-starting an older binary/image. This also rolls usage, credentials and key changes
-back to the backup point. Never manually lower `PRAGMA user_version`. Torii does
-not automatically overwrite or downgrade databases.
+Stop Torii. Restore the complete pre-upgrade database directory/volume and
+configuration, including their original master key, then run the previous
+binary/image. Do not overlay a backup onto newer WAL/SHM files. Preserve the
+failed-upgrade dataset separately before restoration. Rollback restores usage,
+credentials and API keys to their backup values; update clients if necessary.
+Never manually lower `PRAGMA user_version`. See
+[credential backup and recovery](credential-storage.md#backup-recovery-and-security-boundary).
+
+## Background usage persistence
+
+Requests update in-memory totals immediately. One worker flushes dirty models
+every second through an independent SQLite pool in batches of at most 250.
+Retries upsert absolute totals, avoiding double counting; concurrent updates
+remain pending. Configuration reloads share the worker.
+
+Normal crash loss is approximately one second plus flush time. Database failures
+can extend this window; pending totals are retained with rate-limited
+`usage_flush_failed` warnings. Shutdown drains HTTP requests and attempts a final
+flush with a separate ten-second deadline. Failed final writes report
+`usage_shutdown_flush_failed`. This is routing accounting, not an audit-grade
+billing ledger. Streamed responses still do not contribute usage counters.
+
+## Maintaining future releases
+
+Add one immutable migration per future schema version to the centralized
+registry in `internal/state/schema.go`; increment the current version while
+keeping baseline 4. Fresh initialization creates baseline 4 and runs the same
+upgrade path as existing installations. Add fixtures for every supported
+upgrade path, transactional failure/retry, credential preservation and restart.
+Do not reuse or silently change previously released migration versions.
+
+Tag releases with Semantic Versioning. Every release must document supported
+schemas, configuration changes, prerequisites and rollback limitations. Release
+automation gates artifacts on Go/race/console tests, vet, formatting, database
+compatibility coverage and an isolated non-root container persistence/recovery
+test. It publishes gateway/helper binaries, SHA256SUMS, and versioned images.
+Publication occurs only after all validation and artifact builds succeed.

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,7 +20,7 @@ func credentialRuntime(t *testing.T, setup ...bool) (*handlerRuntime, *state.Dat
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	raw := fmt.Sprintf("server:\n  listen: 127.0.0.1:8080\n  authentication:\n    api_key: {value: admin-sentinel}\nstate:\n  directory: %s\nproviders:\n  - id: p\n    type: openai_compatible\n    base_url: https://example.test\n    discover_models: false\n    models: [model]\n", dir)
+	raw := "server:\n  listen: 127.0.0.1:8080\nproviders:\n  - id: p\n    type: openai_compatible\n    base_url: https://example.test\n    discover_models: false\n    models: [model]\n"
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +33,10 @@ func credentialRuntime(t *testing.T, setup ...bool) (*handlerRuntime, *state.Dat
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := config.MigrateCredentials(cfg, path, db); err != nil {
+	if err := cfg.BindSecrets(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AdoptGatewayAPIKey("admin-sentinel"); err != nil {
+	if err := db.Put(state.GatewayAPIKeyID, state.Owner, "gateway", "authentication", []byte("admin-sentinel")); err != nil {
 		t.Fatal(err)
 	}
 	if len(setup) == 0 || setup[0] {
@@ -45,7 +44,6 @@ func credentialRuntime(t *testing.T, setup ...bool) (*handlerRuntime, *state.Dat
 			t.Fatal(err)
 		}
 	}
-	cfg.Server.Authentication = nil
 	r := &handlerRuntime{configPath: path, credentials: db}
 	h, err := buildHandlerWithRuntime(cfg, path, r)
 	if err != nil {
@@ -153,7 +151,7 @@ func TestProviderUsesCurrentEncryptedCredentialAndSuppressesUpstreamErrorEcho(t 
 	defer upstream.Close()
 	ref := config.SecretRef{Credential: "key"}
 	ref.Bind(db)
-	p, err := buildProviderWithState(config.ProviderConfig{ID: "p", Type: "openai_compatible", BaseURL: upstream.URL, BearerToken: &ref}, t.TempDir(), db)
+	p, err := buildProviderWithState(config.ProviderConfig{ID: "p", Type: "openai_compatible", BaseURL: upstream.URL, BearerToken: &ref}, db)
 	if err != nil {
 		t.Fatal(err)
 	}

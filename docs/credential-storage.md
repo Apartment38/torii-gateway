@@ -5,7 +5,7 @@ SQLite. SQLite metadata is not encrypted: provider/service, purpose, owner,
 timestamps and opaque IDs are readable. No SQLCipher or external service is
 required. Non-sensitive configuration remains in YAML. Usage, the stable Codex
 host ID, public benchmark observations and provenance share the database but are not
-encrypted. See [benchmark migration](benchmark-intelligence.md#cache-management-and-refresh).
+encrypted. See [benchmark storage](benchmark-intelligence.md#cache-management-and-refresh).
 
 The default database is `/data/torii.db`. Set `state.database_path` or override
 it with `TORII_DB_PATH` (use `./state/torii.db` for a local build). Database-path
@@ -23,7 +23,7 @@ mkdir -p secrets
 openssl rand -hex 32 > secrets/torii_db_key
 ```
 
-Back this key up separately before migrating. Torii never generates a master
+Back this key up separately before deploying or updating. Torii never generates a master
 key automatically and never stores it in YAML or SQLite. Files in `secrets/`,
 `.env`, and SQLite files are excluded from Git and the Docker build context.
 
@@ -39,8 +39,7 @@ existing database without an explicit re-encryption procedure.
 ## Containers
 
 The base Podman Compose file mounts persistent `torii_gateway_database` at
-`/data`; the image runs as UID/GID 65532. `/state` is mounted only with the
-migration override. Podman's `:U` adjusts only the config directory, not the repository.
+`/data`; the image runs as UID/GID 65532. There is no `/state` mount. Podman's `:U` adjusts only the config directory, not the repository.
 The database directory in the image is owned by the non-root user.
 
 For a file-backed Compose secret:
@@ -85,7 +84,7 @@ project `.env` and use the base Compose file (plus Docker override on Docker).
 Environment values can be inspected by privileged host/container operators;
 do not put them on command lines, in images, or in logs. Existing `.env`
 installations need only the master key and `TORII_PORT` in `.env`. An existing
-`TORII_API_KEY` is accepted only for one-time migration, not normal management.
+`TORII_API_KEY` is not read by Torii; manage its generated API key through the console or terminal.
 
 Never run `compose down -v` or delete the database volume during an update.
 Rebuilding/recreating the container preserves credentials when the same volume
@@ -106,7 +105,7 @@ First launch prompts for an administrator in an interactive terminal. For
 unattended Docker/Podman startup, inspect `compose logs torii-gateway`, then
 enter the random one-time setup code in the console. The code expires after
 30 minutes; restart to issue a new code or run the local command below. Setup
-can only create an account when none exists, including upgraded installations.
+can only create an account when none exists, including newly recreated installations.
 Avoid sharing logs containing an unused setup code. Alternatively:
 
 ```sh
@@ -117,7 +116,7 @@ podman compose exec torii-gateway /gateway admin create --config /config/config.
 
 Choose your username and confirm a password of at least 12 characters. A new
 API key is generated atomically with account creation and displayed only once.
-Save it securely. An existing imported key is preserved and is never revealed.
+Save it securely. An existing database key is preserved and is never revealed.
 The running gateway notices CLI account creation without a restart.
 
 Sign in to the console with this administrator account. Login is kept only in
@@ -140,9 +139,9 @@ headers:
 `GET /gateway/v1/credentials` returns metadata only. Authenticated `POST` creates,
 `PUT /gateway/v1/credentials/{id}` replaces, and `DELETE` deletes. POST/PUT take
 `value`, `service`, `purpose`; replacements retain existing service/purpose.
-Configuration APIs never return secret values. Authenticated legacy inline
-config writes are accepted and encrypted before YAML persistence; new env/file
-references are rejected after migration. OAuth records are replaced through
+Configuration APIs never return secret values. Authenticated direct credential
+submissions are encrypted before YAML persistence; persisted value/env/file
+references are rejected. OAuth records are replaced through
 provider login, not generic credential replacement.
 
 Deletion stops connections using the credential. Protected system records
@@ -172,44 +171,13 @@ The replacement command can restore a deliberately deleted provider record. A ru
 gateway sees replacements of an existing ID on its next request. Configuration
 saves that select a different ID rebuild the active handler.
 
-## Migrating an existing installation
+## One-time reset to the database-only baseline
 
-1. Stop the gateway; back up existing YAML/state securely. Those old backups
-   contain plaintext and must be protected and eventually retired.
-2. Reuse the original database and master key if SQLite is already in use;
-   never generate a replacement key for an existing database. Only installations
-   without a database need a new master key. Back it up separately, keep/add the
-   persistent database volume, and make legacy env/file credentials available.
-   Mount the original state volume with `compose.migrate.yaml` **before** the first
-   upgrade boot; the base Compose file no longer mounts it. Keep the same Compose
-   project name and `state.directory: /state` until all imports are verified.
-   The base Compose file imports an existing `TORII_API_KEY` from `.env`.
-   For `JEV_API_KEY`, the migration override passes it through; extend that override for
-   other variables referenced in old YAML. Remove the migration override later.
-3. Start the updated gateway. It transactionally imports all configured secret
-   fields and `state/auth/*.json`, encrypts and verifies records, then commits.
-4. Create your administrator through the terminal or setup screen, then verify
-   connections. Provider YAML secrets are replaced atomically with credential IDs;
-   `server.authentication` is removed entirely after its key is imported.
-   successfully imported OAuth JSON files are removed. Non-sensitive YAML and
-   comments are preserved. External provider secret files are not deleted.
-5. Remove obsolete environment variables and external provider secret files.
-   Keep the master-key source. Later changing old env/files does not update
-   database credentials; use Replace or the local CLI.
-
-Missing inputs abort the transaction before touching original configuration.
-Imports are idempotent and cannot overwrite newer replacements or resurrect
-deleted credentials. A crash after database commit but before YAML cleanup is
-safe to retry; committed database records remain authoritative.
-
-Read-only or aliased YAML and failed cleanup emit explicit warnings. The
-gateway uses encrypted records and ignores old values, but the host files still
-need manual cleanup. Retrieve sanitized configuration through authenticated
-`GET /gateway/v1/config`, inspect it, and atomically replace the host YAML with
-owner-only permissions. Remove leftover `state/auth/*.json` and stale plaintext
-backups. No automatic plaintext backup is created. Automatic import cannot
-remove plaintext already present in old Git history, backups, images or volumes;
-rotate exposed provider credentials separately.
+Existing schemas 1–3 are intentionally unsupported. Follow the explicit
+[baseline reset procedure](runtime-state.md#one-time-baseline-reset), archive
+old storage, and create a fresh configuration and database. Torii does not
+import or remove any legacy credentials or state. Future schema upgrades
+preserve the new database.
 
 ## Backup, recovery, and security boundary
 
@@ -219,15 +187,12 @@ online backup use SQLite's backup API or CLI `.backup`, not a live copy of the
 main file alone. Store the master-key backup separately with restricted access.
 Restore the database and original key together before restarting.
 
-The runtime-storage update upgrades SQLite to schema version 3 after verifying
-the original encryption key. Credential ciphertext and encryption key versions
-are unchanged. Make a pre-upgrade backup: older binaries reject version 3 and
-cannot be used with the upgraded database. To roll back, stop Torii and restore
-the pre-upgrade database with its matching master key, configuration and legacy
-state files. Restoring that backup also rolls usage/credentials/API-key changes back
-to their pre-upgrade values. Do not manually lower `PRAGMA user_version`.
-See [runtime state](runtime-state.md) for usage batching, host identity migration
-and the database-only container upgrade sequence.
+The common baseline is SQLite schema 4. Future schema upgrades run after
+master-key verification and commit one transactional step at a time.
+Rollback requires restoring the pre-upgrade database and configuration,
+with their matching key and previous application binary/image.
+Never manually lower `PRAGMA user_version`. See
+[runtime state and releases](runtime-state.md) for the update procedure.
 
 A lost key is unrecoverable cryptographically. Restore its separate backup.
 If no backup exists, stop the application, preserve the inaccessible database,

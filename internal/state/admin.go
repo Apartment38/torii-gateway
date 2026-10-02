@@ -115,12 +115,6 @@ func (d *Database) GatewayAPIKey() (string, error) {
 	b, err := d.Get(GatewayAPIKeyID, Owner)
 	return string(b), err
 }
-func (d *Database) AdoptGatewayAPIKey(value string) error {
-	if value == "" {
-		return errors.New("gateway API key must not be empty")
-	}
-	return d.ImportOnce([]Import{{ID: GatewayAPIKeyID, Service: "gateway", Purpose: "authentication", Value: []byte(value)}})
-}
 func (d *Database) RotateAPIKey() (string, error) {
 	if _, err := d.Admin(); err != nil {
 		return "", errors.New("create an administrator before rotating the API key")

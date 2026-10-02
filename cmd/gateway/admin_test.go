@@ -92,7 +92,7 @@ func TestWebAdminSetupAuthorizationRotationAndOneTimeDisplay(t *testing.T) {
 		t.Fatal("metadata leaked auth")
 	}
 }
-func TestExpiredSetupCodeAndImportedKeyPreservation(t *testing.T) {
+func TestExpiredSetupCodeAndExistingKeyPreservation(t *testing.T) {
 	r, db := credentialRuntime(t, false)
 	r.setupDigest = sha256.Sum256([]byte("code"))
 	r.setupExpires = time.Now().Add(-time.Second)
@@ -113,7 +113,7 @@ func TestExpiredSetupCodeAndImportedKeyPreservation(t *testing.T) {
 	var result map[string]any
 	json.Unmarshal(w.Body.Bytes(), &result)
 	if result["api_key"] != "" || result["api_key_generated"] != false {
-		t.Fatal("imported key displayed")
+		t.Fatal("existing key displayed")
 	}
 	key, _ := db.GatewayAPIKey()
 	if key != "admin-sentinel" {
@@ -132,7 +132,7 @@ func passwordStdin(t *testing.T, password string) {
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = prior; r.Close() })
 }
-func TestAdminCLIAndLegacyEnvironmentImportOnce(t *testing.T) {
+func TestAdminCLIAndLegacyEnvironmentIgnored(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	if err := initializeConfigPath(path, "", true); err != nil {
@@ -154,17 +154,14 @@ func TestAdminCLIAndLegacyEnvironmentImportOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.Authentication != nil {
-		t.Fatal("legacy authentication retained in YAML")
-	}
 	t.Setenv("TORII_API_KEY", "changed-env-key")
 	db, err := openCredentials(cfg, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	key, _ := db.GatewayAPIKey()
-	if key != "legacy-env-key" || !db.VerifyAdmin("custom-name", "chosen-admin-password") {
-		t.Fatal("migration changed credentials")
+	if !strings.HasPrefix(key, "torii_") || key == "changed-env-key" || !db.VerifyAdmin("custom-name", "chosen-admin-password") {
+		t.Fatal("legacy environment affected credentials")
 	}
 	db.Close()
 	// A pipe is consumed once; reset it for each command.

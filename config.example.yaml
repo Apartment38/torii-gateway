@@ -1,17 +1,15 @@
-# Torii Gateway version 1 configuration.
+# Torii Gateway database-only configuration (schema baseline 4).
 # Copy this file to config.yaml and provide the master database key before starting.
 # First launch prompts for an administrator and generates an inference API key.
-# Legacy env/file/value inputs are imported once; thereafter use credential IDs.
+# Persisted credentials use database references; enter secrets in the console.
 server:
   # Use 0.0.0.0:8080 when the gateway must listen outside the local machine or
   # container. Set this to 0.0.0.0:8080 for container access.
   listen: 127.0.0.1:8080
 
-# All durable application state uses database_path. Set directory only when
-# importing legacy usage.json, auth/codex-host-id, OAuth JSON or benchmark JSON.
+# All durable application state is stored in SQLite.
 state:
   database_path: /data/torii.db
-  # directory: ./state
 
 # Opt-in background benchmark ingestion. Sources and routing weights are
 # independent: leave intelligence disabled to retain existing behavior.
@@ -29,7 +27,7 @@ intelligence:
     - id: aa
       type: artificial_analysis
       enabled: false
-      # Set when enabling: api_key: {env: ARTIFICIAL_ANALYSIS_API_KEY}
+      # Set when enabling: api_key: {credential: YOUR_STORED_CREDENTIAL_ID}
     - id: benchlm
       type: benchlm
       enabled: false # CC BY-NC; commercial use requires a BenchLM licence.
@@ -79,7 +77,7 @@ providers:
   #   type: openai
   #   base_url: https://api.openai.com
   #   bearer_token:
-  #     env: OPENAI_API_KEY
+  #     credential: YOUR_STORED_OPENAI_API_KEY_ID
 
   # Codex subscription access is endpoint-bound and uses gateway auth login.
   # Configure the model IDs exposed by the subscription backend.
@@ -102,28 +100,28 @@ providers:
   #   type: openrouter
   #   base_url: https://openrouter.ai/api
   #   bearer_token:
-  #     env: OPENROUTER_API_KEY
+  #     credential: YOUR_STORED_OPENROUTER_API_KEY_ID
   #   # Optional separate management key for /credits quota discovery.
   #   management_token:
-  #     env: OPENROUTER_MANAGEMENT_KEY
+  #     credential: YOUR_STORED_OPENROUTER_MANAGEMENT_KEY_ID
   #   discover_models: true
   # - id: gemini
   #   type: gemini
   #   base_url: https://generativelanguage.googleapis.com
   #   bearer_token:
-  #     env: GEMINI_API_KEY
+  #     credential: YOUR_STORED_GEMINI_API_KEY_ID
   #   discover_models: true
   # - id: xai
   #   type: xai
   #   base_url: https://api.x.ai
   #   bearer_token:
-  #     env: XAI_API_KEY
+  #     credential: YOUR_STORED_XAI_API_KEY_ID
   #   discover_models: true
   # - id: anthropic
   #   type: anthropic
   #   base_url: https://api.anthropic.com
   #   bearer_token:
-  #     env: ANTHROPIC_API_KEY
+  #     credential: YOUR_STORED_ANTHROPIC_API_KEY_ID
   #   models: [claude-sonnet-4-5]
 
 # Optional routing controls. Explicit provider/model requests continue to
@@ -141,7 +139,7 @@ providers:
 #   # model: jev-latest
 #   # base_url: https://jevmodel.org
 #   # api_key:
-#   #   env: JEVMODEL_API_KEY
+#   #   credential: YOUR_STORED_JEVMODEL_API_KEY_ID
 #   # Or route Jev through a configured OpenAI-compatible provider such as
 #   # OpenRouter (the provider supplies the API key and origin):
 #   # transport: provider

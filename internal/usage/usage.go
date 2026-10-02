@@ -8,7 +8,6 @@ import (
 	"errors"
 	"log/slog"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,10 +17,8 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
-const version = 1
 const flushInterval = time.Second
 const batchSize = 250
-const maxLegacyBytes = 128 << 20
 
 type Aggregate struct {
 	Requests      uint64    `json:"requests"`
@@ -36,10 +33,6 @@ type UsageDelta struct {
 	EstimatedCost             float64
 }
 type UsageSummary = Aggregate
-type file struct {
-	Version int                  `json:"version"`
-	Models  map[string]Aggregate `json:"models"`
-}
 
 type Store struct {
 	mu       sync.Mutex
@@ -78,7 +71,7 @@ func ExtractResponseUsage(data []byte) (input, output uint64, ok bool) {
 
 // Open owns an independent pool and one worker. The gateway shares this store
 // across handler reloads. Add accepts a memory update; Flush/Close ensure durability.
-func Open(database *state.Database, legacyDirectory string) (*Store, error) {
+func Open(database *state.Database) (*Store, error) {
 	if database == nil {
 		return nil, errors.New("usage storage requires the application database")
 	}
@@ -87,9 +80,7 @@ func Open(database *state.Database, legacyDirectory string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db, models: map[string]Aggregate{}, dirty: map[string]bool{}}
-	if err = s.importLegacy(legacyDirectory); err == nil {
-		s.models, err = load(db)
-	}
+	s.models, err = load(db)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -145,79 +136,6 @@ func write(ctx context.Context, tx *sql.Tx, model string, a Aggregate) error {
 	_, err := tx.ExecContext(ctx, upsert, model, strconv.FormatUint(a.Requests, 10), strconv.FormatUint(a.InputTokens, 10), strconv.FormatUint(a.OutputTokens, 10), a.EstimatedCost, a.LastRequestAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return errors.New("cannot persist usage aggregate")
-	}
-	return nil
-}
-
-func (s *Store) importLegacy(directory string) error {
-	var done string
-	err := s.db.QueryRow("SELECT value FROM application_settings WHERE key='usage_import_complete'").Scan(&done)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return errors.New("cannot inspect usage migration")
-	}
-	var count int
-	if err = s.db.QueryRow("SELECT count(*) FROM usage_aggregates").Scan(&count); err != nil {
-		return errors.New("cannot inspect existing usage")
-	}
-	models := map[string]Aggregate{}
-	if count == 0 {
-		b, err := state.LegacyFile(directory, "usage.json", maxLegacyBytes)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return errors.New("cannot import usage.json; check the legacy file, size and permissions")
-		}
-		if err == nil {
-			var f file
-			if json.Unmarshal(b, &f) != nil || f.Version != version || f.Models == nil {
-				return errors.New("legacy usage.json is corrupt or unsupported; restore it before restarting")
-			}
-			for model, a := range f.Models {
-				if !validAggregate(model, a) {
-					return errors.New("legacy usage.json contains invalid counters")
-				}
-			}
-			models = f.Models
-		}
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return errors.New("cannot begin usage import")
-	}
-	defer tx.Rollback()
-	// Recheck under the write transaction; established totals always win.
-	if err = tx.QueryRow("SELECT count(*) FROM usage_aggregates").Scan(&count); err != nil {
-		return errors.New("cannot inspect usage import")
-	}
-	if count == 0 {
-		for model, a := range models {
-			if err = write(context.Background(), tx, model, a); err != nil {
-				return err
-			}
-		}
-		verified, err := load(tx)
-		if err != nil {
-			return err
-		}
-		if len(verified) != len(models) {
-			return errors.New("usage migration verification failed")
-		}
-		for model, a := range models {
-			got := verified[model]
-			if got.Requests != a.Requests || got.InputTokens != a.InputTokens || got.OutputTokens != a.OutputTokens || got.EstimatedCost != a.EstimatedCost || !got.LastRequestAt.Equal(a.LastRequestAt) {
-				return errors.New("usage migration verification failed")
-			}
-		}
-	}
-	if _, err = tx.Exec("INSERT INTO application_settings(key,value,updated_at) VALUES('usage_import_complete','1',?) ON CONFLICT(key) DO NOTHING", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		return errors.New("cannot mark usage import complete")
-	}
-	if err = tx.Commit(); err != nil {
-		return errors.New("cannot commit usage import")
-	}
-	if len(models) > 0 {
-		slog.Info("usage_legacy_import_succeeded", "models", len(models), "message", "SQLite is authoritative; legacy usage.json retained unchanged")
 	}
 	return nil
 }

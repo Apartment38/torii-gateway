@@ -19,6 +19,7 @@ const (
 )
 
 type RequestRequirements struct {
+	TaskType              string
 	Endpoint              Endpoint
 	Tools                 bool
 	Vision                bool

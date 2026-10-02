@@ -1,0 +1,11 @@
+{
+  "tier":"free", "intelligence_index_version":4.1,
+  "pagination":{"page":1,"has_more":false},
+  "data":[{
+    "slug":"model-a", "name":"Model A", "release_date":"2026-01-01",
+    "evaluations":{"artificial_analysis_intelligence_index":72,"artificial_analysis_coding_index":88,"artificial_analysis_agentic_index":67,"gpqa":0.81,"new_unknown_benchmark":1200},
+    "pricing":{"price_1m_input_tokens":1.2,"price_1m_output_tokens":4.8},
+    "performance":{"median_output_tokens_per_second":100,"median_time_to_first_token_seconds":0.8,"median_end_to_end_response_time_seconds":4},
+    "context_window_tokens":128000
+  }]
+}

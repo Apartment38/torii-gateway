@@ -21,10 +21,11 @@ import (
 // Additional sections must not be added until their behavior is implemented;
 // the decoder rejects keys that are not represented here.
 type Config struct {
-	Server    ServerConfig     `yaml:"server"`
-	State     StateConfig      `yaml:"state"`
-	Providers []ProviderConfig `yaml:"providers"`
-	Router    RouterConfig     `yaml:"router,omitempty"`
+	Server       ServerConfig       `yaml:"server"`
+	State        StateConfig        `yaml:"state"`
+	Providers    []ProviderConfig   `yaml:"providers"`
+	Router       RouterConfig       `yaml:"router,omitempty"`
+	Intelligence IntelligenceConfig `yaml:"intelligence,omitempty"`
 }
 
 type RouterConfig struct {
@@ -249,6 +250,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Router.Validate(); err != nil {
 		return fmt.Errorf("router: %w", err)
+	}
+	if err := c.Intelligence.Validate(); err != nil {
+		return fmt.Errorf("intelligence: %w", err)
 	}
 	return nil
 }

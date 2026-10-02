@@ -1,0 +1,5 @@
+{"num_rows_total":3,"rows":[
+  {"row":{"model":"model-a","question_id":"q1","task":"code_generation","category":"coding","score":1,"tstamp":1767225600}},
+  {"row":{"model":"model-a","question_id":"q2","task":"code_generation","category":"coding","score":0,"tstamp":1767225600}},
+  {"row":{"model":"model-a","question_id":"q3","task":"math","category":"math","score":0.75,"tstamp":1767225600}}
+]}

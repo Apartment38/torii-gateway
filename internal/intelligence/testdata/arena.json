@@ -1,0 +1,4 @@
+{"num_rows_total":2,"rows":[
+  {"row":{"model_name":"model-a","rating":1400,"rating_lower":1380,"rating_upper":1420,"category":"coding","leaderboard_publish_date":"2026-09-20"},"truncated_cells":[]},
+  {"row":{"model_name":"model-b","rating":1000,"vote_count":3000,"category":"coding","leaderboard_publish_date":"2026-09-20"},"truncated_cells":[]}
+]}

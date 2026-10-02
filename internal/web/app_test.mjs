@@ -488,3 +488,29 @@ test("saving and reloading restores direct provider keys in a masked field", asy
   assert.equal(input.value, "test-save-reload-key");
   assert.equal(input.type, "password");
 });
+
+test("benchmark configuration survives console saves and invalid JSON is rejected", async () => {
+  const app = consoleFixture(() => response({}));
+  const intelligence = { enabled:true, sources:[{ id:"aa", type:"artificial_analysis", enabled:true, api_key:{ env:"AA_API_KEY" } }], routing:{ task_weights:{ coding:{ coding:3, agentic:1 } } } };
+  app.context.config = { providers:[], intelligence };
+  app.run("applyConfig(config)");
+  assert.deepEqual(JSON.parse(app.run("JSON.stringify(readConfig().intelligence)")), intelligence);
+  app.run('document.querySelector("#intelligence-config").value = "invalid JSON"');
+  await app.run("saveConfig()");
+  assert.match(app.run('document.querySelector("#toast").textContent'), /valid JSON object/);
+  assert.equal(app.calls.length, 0);
+});
+
+test("benchmark refresh uses saved gateway authentication and displays source status", async () => {
+  const app = consoleFixture((url, options) => {
+    assert.equal(url, "/gateway/v1/intelligence/refresh");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers.Authorization, "Bearer test-gateway-key");
+    return response({ updated:true, sources:{ aa:{ last_success:"2026-10-01", stale:false } } });
+  });
+  app.context.config = { providers:[], server:{ authentication:{ api_key:{ value:"test-gateway-key" } } } };
+  app.run("applyConfig(config)");
+  await app.run("inspectBenchmarks(true)");
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'), /last_success/);
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'), false);
+});

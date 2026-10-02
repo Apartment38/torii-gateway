@@ -35,6 +35,7 @@ ID.
 - low-overhead, byte-for-byte SSE streaming
 - optional bearer authentication for API endpoints; the embedded console is public
 - secrets loaded from environment variables, files, or masked console-managed values
+- optional background benchmark ingestion and task-aware model intelligence
 - strict configuration validation and graceful shutdown
 - request IDs, typed OpenAI-style errors, and secret-safe structured logging
 
@@ -218,6 +219,31 @@ On Docker Desktop, Podman machine, macOS, and Windows, the same
 `host.containers.internal` URL is the intended host gateway address. If the
 runtime does not provide that name, use its documented host-gateway alias or
 run the gateway with host networking where supported.
+
+## Benchmark intelligence
+
+Torii can import Artificial Analysis, BenchLM, configurable Hugging Face
+leaderboards, Arena preference ratings, and published LiveBench judgments.
+Ingestion is opt-in, uses a persistent cache, and never runs in inference
+requests. Source failures retain their previous data independently.
+
+Configure the top-level `intelligence` section or use the console's **Benchmarks**
+page. Source enablement, aliases, freshness thresholds, aggregation weights and
+smart-routing weights are documented in [Benchmark intelligence](docs/benchmark-intelligence.md),
+with defaults in [config.example.yaml](config.example.yaml). BenchLM's export
+requires a commercial licence for commercial use; check all source data terms.
+
+Manual refresh targets the running gateway:
+
+```sh
+./gateway benchmarks refresh --config ./config.yaml
+podman compose exec torii-gateway /gateway benchmarks refresh --config /config/config.yaml
+```
+
+Inspect `/gateway/v1/intelligence/sources`, `/models`, and `/unmatched` using the
+gateway API key. Capability scores never grant unverified endpoint/tool/vision
+support, and existing routing remains unchanged without usable data or enabled
+routing weights.
 
 ## Update an existing installation
 

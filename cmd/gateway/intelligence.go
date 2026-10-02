@@ -1,0 +1,150 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/intelligence"
+)
+
+// Missing source credentials fail only that source, not gateway startup or
+// other adapters. Secret references remain the existing configuration type.
+type unavailableBenchmarkSource struct{ id string }
+
+func (s unavailableBenchmarkSource) ID() string { return s.id }
+func (s unavailableBenchmarkSource) Fetch(context.Context) (intelligence.Result, error) {
+	return intelligence.Result{}, &intelligence.SourceError{Stage: "source credentials or initialization"}
+}
+
+func (h *catalogHandler) startIntelligence(ctx context.Context) {
+	h.workerMu.Lock()
+	defer h.workerMu.Unlock()
+	if h.intelligence == nil || h.workerCancel != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	h.workerCancel = cancel
+	h.workerDone = make(chan struct{})
+	go func() { defer close(h.workerDone); h.intelligence.Run(ctx) }()
+}
+func (h *catalogHandler) stopIntelligence() {
+	h.workerMu.Lock()
+	defer h.workerMu.Unlock()
+	if h.workerCancel != nil {
+		h.workerCancel()
+	}
+	if h.intelligence != nil {
+		h.intelligence.Close()
+	}
+	if h.workerCancel != nil {
+		<-h.workerDone
+		h.workerCancel = nil
+	}
+}
+func (r *handlerRuntime) stopIntelligence() {
+	r.mu.RLock()
+	handler := r.handler
+	r.mu.RUnlock()
+	if h, ok := handler.(*catalogHandler); ok {
+		h.stopIntelligence()
+	}
+}
+
+func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intelligence.Manager, error) {
+	if !cfg.Intelligence.Enabled {
+		return nil, nil
+	}
+	store, err := intelligence.OpenStore(cfg.State.Directory)
+	if err != nil {
+		return nil, err
+	}
+	timeout, _ := time.ParseDuration(cfg.Intelligence.HTTPTimeout)
+	retries := 2
+	if cfg.Intelligence.Retries != nil {
+		retries = *cfg.Intelligence.Retries
+	}
+	registry := intelligence.Builtins()
+	var sources []intelligence.Source
+	for _, settings := range cfg.Intelligence.Sources {
+		if !settings.Enabled {
+			continue
+		}
+		key := ""
+		if settings.APIKey != nil {
+			value, err := settings.APIKey.Resolve()
+			if err != nil {
+				sources = append(sources, unavailableBenchmarkSource{id: settings.ID})
+				continue
+			}
+			key = value
+		}
+		source, err := registry.New(settings.SourceSettings, key, intelligence.FetchOptions{Timeout: timeout, Retries: retries})
+		if err != nil {
+			sources = append(sources, unavailableBenchmarkSource{id: settings.ID})
+			continue
+		}
+		sources = append(sources, source)
+	}
+	return intelligence.NewManager(store, sources, models, cfg.Intelligence.Options())
+}
+
+// The CLI refreshes the running gateway rather than running a second writer
+// against its cache. This shares authentication and refresh serialization.
+func runBenchmarkCommand(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) == 0 || args[0] != "refresh" {
+		return errors.New("usage: gateway benchmarks refresh --config <path> [--url <gateway-origin>]")
+	}
+	flags := flag.NewFlagSet("benchmarks refresh", flag.ContinueOnError)
+	path := flags.String("config", "/config/config.yaml", "path to YAML configuration")
+	origin := flags.String("url", "", "running gateway origin")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected benchmark command arguments")
+	}
+	cfg, err := config.Load(*path)
+	if err != nil {
+		return err
+	}
+	if *origin == "" {
+		host, port, _ := net.SplitHostPort(cfg.Server.Listen)
+		if host == "" || host == "0.0.0.0" || host == "::" {
+			host = "127.0.0.1"
+		}
+		*origin = "http://" + net.JoinHostPort(host, port)
+	}
+	if err := intelligence.ValidateURL(*origin); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(*origin, "/")+"/gateway/v1/intelligence/refresh", nil)
+	if err != nil {
+		return err
+	}
+	if cfg.Server.Authentication != nil {
+		key, err := cfg.Server.Authentication.APIKey.Resolve()
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	client := http.Client{Timeout: cfg.Intelligence.Options().SourceTimeout + time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return errors.New("benchmark refresh request failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("benchmark refresh rejected by gateway; check URL, authentication and whether intelligence is enabled")
+	}
+	_, err = io.Copy(output, io.LimitReader(resp.Body, 4<<20))
+	return err
+}

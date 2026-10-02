@@ -15,6 +15,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/fault"
+	"github.com/Apartment38/torii-gateway/internal/intelligence"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"github.com/Apartment38/torii-gateway/internal/quota"
 	"github.com/Apartment38/torii-gateway/internal/requestid"
@@ -38,6 +39,7 @@ type OpenAIHandler struct {
 	policy           router.SelectionPolicy
 	usage            *usage.Store
 	quota            *quota.Cache
+	intelligence     *intelligence.Manager
 	latencyMu        sync.Mutex
 	latency          map[string]time.Duration
 	rerouteOnFailure bool
@@ -101,6 +103,9 @@ func (h *OpenAIHandler) RefreshCatalog(ctx context.Context) error {
 	}
 	h.ready = true
 	h.refreshedAt = time.Now()
+	if h.intelligence != nil {
+		h.intelligence.UpdateModels(h.catalog.Models())
+	}
 	return nil
 }
 
@@ -117,11 +122,16 @@ func (h *OpenAIHandler) ensureCatalog(ctx context.Context) error {
 	}
 	h.ready = true
 	h.refreshedAt = time.Now()
+	if h.intelligence != nil {
+		h.intelligence.UpdateModels(h.catalog.Models())
+	}
 	return nil
 }
 
 func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/gateway/v1/intelligence"):
+		h.intelligenceAPI(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 		h.listModels(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/"):
@@ -362,6 +372,7 @@ func (h *OpenAIHandler) resolveSmartModel(r *http.Request, body []byte) (string,
 	requirements, err := router.ExtractRequirements(endpoint, body)
 	if err == nil {
 		complexity := "medium"
+		requirements.TaskType = string(classifier.TaskGeneral)
 		if h.classifier.Classifier != nil {
 			// The classifier's physical identity, not the client's virtual model,
 			// belongs here. Passing "smart" triggers the recursion guard before
@@ -371,6 +382,7 @@ func (h *OpenAIHandler) resolveSmartModel(r *http.Request, body []byte) (string,
 				return "", classifyErr
 			}
 			complexity = string(classification.Complexity)
+			requirements.TaskType = string(classification.TaskType)
 			requirements.Tools = classification.Requirements.Tools
 			requirements.Vision = classification.Requirements.Vision
 			requirements.Reasoning = classification.Requirements.Reasoning
@@ -378,7 +390,7 @@ func (h *OpenAIHandler) resolveSmartModel(r *http.Request, body []byte) (string,
 		}
 		candidates := make([]router.Candidate, 0, len(models))
 		for _, model := range models {
-			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID)}
+			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID), Intelligence: h.modelIntelligence(model.PublicID)}
 			if h.quota != nil {
 				if status, quotaErr := h.quota.Get(r.Context(), model.PublicID); quotaErr == nil {
 					candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted
@@ -443,7 +455,7 @@ func (h *OpenAIHandler) nextSmartModel(r *http.Request, body []byte, excluded st
 			if model.PublicID == excluded {
 				continue
 			}
-			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID)}
+			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID), Intelligence: h.modelIntelligence(model.PublicID)}
 			if h.quota != nil {
 				if status, quotaErr := h.quota.Get(r.Context(), model.PublicID); quotaErr == nil {
 					candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted

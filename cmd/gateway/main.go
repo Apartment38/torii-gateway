@@ -29,6 +29,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/intelligence"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"github.com/Apartment38/torii-gateway/internal/quota"
 	"github.com/Apartment38/torii-gateway/internal/router"
@@ -52,6 +53,9 @@ func run(ctx context.Context, args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) > 0 && args[0] == "benchmarks" {
+		return runBenchmarkCommand(ctx, args[1:], output)
+	}
 	if len(args) > 0 && args[0] == "healthcheck" {
 		flags := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
 		urlFlag := flags.String("url", "http://127.0.0.1:8080/healthz", "health URL")
@@ -148,7 +152,7 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	runtime := &handlerRuntime{configPath: *configPath}
+	runtime := &handlerRuntime{configPath: *configPath, background: ctx}
 	handler, err := buildHandlerWithRuntime(cfg, *configPath, runtime)
 	if err != nil {
 		return err
@@ -159,7 +163,8 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	}
 	defer listener.Close()
 
-	runtime.handler = handler
+	runtime.swap(handler)
+	defer runtime.stopIntelligence()
 	server := &http.Server{
 		Handler:           runtime,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -415,6 +420,8 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
+	background    context.Context
+	swapMu        sync.Mutex
 	mu            sync.RWMutex
 	handler       http.Handler
 	configPath    string
@@ -463,16 +470,37 @@ func (r *handlerRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *handlerRuntime) swap(handler http.Handler) {
+	r.swapMu.Lock()
+	defer r.swapMu.Unlock()
+	r.mu.RLock()
+	previous := r.handler
+	r.mu.RUnlock()
+	if previous == handler {
+		return
+	}
+	if old, ok := previous.(*catalogHandler); ok {
+		old.stopIntelligence()
+	}
+	if next, ok := handler.(*catalogHandler); ok && next.intelligence != nil {
+		next.intelligence.ReloadCache()
+	}
 	r.mu.Lock()
 	r.handler = handler
 	r.mu.Unlock()
+	if next, ok := handler.(*catalogHandler); ok && r.background != nil {
+		next.startIntelligence(r.background)
+	}
 }
 
 // Keep the catalog refresh callback attached to the active handler, so a
 // rejected configuration save cannot redirect login refreshes to a discarded one.
 type catalogHandler struct {
 	http.Handler
-	refresh func(context.Context) error
+	refresh      func(context.Context) error
+	intelligence *intelligence.Manager
+	workerMu     sync.Mutex
+	workerCancel context.CancelFunc
+	workerDone   chan struct{}
 }
 
 func (h *catalogHandler) RefreshCatalog(ctx context.Context) error {
@@ -611,6 +639,15 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		selection.MinimumQuality = cfg.Router.Selection.MinimumQuality
 	}
 	openAI.SetSelectionPolicy(selection)
+	benchmarkManager, err := buildIntelligence(cfg, openAI.CatalogModels())
+	if err != nil {
+		return nil, fmt.Errorf("initialize benchmark intelligence: %w", err)
+	}
+	if benchmarkManager != nil {
+		selection.Intelligence = cfg.Intelligence.Routing
+		openAI.SetSelectionPolicy(selection)
+		openAI.SetIntelligence(benchmarkManager)
+	}
 	if raw := cfg.Router.Sessions.InactivityTimeout; raw != "" {
 		if timeout, parseErr := time.ParseDuration(raw); parseErr == nil {
 			openAI.SetSessionTimeout(timeout)
@@ -673,7 +710,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	mux.Handle("/gateway/v1/", apiHandler)
 	mux.Handle("/", web.Handler())
-	return &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog}, nil
+	return &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}, nil
 }
 
 func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {

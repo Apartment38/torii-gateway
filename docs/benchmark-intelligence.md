@@ -1,0 +1,302 @@
+# Benchmark ingestion and model intelligence
+
+Benchmark intelligence is optional. It updates in the background and enriches
+the existing smart selector; explicit `provider/model` requests do not change.
+No benchmark HTTP calls, disk reads, or aggregation occur during inference.
+Existing routing remains in effect when disabled, when weights are zero, or
+when no usable evidence exists.
+
+## Architecture
+
+`internal/intelligence` contains a registered `Source` interface, independent
+adapters, a shared identity resolver, a pure aggregation function, and a manager
+with atomic flat-file persistence. It reuses `catalog.Descriptor` for known
+models and `state.directory` for storage. `config.SecretRef` remains the only
+credential configuration type. `internal/router` owns ranking weights and policy;
+the benchmark subsystem does not choose models or change capability flags.
+
+The manager retains all imported observations, including unnormalized and
+unmatched measurements, with original score, benchmark, source, model identifier,
+unit, version, evaluation date if published, retrieval timestamp, and metadata.
+Missing scores are absent, never manufactured as zero. A new adapter implements
+`Source.Fetch`, registers a factory in `Builtins`, maps categories, and adds
+fixture tests; aggregation and routing need no source-specific changes.
+
+## Sources
+
+| Type | Published interface | Notes |
+| --- | --- | --- |
+| `artificial_analysis` | [Official data API](https://artificialanalysis.ai/data-api/docs), `/api/v2/language/models/free` | API key via `x-api-key`; pagination; capability indices, prices and performance. Set `url` to the Pro endpoint if your account supports it. The legacy `/api/v2/data/llms/models` JSON is also accepted. Credit Artificial Analysis and observe its data terms. |
+| `benchlm` | [Published model JSON](https://benchlm.ai/data), `https://benchlm.ai/data/models.json` | Raw benchmarks plus published composite/category scores and provenance. The leaderboard JSON export is also accepted via `url`. CC BY-NC 4.0: commercial use requires a BenchLM licence. Estimates stay raw-only unless `include_estimated: true`. |
+| `huggingface` | [Dataset Viewer rows API](https://huggingface.co/docs/dataset-viewer/rows) | Configure dataset, subset, split, model/date columns and each score's scale/category. No single leaderboard is hard-coded. Tokens use bearer authentication when needed. Dataset licences remain the operator's responsibility. |
+| `lmarena` | [Arena's official leaderboard dataset](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset) through Dataset Viewer | Defaults to `text_style_control`, `latest`. Every Arena subset remains human-preference evidence, including coding/vision categories. Confidence bounds and vote counts are retained. |
+| `livebench` | [Official published judgments](https://huggingface.co/datasets/livebench/model_judgment) through Dataset Viewer | Defaults to `default`, `leaderboard`; per-question scores, tasks and evaluation timestamps are retained. No HTML scraping. The artifact can lag the current website; old evidence is excluded by `max_age`. |
+
+Sources are explicitly enabled; no vendor is contacted by default. All support
+an optional `url` for a trusted mirror or compatible published endpoint. URLs
+cannot contain embedded credentials or secret query parameters. Credentials
+are never forwarded across redirects. Use HTTPS for remote authenticated sources.
+
+## Configuration
+
+Add this top-level section to `config.yaml`, or edit the same object as JSON on
+the console's **Benchmarks** page and select **Save & reload**:
+
+```yaml
+intelligence:
+  enabled: true
+  refresh_interval: 24h
+  http_timeout: 30s
+  source_timeout: 10m
+  retries: 2
+  stale_after: 168h
+  max_age: 4320h
+  freshness_half_life: 2160h
+  sources:
+    - id: aa
+      type: artificial_analysis
+      enabled: true
+      api_key: {env: ARTIFICIAL_ANALYSIS_API_KEY}
+    - id: arena
+      type: lmarena
+      enabled: true
+  aggregation:
+    source_weights: {aa: 1, arena: 1}
+    benchmark_weights: {aa/artificial_analysis_coding_index: 2}
+    overall_weights:
+      general_intelligence: 1
+      coding: 1
+      agentic: 1
+      reasoning: 1
+      math: 1
+      knowledge: 1
+      instruction_following: 1
+      multimodal: 1
+      preference: 0
+  routing:
+    capabilities: {overall: 1}
+    task_weights:
+      coding: {coding: 3, agentic: 1}
+      reasoning: {reasoning: 3, math: 1}
+      research: {knowledge: 3, reasoning: 1}
+    price: 0.2
+    latency: 0.1
+    ttft: 0.1
+    throughput: 0.1
+    context: 0.1
+    cost_reference_usd: 0.01
+    latency_reference_seconds: 2
+    throughput_reference: 100
+    missing_score: 0.5
+```
+
+The durations above are defaults (Go duration syntax: hours, not `7d`); retries
+default to two and are limited to five. Refreshes retry network/server errors
+and 429 with a bounded delay, not authentication or parsing failures. Individual
+HTTP requests time out separately from the complete source import. Sources run
+independently and concurrently. A failed source retains its previous successful
+dataset, with a failure status; successful sources still update.
+
+Keys can use `env`, `file`, or `value`, just like existing provider secrets.
+For a container, env references require explicitly passing the variable through
+Compose; file paths are inside the container. Direct values are plaintext in
+the owner-only configuration file. The console's JSON editor does not mask
+inline benchmark keys; prefer env/file references and protect console access.
+
+An omitted `routing` section has zero weights and is inspection-only. To use
+task weights, configure the existing semantic classifier: its `task_type`
+selects the task's capability weights. Without classification, Torii uses
+general/default capability weights; it does not guess coding from keywords.
+Task weights replace the global capability map for that task. Operational
+weights are shared. No required category is inferred from the name of a source.
+
+## Importing a Hugging Face leaderboard
+
+Choose a dataset with published per-model results and available Parquet exports
+(the Dataset Viewer requirement), not a dataset containing only test questions.
+Replace the illustrative dataset/field names below with its real schema:
+
+```yaml
+    - id: hf-code
+      type: huggingface
+      enabled: true
+      max_rows: 100000
+      datasets:
+        - dataset: organization/benchmark-results
+          config: default
+          split: train
+          model_field: model_id
+          date_field: evaluation_date
+          version: evaluation-v2
+          metrics:
+            pass_at_1: {category: coding, min: 0, max: 1}
+            math_accuracy: {category: math, min: 0, max: 100}
+            runtime_seconds:
+              category: operational
+              metric: latency
+              unit: seconds
+```
+
+Nested columns can use dot paths. Null/missing measurements are skipped;
+non-numeric values, out-of-range scores, truncated cells, missing pages, changed
+row counts, and exceeded limits reject the update instead of publishing a
+partial leaderboard. Pages use at most eight concurrent requests; `max_rows`
+defaults to 100,000 and the importer rejects larger datasets instead of silently
+truncating them. At most eight datasets and 32 sources may be configured.
+
+Operational mapping names are `input_price`, `output_price` (unit
+`USD_per_million_tokens`), `latency`, `ttft` (`seconds`), `throughput`
+(`tokens_per_second`), and `context_length` (`tokens`). Convert milliseconds or
+non-USD prices in the published dataset before importing; no exchange-rate or
+unit guessing occurs. Source-specific `metrics` can override declared score
+scales/categories for Artificial Analysis and BenchLM. BenchLM raw benchmark
+keys are `category.benchmark`, such as `coding.sweVerified`; unknown scales
+remain inspectable but do not contribute to aggregates without a mapping.
+
+## Model identity and aliases
+
+Each live catalog ID is a canonical identity by default. Matching recognizes
+public IDs, upstream IDs and explicit aliases, normalizing case, whitespace and
+underscores without removing version dates, decimal points, quantization, or
+reasoning-effort suffixes. It does not fuzzy-match model families. An upstream
+ID shared by several providers is ambiguous unless explicitly grouped:
+
+```yaml
+  identities:
+    - canonical_id: gpt-5.3-codex
+      provider_ids:
+        - openai-codex/gpt-5.3-codex
+        - private/gpt-5.3-codex
+      aliases: [GPT-5.3-Codex]
+      source_ids:
+        aa: [gpt-53-codex]
+        arena: [gpt-5.3-codex]
+```
+
+Only include provider IDs that actually represent the same evaluated model.
+Source IDs are scoped to the configured source **id**, not its type. They take
+precedence over unscoped aliases. Aliases for unavailable catalog models are
+not accepted. Colliding aliases remain ambiguous and are logged/inspectable;
+duplicate physical-ID assignments are rejected by configuration validation.
+Effort-labelled Artificial Analysis results retain the label instead of being
+attached silently to the unqualified model. New model IDs or credentials that
+change the provider catalog trigger rematching of cached evidence, not a
+benchmark fetch.
+
+No universal alias list is guessed or downloaded. Inspect `/unmatched`, add
+explicit identities, then save/reload or inspect the snapshot to rematch the
+cache. An identifier with no match is retained, never discarded.
+
+## Aggregation and routing
+
+The isolated aggregation algorithm is a configurable hierarchical weighted mean:
+
+1. Keep the latest observation for each source/model/benchmark/category and
+   question ID, retaining all raw observations separately. Average per-question
+   results before treating a benchmark as one signal.
+2. Normalize only declared bounded scores as `(score - min) / (max - min)`;
+   `lower_is_better` reverses the scale. Unknown scales remain raw-only. Arena
+   ratings use a separately labelled logistic preference transform, reference
+   1000 and scale 400; Agent Arena IPS scores stay unnormalized unless an explicit
+   dataset `score` min/max is configured. They are not objective accuracy.
+3. Exclude observations older than `max_age` and retrievals older than
+   `stale_after`. Weight usable evidence by `2^(-age / freshness_half_life)`;
+   average benchmarks within each source/category, then average sources. More
+   rows from one source do not give it more influence. Source and benchmark
+   weights default to one; zero disables their contribution.
+4. Derive `overall` from available categories and `overall_weights`. Preference
+   defaults to weight zero and joins overall only through an explicit weight.
+   No score is produced for a category with no usable measurements.
+
+Operational measurements use the latest non-expired published observation,
+with deterministic source-ID tie-breaking. They do not enter objective quality
+aggregates. Unknown evaluation dates use retrieval time as an explicitly
+limited age basis; model release and website build dates are not silently used
+as evaluation dates. Raw timestamps and source build/version metadata remain
+inspectable.
+
+The selector's existing availability, quota, verified endpoint/features,
+quality floors, and context checks remain hard gates. Benchmark scores never
+grant tool or vision support or overwrite existing static quality floors.
+When routing weights are enabled, intelligence may fill unknown pricing/context
+metadata; a smaller reported context limit tightens, never relaxes, an existing
+limit. Known local/free/subscription pricing remains authoritative.
+
+Eligible candidates get a weighted utility from task capability scores, lower
+estimated request cost, lower latency/TTFT, higher throughput and context
+headroom. Cost and lower-latency utilities are `reference / (reference + value)`;
+throughput uses `value / (reference + value)`. Observed gateway latency takes
+precedence over external latency. Missing measurements use `missing_score`
+(default 0.5), not a fake observed zero. With no relevant usable intelligence,
+ranking reverts to existing cost/quota/location/latency/context/ID ordering.
+Ties always use that existing deterministic ordering. Existing session affinity
+remains intact; a benchmark refresh does not switch an ongoing pinned session.
+
+## Cache, management and refresh
+
+The cache is `state.directory/benchmark-intelligence.json`, schema version 1,
+mode `0600`. It is independent of credentials/usage files, so no migration of
+existing state is required. Old/unsupported/corrupt cache files are logged and
+ignored at startup. Replacements use temp-file write, sync and atomic rename;
+failed persistence leaves both the previous file and published routing snapshot
+intact. The manager loads cached data before the background startup refresh.
+
+Cached data stays in use during refresh. Freshness is recalculated in the
+background at least once a minute (or the shorter configured refresh interval),
+and cache-only routing lookups reject expired derived views immediately.
+Stopped/replaced handlers cancel their workers and manual refreshes before a
+new handler writes the same cache. Do not run multiple gateway processes
+against the same state directory; cross-process locking is not provided.
+
+Management routes use the gateway's existing API authentication:
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /gateway/v1/intelligence` | Full snapshot, source observations, model scores and unmatched IDs |
+| `GET /gateway/v1/intelligence/sources` | Source status, last attempt/success, age, staleness, safe errors and metadata |
+| `GET /gateway/v1/intelligence/models` | Models with aggregates and operational metadata |
+| `GET /gateway/v1/intelligence/models/{id}` | Raw observations, provenance and aggregates for a canonical or physical ID |
+| `GET /gateway/v1/intelligence/unmatched` | Unmatched/ambiguous source IDs and candidate canonical IDs |
+| `POST /gateway/v1/intelligence/refresh` | Refresh all enabled sources; summary includes `partial_failure` and per-source status |
+
+Run a manual refresh from the console or against the running gateway:
+
+```sh
+./gateway benchmarks refresh --config ./config.yaml
+podman compose exec torii-gateway /gateway benchmarks refresh --config /config/config.yaml
+# Use a reverse-proxy origin when needed:
+./gateway benchmarks refresh --config ./config.yaml --url https://gateway.example.com
+```
+
+The CLI uses the configured server API key and calls the running gateway rather
+than creating a competing cache writer. A partial-source failure returns an
+inspectable summary; check `partial_failure`, not only the command's exit code.
+Disabled intelligence returns HTTP 503. New APIs do not add authentication to
+the existing public console; keep it behind trusted access controls.
+
+Refresh starts, successes, parsing/upstream failures, cache errors and matching
+failures are structured `slog` events. Logs/status omit arbitrary upstream error
+bodies and credentials. Upstream HTTP status and safe parsing stages are exposed.
+
+## Limitations
+
+- Source scores are evidence, not calibrated probabilities of successful task
+  completion. Different evaluation settings, correlated benchmarks and provider
+  aggregates can require operator weights. BenchLM includes aggregated evidence
+  from other sources; reduce its weight if you also import those publishers.
+- Missing evaluation dates cannot establish true benchmark age. Retrieval-only
+  freshness is a fallback, not proof that a benchmark was rerun recently.
+- Arena preference and task accuracy are deliberately separate; logistic Arena
+  normalization is a configurable overall-policy input, not accuracy equivalence.
+- LiveBench's structured public dataset can lag recent releases; stale rows
+  stay inspectable but do not affect routing. No promise of website parity.
+- Dataset Viewer availability, upstream schema changes, provider/API tiers and
+  licences can affect ingestion. Tests use fixtures/mocks, not live credentials.
+- Row-count checking cannot guarantee snapshot isolation if an upstream edits
+  values without changing the row count. Prefer versioned/pinned published datasets.
+- The cache keeps the current successful source import and all its observations,
+  not an unbounded history of every periodic response. File size is capped at
+  128 MiB; oversized replacements are rejected without deleting good data.
+- Unresolved variants and aliases require explicit operator mapping; the API
+  reports the actual unmatched list for that installation. No model aliases were
+  asserted against a live subscription as part of this implementation.

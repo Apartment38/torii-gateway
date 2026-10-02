@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/intelligence"
 )
 
 type LocationPreference string
@@ -26,6 +27,7 @@ type SelectionPolicy struct {
 	MinimumReasoningQuality     float64
 	DefaultExpectedOutputTokens int64
 	LocationPreference          LocationPreference
+	Intelligence                IntelligenceWeights
 }
 
 func DefaultSelectionPolicy() SelectionPolicy {
@@ -38,6 +40,7 @@ type Candidate struct {
 	QuotaRemaining float64
 	QuotaExhausted bool
 	LatencyEWMA    time.Duration
+	Intelligence   *intelligence.Model
 }
 type Decision struct {
 	Model         catalog.Descriptor
@@ -82,20 +85,27 @@ func Select(candidates []Candidate, requirements RequestRequirements, complexity
 	if len(eligible) == 0 {
 		return Decision{Reasons: reasons}, errors.New("no model satisfies request requirements")
 	}
+	benchmarkRanked := intelligenceRank(eligible, requirements, policy.Intelligence)
 	sort.SliceStable(eligible, func(i, j int) bool { return less(eligible[i], eligible[j], policy.LocationPreference) })
 	winner := eligible[0]
 	sort.Slice(reasons, func(i, j int) bool { return reasons[i].Model < reasons[j].Model })
-	reasons = append(reasons, ModelReason{Model: winner.candidate.Model.PublicID, Eligible: true, Reason: "selected by deterministic cost, quota, location, latency, context, and ID ordering"})
+	reason := "selected by deterministic cost, quota, location, latency, context, and ID ordering"
+	if benchmarkRanked {
+		reason = "selected by configured benchmark capability and operational weights; deterministic tie-breaks applied"
+	}
+	reasons = append(reasons, ModelReason{Model: winner.candidate.Model.PublicID, Eligible: true, Reason: reason})
 	return Decision{Model: winner.candidate.Model, EstimatedCost: winner.cost, Reasons: reasons}, nil
 }
 
 type ranked struct {
-	candidate Candidate
-	cost      *float64
-	headroom  int64
+	candidate         Candidate
+	cost              *float64
+	headroom          int64
+	intelligenceScore *float64
 }
 
 func evaluate(candidate Candidate, req RequestRequirements, complexity string, policy SelectionPolicy) (ranked, string, bool) {
+	candidate = applyOperational(candidate, policy.Intelligence)
 	m := candidate.Model
 	if !m.Availability.Available {
 		return ranked{}, "model is unavailable", false
@@ -183,6 +193,9 @@ func estimateCost(m catalog.Descriptor, r RequestRequirements, p SelectionPolicy
 	return &v
 }
 func less(a, b ranked, preference LocationPreference) bool {
+	if a.intelligenceScore != nil && b.intelligenceScore != nil && *a.intelligenceScore != *b.intelligenceScore {
+		return *a.intelligenceScore > *b.intelligenceScore
+	}
 	if a.cost != nil || b.cost != nil {
 		if a.cost == nil {
 			return false

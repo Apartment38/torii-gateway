@@ -15,6 +15,7 @@ const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
 let serverAPIKeyReference: Record<string, string> | null = null;
+let managementAPIKey = "";
 const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
 interface ProviderStatus {
@@ -238,6 +239,8 @@ function applyConfig(config: Record<string, any>): void {
   requestedClassifier = classifier.type === "disabled" ? "disabled" : classifier.type === "jev" && classifier.transport === "provider"
     ? `${classifier.provider}/${classifier.model}` : "";
   const configuredAPIKey = config.server?.authentication?.api_key;
+  managementAPIKey = configuredAPIKey?.value || "";
+  document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value = config.intelligence ? JSON.stringify(config.intelligence, null, 2) : "";
   serverAPIKeyReference = configuredAPIKey && !configuredAPIKey.value ? { ...configuredAPIKey } : null;
   providers = (config.providers || []).map((provider: Record<string, any>) => ({
     ...providerDefaults,
@@ -300,7 +303,10 @@ async function loadServerConfig(): Promise<void> {
 }
 
 async function saveConfig(): Promise<void> {
-  const response = await fetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(readConfig()) });
+  let configuration: Record<string, any>;
+  try { configuration = readConfig(); }
+  catch (error) { toast(error instanceof Error ? error.message : "Invalid benchmark configuration JSON"); return; }
+  const response = await fetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(configuration) });
   if (!response.ok) { toast(redactProviderKeys(`Save failed: ${await response.text()}`)); return; }
   saveState.textContent = "Saved and reloaded";
   await loadServerConfig();
@@ -384,7 +390,31 @@ function readConfig(): Record<string, any> {
   }
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
+  const intelligenceJSON = document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value.trim();
+  if (intelligenceJSON) {
+    try {
+      const intelligence = JSON.parse(intelligenceJSON);
+      if (!intelligence || Array.isArray(intelligence) || typeof intelligence !== "object") throw new Error();
+      config.intelligence = intelligence;
+    } catch { throw new Error("Benchmark configuration must be a valid JSON object"); }
+  }
   return config;
+}
+
+async function inspectBenchmarks(refresh: boolean): Promise<void> {
+  const output = document.querySelector<HTMLElement>("#benchmark-status")!;
+  const button = document.querySelector<HTMLButtonElement>(refresh ? "#refresh-benchmarks" : "#inspect-benchmarks")!;
+  button.disabled = true;
+  output.textContent = refresh ? "Refreshing sources; cached routing data remains available…" : "Loading source status…";
+  try {
+    const headers = await authProvider.headers();
+    if (managementAPIKey && !headers.Authorization) headers.Authorization = `Bearer ${managementAPIKey}`;
+    const response = await fetch(`/gateway/v1/intelligence/${refresh ? "refresh" : "sources"}`, { method: refresh ? "POST" : "GET", headers });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || body.error || "Benchmark request failed");
+    output.textContent = JSON.stringify(body, null, 2);
+  } catch (error) { output.textContent = error instanceof Error ? error.message : "Benchmark request failed"; }
+  finally { button.disabled = false; }
 }
 async function testProvider(index: number): Promise<void> {
   const provider = providers[index];
@@ -494,6 +524,8 @@ async function testAllProviders(): Promise<void> {
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
 document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); markDirty(); });
+document.querySelector("#refresh-benchmarks")!.addEventListener("click", () => { void inspectBenchmarks(true); });
+document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => { void inspectBenchmarks(false); });
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });

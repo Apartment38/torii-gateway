@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"1.0", "generatedAt":"2026-10-01T00:00:00Z",
+  "license":"CC BY-NC 4.0", "attribution":"Data from BenchLM.ai", "commercialUse":"A commercial license is required",
+  "items":[{
+    "canonicalModelKey":"model-a", "model":"Model A", "displayScore":80,
+    "evidenceStatus":"supported", "evaluatedAt":"2026-09-01",
+    "scores":{"verifiedDisplayCategoryScores":{"coding":90,"agentic":70,"instructionFollowing":null}},
+    "benchmarks":{"coding":{"customAccuracy":85,"customFraction":0.9},"agentic":{"toolUseElo":1400}},
+    "contextWindowTokens":128000, "inputPrice":1, "outputPrice":5
+  },{
+    "canonicalModelKey":"model-estimated", "model":"Estimated", "displayScore":99,
+    "evidenceStatus":"estimated", "benchmarks":{"coding":{"customAccuracy":98}}
+  }]
+}

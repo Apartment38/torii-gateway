@@ -117,7 +117,7 @@ func openDatabase(path string, key []byte, target int, migrations []schemaMigrat
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return nil, err
 	}
-	if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
+	if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'").Scan(&tables); err != nil {
 		return nil, err
 	}
 	if err := checkSchema(version, tables, target); err != nil {

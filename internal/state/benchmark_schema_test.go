@@ -21,6 +21,25 @@ func TestFreshBaselineAndNoImportMetadata(t *testing.T) {
 		t.Fatal("legacy columns retained")
 	}
 }
+func TestUnversionedLookalikeInternalTableIsNotAnEmptyDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE sqlitex_preserved(value TEXT); INSERT INTO sqlitex_preserved VALUES('original')"); err != nil {
+		t.Fatal(err)
+	}
+	if accepted, err := OpenDatabase(path, bytes.Repeat([]byte{7}, 32)); err == nil {
+		accepted.Close()
+		t.Fatal("nonempty unversioned database accepted")
+	}
+	var count int
+	if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='credentials'").Scan(&count); err != nil || count != 0 {
+		t.Fatal("baseline initialized over existing database", err)
+	}
+}
 func TestPreBaselineAndNewerSchemasRejectedUnchanged(t *testing.T) {
 	for _, version := range []int{0, 1, 2, 3, 5} {
 		t.Run(string(rune('0'+version)), func(t *testing.T) {

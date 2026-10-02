@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: ${TORII_IMAGE:-torii-gateway:local}
+    container_name: torii-gateway
     restart: unless-stopped
     working_dir: /data
     command: ["serve", "--config", "/config/config.yaml"]

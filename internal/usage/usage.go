@@ -1,18 +1,27 @@
-// Package usage stores only aggregate counters needed by routing decisions.
+// Package usage maintains memory-only routing counters with batched persistence.
 package usage
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log/slog"
+	"math"
 	"os"
-	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
 const version = 1
+const flushInterval = time.Second
+const batchSize = 250
+const maxLegacyBytes = 128 << 20
 
 type Aggregate struct {
 	Requests      uint64    `json:"requests"`
@@ -21,23 +30,28 @@ type Aggregate struct {
 	EstimatedCost float64   `json:"estimated_cost"`
 	LastRequestAt time.Time `json:"last_request_at,omitempty"`
 }
-
 type UsageDelta struct {
 	Model                     string
 	InputTokens, OutputTokens uint64
 	EstimatedCost             float64
 }
 type UsageSummary = Aggregate
-
 type file struct {
 	Version int                  `json:"version"`
 	Models  map[string]Aggregate `json:"models"`
 }
 
 type Store struct {
-	mu     sync.Mutex
-	path   string
-	models map[string]Aggregate
+	mu       sync.Mutex
+	flushMu  sync.Mutex
+	closeMu  sync.Mutex
+	db       *sql.DB
+	models   map[string]Aggregate
+	dirty    map[string]bool
+	closed   bool
+	cancel   context.CancelFunc
+	done     chan struct{}
+	closeErr error
 }
 
 func ExtractResponseUsage(data []byte) (input, output uint64, ok bool) {
@@ -62,107 +76,279 @@ func ExtractResponseUsage(data []byte) (input, output uint64, ok bool) {
 	return input, output, input != 0 || output != 0
 }
 
-func Open(directory string) (*Store, error) {
-	if strings.TrimSpace(directory) == "" {
-		return nil, errors.New("usage directory is required")
+// Open owns an independent pool and one worker. The gateway shares this store
+// across handler reloads. Add accepts a memory update; Flush/Close ensure durability.
+func Open(database *state.Database, legacyDirectory string) (*Store, error) {
+	if database == nil {
+		return nil, errors.New("usage storage requires the application database")
 	}
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, fmt.Errorf("create usage directory: %w", err)
+	db, err := database.StateConnection()
+	if err != nil {
+		return nil, err
 	}
-	path := filepath.Join(directory, "usage.json")
-	s := &Store{path: path, models: map[string]Aggregate{}}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return s, nil
+	s := &Store{db: db, models: map[string]Aggregate{}, dirty: map[string]bool{}}
+	if err = s.importLegacy(legacyDirectory); err == nil {
+		s.models, err = load(db)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read usage: %w", err)
+		db.Close()
+		return nil, err
 	}
-	var f file
-	if json.Unmarshal(data, &f) != nil || f.Version != version || f.Models == nil {
-		return nil, errors.New("usage state is corrupt")
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	s.done = make(chan struct{})
+	go s.run(ctx)
+	return s, nil
+}
+func validAggregate(model string, a Aggregate) bool {
+	return strings.TrimSpace(model) != "" && a.EstimatedCost >= 0 && !math.IsNaN(a.EstimatedCost) && !math.IsInf(a.EstimatedCost, 0)
+}
+func load(q interface {
+	Query(string, ...any) (*sql.Rows, error)
+}) (map[string]Aggregate, error) {
+	rows, err := q.Query("SELECT model_id,requests,input_tokens,output_tokens,estimated_cost,last_request_at FROM usage_aggregates ORDER BY model_id")
+	if err != nil {
+		return nil, errors.New("cannot read usage aggregates")
 	}
-	for model, aggregate := range f.Models {
-		if strings.TrimSpace(model) == "" || aggregate.EstimatedCost < 0 {
-			return nil, errors.New("usage state is corrupt")
+	defer rows.Close()
+	models := map[string]Aggregate{}
+	for rows.Next() {
+		var model, requests, input, output, at string
+		var a Aggregate
+		if err := rows.Scan(&model, &requests, &input, &output, &a.EstimatedCost, &at); err != nil {
+			return nil, errors.New("invalid stored usage aggregate")
+		}
+		a.Requests, err = strconv.ParseUint(requests, 10, 64)
+		if err == nil {
+			a.InputTokens, err = strconv.ParseUint(input, 10, 64)
+		}
+		if err == nil {
+			a.OutputTokens, err = strconv.ParseUint(output, 10, 64)
+		}
+		if err == nil {
+			a.LastRequestAt, err = time.Parse(time.RFC3339Nano, at)
+		}
+		if err != nil || !validAggregate(model, a) {
+			return nil, errors.New("stored usage is corrupt; restore a database backup")
+		}
+		models[model] = a
+	}
+	if rows.Err() != nil {
+		return nil, errors.New("cannot read usage aggregates")
+	}
+	return models, nil
+}
+
+const upsert = `INSERT INTO usage_aggregates(model_id,requests,input_tokens,output_tokens,estimated_cost,last_request_at) VALUES(?,?,?,?,?,?) ON CONFLICT(model_id) DO UPDATE SET requests=excluded.requests,input_tokens=excluded.input_tokens,output_tokens=excluded.output_tokens,estimated_cost=excluded.estimated_cost,last_request_at=excluded.last_request_at`
+
+func write(ctx context.Context, tx *sql.Tx, model string, a Aggregate) error {
+	_, err := tx.ExecContext(ctx, upsert, model, strconv.FormatUint(a.Requests, 10), strconv.FormatUint(a.InputTokens, 10), strconv.FormatUint(a.OutputTokens, 10), a.EstimatedCost, a.LastRequestAt.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return errors.New("cannot persist usage aggregate")
+	}
+	return nil
+}
+
+func (s *Store) importLegacy(directory string) error {
+	var done string
+	err := s.db.QueryRow("SELECT value FROM application_settings WHERE key='usage_import_complete'").Scan(&done)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return errors.New("cannot inspect usage migration")
+	}
+	var count int
+	if err = s.db.QueryRow("SELECT count(*) FROM usage_aggregates").Scan(&count); err != nil {
+		return errors.New("cannot inspect existing usage")
+	}
+	models := map[string]Aggregate{}
+	if count == 0 {
+		b, err := state.LegacyFile(directory, "usage.json", maxLegacyBytes)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return errors.New("cannot import usage.json; check the legacy file, size and permissions")
+		}
+		if err == nil {
+			var f file
+			if json.Unmarshal(b, &f) != nil || f.Version != version || f.Models == nil {
+				return errors.New("legacy usage.json is corrupt or unsupported; restore it before restarting")
+			}
+			for model, a := range f.Models {
+				if !validAggregate(model, a) {
+					return errors.New("legacy usage.json contains invalid counters")
+				}
+			}
+			models = f.Models
 		}
 	}
-	s.models = f.Models
-	return s, nil
+	tx, err := s.db.Begin()
+	if err != nil {
+		return errors.New("cannot begin usage import")
+	}
+	defer tx.Rollback()
+	// Recheck under the write transaction; established totals always win.
+	if err = tx.QueryRow("SELECT count(*) FROM usage_aggregates").Scan(&count); err != nil {
+		return errors.New("cannot inspect usage import")
+	}
+	if count == 0 {
+		for model, a := range models {
+			if err = write(context.Background(), tx, model, a); err != nil {
+				return err
+			}
+		}
+		verified, err := load(tx)
+		if err != nil {
+			return err
+		}
+		if len(verified) != len(models) {
+			return errors.New("usage migration verification failed")
+		}
+		for model, a := range models {
+			got := verified[model]
+			if got.Requests != a.Requests || got.InputTokens != a.InputTokens || got.OutputTokens != a.OutputTokens || got.EstimatedCost != a.EstimatedCost || !got.LastRequestAt.Equal(a.LastRequestAt) {
+				return errors.New("usage migration verification failed")
+			}
+		}
+	}
+	if _, err = tx.Exec("INSERT INTO application_settings(key,value,updated_at) VALUES('usage_import_complete','1',?) ON CONFLICT(key) DO NOTHING", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return errors.New("cannot mark usage import complete")
+	}
+	if err = tx.Commit(); err != nil {
+		return errors.New("cannot commit usage import")
+	}
+	if len(models) > 0 {
+		slog.Info("usage_legacy_import_succeeded", "models", len(models), "message", "SQLite is authoritative; legacy usage.json retained unchanged")
+	}
+	return nil
 }
 
 func (s *Store) Snapshot() map[string]Aggregate {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := make(map[string]Aggregate, len(s.models))
-	for key, value := range s.models {
-		result[key] = value
+	for model, a := range s.models {
+		result[model] = a
 	}
 	return result
 }
-
 func (s *Store) Get(model string) (Aggregate, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	value, ok := s.models[model]
-	return value, ok
+	a, ok := s.models[model]
+	return a, ok
 }
-
-func (s *Store) AddDelta(delta UsageDelta) error {
-	return s.Add(delta.Model, delta.InputTokens, delta.OutputTokens, delta.EstimatedCost)
+func (s *Store) AddDelta(d UsageDelta) error {
+	return s.Add(d.Model, d.InputTokens, d.OutputTokens, d.EstimatedCost)
 }
-
 func (s *Store) Add(model string, input, output uint64, cost float64) error {
 	if s == nil || strings.TrimSpace(model) == "" {
 		return errors.New("model is required")
 	}
-	if cost < 0 {
-		return errors.New("cost must be non-negative")
+	if cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+		return errors.New("cost must be finite and non-negative")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	value := s.models[model]
-	value.Requests++
-	value.InputTokens += input
-	value.OutputTokens += output
-	value.EstimatedCost += cost
-	value.LastRequestAt = time.Now().UTC()
-	s.models[model] = value
-	return s.persistLocked()
+	if s.closed {
+		return errors.New("usage store is closed")
+	}
+	a := s.models[model]
+	if a.Requests == math.MaxUint64 || input > math.MaxUint64-a.InputTokens || output > math.MaxUint64-a.OutputTokens || math.IsInf(a.EstimatedCost+cost, 0) {
+		return errors.New("usage aggregate overflow")
+	}
+	a.Requests++
+	a.InputTokens += input
+	a.OutputTokens += output
+	a.EstimatedCost += cost
+	a.LastRequestAt = time.Now().UTC()
+	s.models[model] = a
+	s.dirty[model] = true
+	return nil
 }
 
-func (s *Store) persistLocked() error {
-	data, err := json.Marshal(file{Version: version, Models: s.models})
-	if err != nil {
-		return err
+// Flush uses absolute totals so retries after uncertain commits never double count.
+func (s *Store) Flush(ctx context.Context) error {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+	s.mu.Lock()
+	snapshot := map[string]Aggregate{}
+	ids := make([]string, 0, len(s.dirty))
+	for model := range s.dirty {
+		snapshot[model] = s.models[model]
+		ids = append(ids, model)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".usage-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	keep := false
-	defer func() {
-		_ = tmp.Close()
-		if !keep {
-			_ = os.Remove(tmpPath)
+	s.mu.Unlock()
+	sort.Strings(ids)
+	for start := 0; start < len(ids); start += batchSize {
+		end := min(start+batchSize, len(ids))
+		if err := s.flushBatch(ctx, ids[start:end], snapshot); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return err
 		}
-	}()
-	if err = tmp.Chmod(0o600); err == nil {
-		_, err = tmp.Write(append(data, '\n'))
+		s.mu.Lock()
+		for _, model := range ids[start:end] {
+			if s.models[model] == snapshot[model] {
+				delete(s.dirty, model)
+			}
+		}
+		s.mu.Unlock()
 	}
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if err == nil {
-		err = tmp.Close()
-	}
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(tmpPath, s.path); err != nil {
-		return err
-	}
-	keep = true
 	return nil
+}
+func (s *Store) flushBatch(ctx context.Context, ids []string, values map[string]Aggregate) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.New("cannot begin usage batch")
+	}
+	defer tx.Rollback()
+	for _, model := range ids {
+		if err := write(ctx, tx, model, values[model]); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("cannot commit usage batch")
+	}
+	return nil
+}
+func (s *Store) run(ctx context.Context) {
+	defer close(s.done)
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+	var lastWarning time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.Flush(ctx); err != nil && ctx.Err() == nil && (lastWarning.IsZero() || time.Since(lastWarning) >= 30*time.Second) {
+				slog.Warn("usage_flush_failed", "error", err, "message", "Pending usage retained in memory; retrying every second; crash loss window is growing")
+				lastWarning = time.Now()
+			}
+		}
+	}
+}
+
+// Close must follow HTTP draining. It stops the worker and flushes with the
+// caller's independent shutdown deadline before releasing the connection pool.
+func (s *Store) Close(ctx context.Context) error {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return s.closeErr
+	}
+	s.closed = true
+	s.mu.Unlock()
+	s.cancel()
+	<-s.done
+	s.closeErr = s.Flush(ctx)
+	if s.closeErr != nil {
+		slog.Error("usage_shutdown_flush_failed", "error", s.closeErr, "message", "Unflushed usage may be lost; database totals preserved")
+	}
+	s.closeErr = errors.Join(s.closeErr, s.db.Close())
+	return s.closeErr
 }

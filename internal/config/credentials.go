@@ -131,9 +131,12 @@ func MigrateCredentials(c *Config, path string, db *state.Database) error {
 	}
 	// Include all old OAuth files, even providers currently absent from YAML.
 	var oauthFiles []string
-	files, err := filepath.Glob(filepath.Join(c.State.Directory, "auth", "*.json"))
-	if err != nil {
-		return err
+	var files []string
+	if strings.TrimSpace(c.State.Directory) != "" {
+		files, err = filepath.Glob(filepath.Join(c.State.Directory, "auth", "*.json"))
+		if err != nil {
+			return err
+		}
 	}
 	for _, file := range files {
 		provider := strings.TrimSuffix(filepath.Base(file), ".json")

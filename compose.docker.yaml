@@ -4,5 +4,4 @@ services:
   torii-gateway:
     volumes:
       - "./config:/config:rw,Z"
-      - "torii_gateway_state:/state:Z"
       - "torii_gateway_database:/data:Z"

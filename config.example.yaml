@@ -7,10 +7,11 @@ server:
   # container. Set this to 0.0.0.0:8080 for container access.
   listen: 127.0.0.1:8080
 
-# Usage stays in directory; credentials and public benchmarks use database_path.
+# All durable application state uses database_path. Set directory only when
+# importing legacy usage.json, auth/codex-host-id, OAuth JSON or benchmark JSON.
 state:
-  directory: ./state
   database_path: /data/torii.db
+  # directory: ./state
 
 # Opt-in background benchmark ingestion. Sources and routing weights are
 # independent: leave intelligence disabled to retain existing behavior.

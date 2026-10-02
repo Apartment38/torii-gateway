@@ -169,6 +169,9 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	}
 	defer db.Close()
 	runtime := &handlerRuntime{configPath: *configPath, background: ctx, credentials: db}
+	// Install cleanup before construction so startup/listen failures also release
+	// shared state. Normal shutdown drains HTTP before the final usage flush.
+	defer runtime.closeUsage()
 	if err := runtime.initializeAdminPrompt(output); err != nil {
 		return err
 	}
@@ -178,6 +181,9 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	}
 	listener, err := net.Listen("tcp", cfg.Server.Listen)
 	if err != nil {
+		if owned, ok := handler.(*catalogHandler); ok {
+			owned.Close()
+		}
 		return fmt.Errorf("listen on %q: %w", cfg.Server.Listen, err)
 	}
 	defer listener.Close()
@@ -189,13 +195,12 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	return serveHTTP(ctx, server, listener)
+	serveErr := serveHTTP(ctx, server, listener)
+	return errors.Join(serveErr, runtime.closeUsage())
 }
 
 const bootstrapConfig = `server:
   listen: 0.0.0.0:8080
-state:
-  directory: /state
 providers:
   - id: setup
     type: openai_compatible
@@ -443,6 +448,8 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
+	usageMu       sync.Mutex
+	usageStore    *usage.Store
 	setupDigest   [32]byte
 	setupExpires  time.Time
 	credentials   *state.Database
@@ -524,6 +531,7 @@ type catalogHandler struct {
 	http.Handler
 	refresh      func(context.Context) error
 	intelligence *intelligence.Manager
+	ownedUsage   *usage.Store
 	workerMu     sync.Mutex
 	workerCancel context.CancelFunc
 	workerDone   chan struct{}
@@ -555,6 +563,10 @@ func (r *handlerRuntime) setLoginSuccess(providerID string) {
 }
 
 func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *handlerRuntime) (http.Handler, error) {
+	database := cfg.Credentials
+	if database == nil && runtime != nil {
+		database = runtime.credentials
+	}
 	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
 	if cfg.Server.Authentication != nil {
 		apiKey, err := cfg.Server.Authentication.APIKey.Resolve()
@@ -578,7 +590,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 
 	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
 	for _, providerConfig := range cfg.Providers {
-		upstream, err := buildProviderWithState(providerConfig, cfg.State.Directory, cfg.Credentials)
+		upstream, err := buildProviderWithState(providerConfig, cfg.State.Directory, database)
 		if err != nil {
 			return nil, fmt.Errorf("initialize provider %q: %w", providerConfig.ID, err)
 		}
@@ -713,7 +725,18 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	quotaCache := quota.NewCache(quotaTTL, quotaFetcher)
 	openAI.SetQuotaCache(quotaCache)
-	usageStore, usageErr := usage.Open(cfg.State.Directory)
+	var usageStore *usage.Store
+	var usageErr error
+	if runtime != nil {
+		runtime.usageMu.Lock()
+		if runtime.usageStore == nil {
+			runtime.usageStore, usageErr = usage.Open(database, cfg.State.Directory)
+		}
+		usageStore = runtime.usageStore
+		runtime.usageMu.Unlock()
+	} else {
+		usageStore, usageErr = usage.Open(database, cfg.State.Directory)
+	}
 	if usageErr != nil {
 		if benchmarkManager != nil {
 			benchmarkManager.Close()
@@ -766,7 +789,33 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	mux.Handle("/gateway/v1/", managementBoundary(benchmarkAuth, openAI))
 	mux.Handle("/", web.Handler())
-	return &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}, nil
+	handler := &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}
+	if runtime == nil {
+		handler.ownedUsage = usageStore
+	}
+	return handler, nil
+}
+
+func (r *handlerRuntime) closeUsage() error {
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+	if r.usageStore == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return r.usageStore.Close(ctx)
+}
+
+// Close is used by standalone handler owners; runtime handlers share usage.
+func (h *catalogHandler) Close() error {
+	h.stopIntelligence()
+	if h.ownedUsage == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return h.ownedUsage.Close(ctx)
 }
 
 func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
@@ -977,11 +1026,15 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		return
 	}
 	if providerConfig.Type == "openai-codex" {
+		if r.credentials == nil {
+			writeConfigError(w, http.StatusServiceUnavailable, errors.New("Codex login requires the application database"))
+			return
+		}
 		if !isLoopbackRequest(req) {
 			r.startRemoteCodexLogin(w, req, providerConfig, current.State.Directory)
 			return
 		}
-		hostID, hostErr := provider.LoadOrCreateCodexHostID(current.State.Directory)
+		hostID, hostErr := r.credentials.CodexHostID(req.Context())
 		if hostErr != nil {
 			writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", hostErr))
 			return
@@ -1026,7 +1079,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 }
 
 func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.Request, providerConfig config.ProviderConfig, stateDir string) {
-	hostID, err := provider.LoadOrCreateCodexHostID(stateDir)
+	hostID, err := r.credentials.CodexHostID(req.Context())
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", err))
 		return
@@ -1468,17 +1521,10 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string, da
 		return provider.NewOllama(cfg.ID, cfg.BaseURL, &http.Client{})
 	}
 	if cfg.Type == "nous" {
-		if stateDirectory == "" {
-			return nil, errors.New("state directory is required for nous")
+		if db == nil {
+			return nil, errors.New("application database is required for nous")
 		}
 		var credentialStore state.CredentialStore = db
-		var err error
-		if db == nil {
-			credentialStore, err = state.NewFlatFileCredentialStore(stateDirectory)
-		}
-		if err != nil {
-			return nil, err
-		}
 		loader := func(id string) (provider.NousCredential, error) {
 			credential, loadErr := credentialStore.Load(id)
 			if loadErr != nil {
@@ -1548,17 +1594,10 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string, da
 		if cfg.BaseURL == "" || cfg.BaseURL == "https://example.invalid" {
 			cfg.BaseURL = provider.DefaultCodexBaseURL
 		}
-		if stateDirectory == "" {
-			return nil, errors.New("state directory is required for openai-codex")
+		if db == nil {
+			return nil, errors.New("application database is required for openai-codex")
 		}
 		var credentialStore state.CredentialStore = db
-		var err error
-		if db == nil {
-			credentialStore, err = state.NewFlatFileCredentialStore(stateDirectory)
-		}
-		if err != nil {
-			return nil, err
-		}
 		loader := func(id string) (provider.CodexCredential, error) {
 			credential, err := credentialStore.Load(id)
 			if err != nil {

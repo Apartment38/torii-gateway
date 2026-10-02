@@ -8,7 +8,7 @@ import (
 
 func legacySchema(t *testing.T, d *Database) {
 	t.Helper()
-	_, err := d.db.Exec(`DROP TABLE benchmark_observations; DROP TABLE benchmark_sources; DROP TABLE benchmark_datasets; DROP TABLE benchmark_storage; PRAGMA user_version=1;`)
+	_, err := d.db.Exec(`DROP TABLE usage_aggregates; DROP TABLE application_settings; DROP TABLE benchmark_observations; DROP TABLE benchmark_sources; DROP TABLE benchmark_datasets; DROP TABLE benchmark_storage; PRAGMA user_version=1;`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestBenchmarkSchemaUpgradePreservesEncryptedCredentials(t *testing.T) {
 	}
 	defer upgraded.Close()
 	var version int
-	if err := upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 2 {
+	if err := upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 3 {
 		t.Fatalf("version=%d: %v", version, err)
 	}
 	var after []byte
@@ -106,7 +106,7 @@ func TestBenchmarkSchemaFailureRollsBackAndWrongKeyDoesNotMigrate(t *testing.T) 
 
 func TestFutureSchemaRejectedWithoutModification(t *testing.T) {
 	d, path, key := testDB(t)
-	if _, err := d.db.Exec("PRAGMA user_version=3"); err != nil {
+	if _, err := d.db.Exec("PRAGMA user_version=4"); err != nil {
 		t.Fatal(err)
 	}
 	if future, err := OpenDatabase(path, key); err == nil {
@@ -114,7 +114,7 @@ func TestFutureSchemaRejectedWithoutModification(t *testing.T) {
 		t.Fatal("future schema accepted")
 	}
 	var version int
-	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 3 {
+	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
 		t.Fatal("future schema modified", err)
 	}
 }

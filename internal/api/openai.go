@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -295,7 +296,9 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		data, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<20))
 		if readErr == nil {
 			if input, output, ok := usage.ExtractResponseUsage(data); ok {
-				_ = h.usage.Add(requestedModel, input, output, h.actualCost(requestedModel, input, output))
+				if err := h.usage.Add(requestedModel, input, output, h.actualCost(requestedModel, input, output)); err != nil {
+					slog.Warn("usage_update_rejected", "error", err)
+				}
 			}
 			_, _ = w.Write(data)
 			return

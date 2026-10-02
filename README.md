@@ -111,13 +111,15 @@ podman compose up --build -d
 
 The console is available at <http://127.0.0.1:8080/> and the API at
 <http://127.0.0.1:8080/v1>. The compose service publishes host port `8080` by
-default, stores persistent gateway state in the named
-`torii_gateway_state` volume, and runs as the image's non-root user. Set
+default, stores all durable gateway state in the named
+`torii_gateway_database` volume at `/data`, and runs as the image's non-root user. Set
 `TORII_PORT` in `.env` to publish a different host port or `TORII_IMAGE` to use
 a prebuilt image. Only the master key and published port are needed in `.env`.
 If an old `.env` already contains `TORII_API_KEY`, Compose passes it through for
-one-time import; remove it after migration. SQLite credentials
-persist in the additional `torii_gateway_database` volume at `/data`. Keep the
+one-time import; remove it after migration. The default deployment no longer
+mounts `/state`; existing installations must apply `compose.migrate.yaml` on the
+first upgrade boot to preserve old usage, Codex identity and other legacy files.
+See [runtime state migration](docs/runtime-state.md). Keep the
 same master key on every restart:
 
 ```sh
@@ -144,8 +146,8 @@ writable Podman bind mount with `rw,Z,U`; the container reads
 creates a temporary file beside the configuration before atomically replacing
 it. The `U` option adjusts ownership only within `config/` for the container’s
 non-root user, so it does not change ownership across the repository. The
-named state volume is mounted with `Z,U` as well, so the non-root gateway user
-can create its runtime directories there.
+database volume is owned by the image's non-root user. `/state` is needed only
+temporarily for migration, not for normal operation.
 
 If an existing deployment still has a root-level `config.yaml`, migrate it
 once before restarting Compose:
@@ -199,7 +201,7 @@ go build -o ./bin/torii-auth ./cmd/torii-auth
 ```
 
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
-container to read the configuration and write its state volume. If an upstream
+container to read the configuration and write its database volume. If an upstream
 provider runs on the host, use a host-reachable address such as
 `host.containers.internal` in `config.yaml` rather than `127.0.0.1`.
 
@@ -282,13 +284,26 @@ current process, for example:
 
 If the gateway is managed by systemd, use `systemctl restart
 torii-gateway.service` after installing the new binary. Keep a copy of the
-previous binary if you need to roll back; do not replace `config.yaml` or the
-state directory during an application update.
+previous binary if you need to roll back; do not replace `config.yaml`, the
+database or legacy state during an application update. Before this schema-3
+upgrade, back up the database and matching master key separately. Retain the old
+`state.directory` for the first start; see [migration instructions](docs/runtime-state.md).
 
 ### Podman Compose container
 
 The Compose workflow preserves the bind-mounted `config/` directory and named
-`torii_gateway_state` volume while rebuilding the image:
+`torii_gateway_database` volume while rebuilding the image. For the first upgrade
+from flat-file runtime state, use the migration override **before** starting the
+new image:
+
+```sh
+podman compose down
+podman compose -f compose.yaml -f compose.migrate.yaml up --build -d
+```
+
+Keep the same project name so it mounts the original state volume. Verify imports
+and follow [the migration guide](docs/runtime-state.md) before removing the old
+mount. Subsequent updates use:
 
 ```sh
 git pull --ff-only
@@ -307,10 +322,9 @@ TORII_IMAGE=torii-gateway:release podman compose up --no-build -d
 
 The gateway validates and reloads configuration saved through the web console;
 rebuilding the application image is only required when updating gateway code.
-To roll back, point `TORII_IMAGE` at the previous image tag or check out the
-previous source revision and rebuild it. Do not remove the
-`torii_gateway_state` volume unless you intentionally want to discard
-persistent gateway state.
+Older images reject schema version 3: rollback requires restoring the pre-upgrade
+database and matching master key, not just selecting an older image. Do not remove
+the database volume, or the legacy state volume until migration has been verified.
 
 ## Configuration
 
@@ -324,7 +338,7 @@ server:
   listen: 127.0.0.1:8080
 
 state:
-  directory: ./state
+  database_path: ./data/torii.db
 
 providers:
   - id: local
@@ -348,16 +362,15 @@ See [credential management and migration](docs/credential-storage.md).
 
 ### State
 
-`state.directory` is required and reserves the location for gateway state.
-Use a writable, persistent path such as `/state` for deployments. Version 1
-uses it for aggregate usage (`usage.json`); session affinity is in memory.
-Credentials and benchmark observations use SQLite at `state.database_path`,
+`state.directory` is optional and used only to import legacy state files.
+Credentials, usage aggregates, the Codex host ID and benchmark observations use SQLite at `state.database_path`,
 default `/data/torii.db`, overridden by `TORII_DB_PATH`. Credentials are encrypted;
-public benchmark data is not. The database and master key must both survive
-container updates. Legacy benchmark JSON caches are imported once when intelligence
-is enabled and retained for recovery. Back up the database before upgrading;
-rolling back to a pre-schema-2 binary requires restoring that backup. See
-[benchmark storage and migration](docs/benchmark-intelligence.md#cache-management-and-refresh).
+public usage/identity/benchmark data is not. The database and master key must both
+survive container updates. Usage updates remain in memory during inference and
+flush every second; crashes can lose unflushed counters, especially during write
+failures. Sessions and live quota caches remain memory-only. See
+[runtime state and migration](docs/runtime-state.md) and
+[benchmark storage](docs/benchmark-intelligence.md#cache-management-and-refresh).
 
 ### Providers
 

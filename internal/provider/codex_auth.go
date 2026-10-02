@@ -16,8 +16,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -317,36 +315,6 @@ func CodexOAuthPort(host string) string {
 		}
 	}
 	return "8080"
-}
-
-// LoadOrCreateCodexHostID returns the stable host identifier used by OpenAI's
-// dynamic registration flow. It is stored separately from bearer credentials
-// so a logout does not accidentally create a new agent host.
-func LoadOrCreateCodexHostID(stateDirectory string) (string, error) {
-	if stateDirectory == "" {
-		return "", errors.New("Codex state directory is required")
-	}
-	authDirectory := filepath.Join(stateDirectory, "auth")
-	if err := os.MkdirAll(authDirectory, 0o700); err != nil {
-		return "", fmt.Errorf("create Codex auth directory: %w", err)
-	}
-	path := filepath.Join(authDirectory, "codex-host-id")
-	if data, err := os.ReadFile(path); err == nil {
-		if hostID := strings.TrimSpace(string(data)); hostID != "" {
-			return hostID, nil
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("read Codex host ID: %w", err)
-	}
-	raw := make([]byte, 16)
-	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generate Codex host ID: %w", err)
-	}
-	hostID := fmt.Sprintf("urn:uuid:%08x-%04x-%04x-%04x-%012x", raw[:4], raw[4:6], raw[6:8], raw[8:10], raw[10:])
-	if err := os.WriteFile(path, []byte(hostID+"\n"), 0o600); err != nil {
-		return "", fmt.Errorf("write Codex host ID: %w", err)
-	}
-	return hostID, nil
 }
 
 // PKCELogin starts a browser authorization-code flow and waits for the

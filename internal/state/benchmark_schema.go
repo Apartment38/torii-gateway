@@ -44,9 +44,14 @@ func migrateBenchmarks(db *sql.DB) error {
 // BenchmarkConnection uses a separate pool so WAL credential readers do not
 // queue behind benchmark staging. The caller owns and closes this pool.
 func (d *Database) BenchmarkConnection() (*sql.DB, error) {
+	return d.StateConnection()
+}
+
+// StateConnection opens an independently owned pool for public durable state.
+func (d *Database) StateConnection() (*sql.DB, error) {
 	db, err := sql.Open("sqlite", d.dsn)
 	if err != nil {
-		return nil, errors.New("cannot open benchmark database connection")
+		return nil, errors.New("cannot open state database connection")
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -54,7 +59,7 @@ func (d *Database) BenchmarkConnection() (*sql.DB, error) {
 	defer cancel()
 	if err = db.PingContext(ctx); err != nil {
 		db.Close()
-		return nil, errors.New("cannot connect to benchmark database")
+		return nil, errors.New("cannot connect to state database")
 	}
 	return db, nil
 }

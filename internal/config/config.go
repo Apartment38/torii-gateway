@@ -76,9 +76,9 @@ type ServerAuthenticationConfig struct {
 	APIKey SecretRef `yaml:"api_key"`
 }
 
-// StateConfig identifies the directory used for persistent gateway state.
+// StateConfig identifies the database and optional legacy migration directory.
 type StateConfig struct {
-	Directory    string `yaml:"directory"`
+	Directory    string `yaml:"directory,omitempty"`
 	DatabasePath string `yaml:"database_path,omitempty"`
 }
 
@@ -170,9 +170,6 @@ func (c Config) Validate() error {
 		if err := c.Server.Authentication.APIKey.Validate(); err != nil {
 			return fmt.Errorf("server.authentication.api_key: %w", err)
 		}
-	}
-	if strings.TrimSpace(c.State.Directory) == "" {
-		return errors.New("state.directory is required")
 	}
 	if len(c.Providers) == 0 {
 		return errors.New("at least one provider is required")

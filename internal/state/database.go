@@ -124,7 +124,7 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return nil, err
 	}
-	if version > 2 {
+	if version > 3 {
 		return nil, errors.New("database schema is newer than this gateway; restore a compatible backup or upgrade the gateway")
 	}
 	if version == 0 {
@@ -175,6 +175,11 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 	// Verify the existing master key before applying the benchmark migration.
 	if version < 2 {
 		if err := migrateBenchmarks(db); err != nil {
+			return nil, err
+		}
+	}
+	if version < 3 {
+		if err := migrateRuntimeState(db); err != nil {
 			return nil, err
 		}
 	}

@@ -68,9 +68,9 @@ To validate non-root credentials, benchmark persistence and administrator setup 
 This uses disposable containers, volumes and mounted secrets, cleans them up,
 and never touches an existing gateway deployment. It exercises setup, authenticated
 configuration saves, key regeneration, restart persistence and wrong-key rejection.
-It imports a legacy benchmark fixture with sources disabled (no live benchmark
-calls), checks raw observations/external IDs, and verifies SQLite remains
-authoritative across recreation even if the old JSON is replaced with invalid data.
+The script also requires the host SQLite CLI (`sqlite3`). It imports legacy usage,
+Codex identity and benchmark fixtures with benchmark sources disabled (no live
+calls), then recreates without `/state` and verifies SQLite remains authoritative.
 
 ## Format
 
@@ -129,7 +129,7 @@ same master key on every restart. Never regenerate it for an existing database.
     podman build -t gateway:dev .
 
 The production image targets `linux/amd64`, runs as the non-root
-`nonroot:nonroot` user, stores persistent state under `/state`, and includes a
+`nonroot:nonroot` user, stores durable state under `/data`, and includes a
 healthcheck that invokes `gateway healthcheck` against `/healthz`.
 
 Run:
@@ -137,8 +137,15 @@ Run:
     podman run --rm \
       -p 8080:8080 \
       -v ./config.yaml:/config/config.yaml:ro \
-      -v ./state:/state \
+      --secret torii_db_key,type=mount,target=torii_db_key,uid=65532,gid=65532,mode=0400 \
+      -v torii_gateway_database:/data \
       gateway:dev
+
+Create the native Podman secret first with `podman secret create torii_db_key
+secrets/torii_db_key`. The example's read-only YAML disables console saves; use a
+writable directory mount at `/config` when testing saves. Existing installations
+must temporarily mount their original state directory during migration; see
+[runtime state](runtime-state.md).
 
 ## Health Check
 

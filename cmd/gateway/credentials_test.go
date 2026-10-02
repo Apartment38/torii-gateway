@@ -52,6 +52,7 @@ func credentialRuntime(t *testing.T, setup ...bool) (*handlerRuntime, *state.Dat
 		t.Fatal(err)
 	}
 	r.handler = h
+	t.Cleanup(func() { r.stopIntelligence(); r.closeUsage() })
 	return r, db
 }
 func TestCredentialManagementAuthenticationCRUDAndNoDisclosure(t *testing.T) {

@@ -3,8 +3,8 @@
 Torii encrypts credential payloads with AES-256-GCM before storing them in
 SQLite. SQLite metadata is not encrypted: provider/service, purpose, owner,
 timestamps and opaque IDs are readable. No SQLCipher or external service is
-required. Non-sensitive settings remain in YAML; usage remains in `state.directory`.
-Public benchmark observations and provenance share the database but are not
+required. Non-sensitive configuration remains in YAML. Usage, the stable Codex
+host ID, public benchmark observations and provenance share the database but are not
 encrypted. See [benchmark migration](benchmark-intelligence.md#cache-management-and-refresh).
 
 The default database is `/data/torii.db`. Set `state.database_path` or override
@@ -39,8 +39,8 @@ existing database without an explicit re-encryption procedure.
 ## Containers
 
 The base Podman Compose file mounts persistent `torii_gateway_database` at
-`/data` and `torii_gateway_state` at `/state`; the image runs as UID/GID 65532.
-Podman's `:U` adjusts only the config directory/state volume, not the repository.
+`/data`; the image runs as UID/GID 65532. `/state` is mounted only with the
+migration override. Podman's `:U` adjusts only the config directory, not the repository.
 The database directory in the image is owned by the non-root user.
 
 For a file-backed Compose secret:
@@ -176,10 +176,15 @@ saves that select a different ID rebuild the active handler.
 
 1. Stop the gateway; back up existing YAML/state securely. Those old backups
    contain plaintext and must be protected and eventually retired.
-2. Create and separately back up the master key, add the persistent database
-   volume, and make every legacy env/file credential available on first start.
+2. Reuse the original database and master key if SQLite is already in use;
+   never generate a replacement key for an existing database. Only installations
+   without a database need a new master key. Back it up separately, keep/add the
+   persistent database volume, and make legacy env/file credentials available.
+   Mount the original state volume with `compose.migrate.yaml` **before** the first
+   upgrade boot; the base Compose file no longer mounts it. Keep the same Compose
+   project name and `state.directory: /state` until all imports are verified.
    The base Compose file imports an existing `TORII_API_KEY` from `.env`.
-   For `JEV_API_KEY`, add `-f compose.migrate.yaml`; extend that override for
+   For `JEV_API_KEY`, the migration override passes it through; extend that override for
    other variables referenced in old YAML. Remove the migration override later.
 3. Start the updated gateway. It transactionally imports all configured secret
    fields and `state/auth/*.json`, encrypts and verifies records, then commits.
@@ -214,13 +219,15 @@ online backup use SQLite's backup API or CLI `.backup`, not a live copy of the
 main file alone. Store the master-key backup separately with restricted access.
 Restore the database and original key together before restarting.
 
-The benchmark-storage update upgrades SQLite to schema version 2 after verifying
+The runtime-storage update upgrades SQLite to schema version 3 after verifying
 the original encryption key. Credential ciphertext and encryption key versions
-are unchanged. Make a pre-upgrade backup: older binaries reject version 2 and
+are unchanged. Make a pre-upgrade backup: older binaries reject version 3 and
 cannot be used with the upgraded database. To roll back, stop Torii and restore
 the pre-upgrade database with its matching master key, configuration and legacy
-benchmark JSON. Restoring that backup also rolls credentials/API-key changes back
+state files. Restoring that backup also rolls usage/credentials/API-key changes back
 to their pre-upgrade values. Do not manually lower `PRAGMA user_version`.
+See [runtime state](runtime-state.md) for usage batching, host identity migration
+and the database-only container upgrade sequence.
 
 A lost key is unrecoverable cryptographically. Restore its separate backup.
 If no backup exists, stop the application, preserve the inaccessible database,

@@ -71,6 +71,10 @@ func openCredentials(cfg *config.Config, path string) (*state.Database, error) {
 		}
 	}
 	config.RemoveLegacyAuthentication(cfg, path)
+	if err := db.InitializeCodexHostID(context.Background(), cfg.State.Directory); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
 }
 func (r *handlerRuntime) loadConfig() (*config.Config, error) {
@@ -88,7 +92,7 @@ func (r *handlerRuntime) oauthStore(directory string) (state.CredentialStore, er
 	if r.credentials != nil {
 		return r.credentials, nil
 	}
-	return state.NewFlatFileCredentialStore(directory)
+	return nil, errors.New("OAuth credentials require the application database")
 }
 
 // managementBoundary never accepts NoAuth for administrative operations.

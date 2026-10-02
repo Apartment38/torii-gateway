@@ -18,7 +18,31 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/config"
+	"github.com/Apartment38/torii-gateway/internal/state"
+	"github.com/Apartment38/torii-gateway/internal/usage"
 )
+
+func runtimeStateDB(t *testing.T) *state.Database {
+	t.Helper()
+	db, err := state.OpenDatabase(filepath.Join(t.TempDir(), "torii.db"), bytes.Repeat([]byte{0x24}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.InitializeCodexHostID(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+func legacyTestUsage(t *testing.T) *usage.Store {
+	t.Helper()
+	s, err := usage.Open(runtimeStateDB(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close(context.Background()) })
+	return s
+}
 
 func TestInitializeConfigPathBootstrapsConsoleConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config", "config.yaml")
@@ -73,7 +97,8 @@ func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err := buildHandler(cfg)
+	runtime := &handlerRuntime{usageStore: legacyTestUsage(t)}
+	handler, err := buildHandlerWithRuntime(cfg, "", runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +159,7 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 	}
 	defer db.Close()
 	r.credentials = db
+	defer r.closeUsage()
 	updated := fmt.Sprintf(`{"server":{"listen":"127.0.0.1:8080"},"state":{"directory":%q},"providers":[{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}],"router":{"classifier":{"type":"disabled"}}}`, filepath.Dir(path), server.URL, key)
 	put := httptest.NewRecorder()
 	r.putConfig(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(updated)))
@@ -192,7 +218,7 @@ func TestCodexConnectionTestDoesNotTreatFallbackAsSuccess(t *testing.T) {
 	if err := persistConfig(path, cfg); err != nil {
 		t.Fatal(err)
 	}
-	r := &handlerRuntime{configPath: path}
+	r := &handlerRuntime{configPath: path, credentials: runtimeStateDB(t)}
 	w := httptest.NewRecorder()
 	r.testProvider(w, httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/test", strings.NewReader(`{"provider":{"id":"openai-codex","type":"openai-codex","base_url":"https://chatgpt.com/backend-api/codex"}}`)))
 	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "log in") {
@@ -402,7 +428,7 @@ providers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &handlerRuntime{configPath: configPath}
+	runtime := &handlerRuntime{configPath: configPath, usageStore: legacyTestUsage(t)}
 	handler, err := buildHandlerWithRuntime(cfg, configPath, runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -457,7 +483,18 @@ providers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := &handlerRuntime{configPath: configPath}
+	runtime := &handlerRuntime{configPath: configPath, credentials: runtimeStateDB(t)}
+	defer runtime.closeUsage()
+	if err := config.MigrateCredentials(cfg, configPath, runtime.credentials); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.credentials.AdoptGatewayAPIKey("test-management-key"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.credentials.CreateAdmin("test-admin", "test-admin-password"); err != nil {
+		t.Fatal(err)
+	}
+	config.RemoveLegacyAuthentication(cfg, configPath)
 	handler, err := buildHandlerWithRuntime(cfg, configPath, runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -467,7 +504,7 @@ providers:
 	start := httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/login", strings.NewReader(`{"provider":{"id":"openai-codex","type":"openai-codex","base_url":"https://chatgpt.com/backend-api/codex","discover_models":false,"models":["gpt-5.5"]}}`))
 	start.Host = "gateway.example.test:8398"
 	start.Header.Set("Content-Type", "application/json")
-	start.Header.Set("Authorization", "Bearer test-management-key")
+	start.SetBasicAuth("test-admin", "test-admin-password")
 	started := httptest.NewRecorder()
 	handler.ServeHTTP(started, start)
 	if started.Code != http.StatusAccepted {
@@ -504,7 +541,7 @@ providers:
 		t.Fatalf("replayed import status = %d, body = %s", replayed.Code, replayed.Body.String())
 	}
 	statusRequest := httptest.NewRequest(http.MethodGet, "/gateway/v1/providers/login?provider=openai-codex", nil)
-	statusRequest.Header.Set("Authorization", "Bearer test-management-key")
+	statusRequest.SetBasicAuth("test-admin", "test-admin-password")
 	status := httptest.NewRecorder()
 	handler.ServeHTTP(status, statusRequest)
 	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"status":"success"`) || strings.Contains(status.Body.String(), login.HelperToken) {

@@ -235,7 +235,7 @@ remains intact; a benchmark refresh does not switch an ongoing pinned session.
 ## Cache, management and refresh
 
 Benchmark data lives in the existing `state.database_path` database (default
-`/data/torii.db`), in schema-version-2 `benchmark_sources`, `benchmark_datasets`,
+`/data/torii.db`), in `benchmark_sources`, `benchmark_datasets`,
 `benchmark_observations`, and `benchmark_storage` tables. No new volume or
 configuration setting is needed. Benchmark observations and provenance are public
 data and **not encrypted**; credential payloads remain encrypted with AES-256-GCM.
@@ -267,9 +267,11 @@ the existing inference fallback remains available.
 
 Back up the database with its original master key before upgrading. Schema
 upgrades run only after credential key verification. Older binaries reject
-schema version 2: rollback requires restoring the **pre-upgrade database** and
+the current schema version 3: rollback requires restoring the **pre-upgrade database** and
 its matching master key, plus the retained JSON cache and configuration. See
 [backup instructions](credential-storage.md#backup-recovery-and-security-boundary).
+The default container no longer mounts `/state`: import legacy benchmark JSON
+while the migration override is active. See [runtime migration](runtime-state.md).
 
 Cached data stays in use during refresh. Freshness is recalculated in the
 background at least once a minute (or the shorter configured refresh interval),

@@ -2,6 +2,16 @@
 # Add any other legacy credential environment variables your YAML references.
 services:
   torii-gateway:
+    # Use the same Compose project name as the old deployment so this resolves
+    # its original volume. Start with this override BEFORE the first upgrade boot.
+    working_dir: /state
+    volumes:
+      # Existing files must be readable by UID/GID 65532. Do not change owners
+      # across the repository; this mount preserves the old volume ownership.
+      - "torii_gateway_state:/state:Z"
     environment:
       TORII_API_KEY: ${TORII_API_KEY:-}
       JEV_API_KEY: ${JEV_API_KEY:-}
+
+volumes:
+  torii_gateway_state:

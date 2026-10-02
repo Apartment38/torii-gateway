@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/state"
@@ -62,7 +63,11 @@ func OpenStore(ctx context.Context, database *state.Database, directory string, 
 	if err = s.cleanup(ctx); err != nil {
 		logger.Warn("benchmark_cleanup_failed", "error", err)
 	}
-	if err = s.migrateLegacy(ctx, filepath.Join(directory, "benchmark-intelligence.json")); err != nil {
+	legacyPath := ""
+	if strings.TrimSpace(directory) != "" {
+		legacyPath = filepath.Join(directory, "benchmark-intelligence.json")
+	}
+	if err = s.migrateLegacy(ctx, legacyPath); err != nil {
 		logger.Warn("benchmark_legacy_import_failed", "error", err, "message", "Legacy cache retained; inference fallback remains available")
 	}
 	if err = ctx.Err(); err != nil {

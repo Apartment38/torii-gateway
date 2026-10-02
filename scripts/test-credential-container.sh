@@ -11,7 +11,7 @@ config_volume="$task_id-config"
 state_volume="$task_id-state"
 data_volume="$task_id-data"
 cleanup() {
-  podman rm -f "$container" "$task_id-wrong" >/dev/null 2>&1 || true
+  podman rm -f "$container" "$task_id-wrong" "$task_id-seed" >/dev/null 2>&1 || true
   podman volume rm "$config_volume" "$state_volume" "$data_volume" >/dev/null 2>&1 || true
   podman secret rm "$key_secret" "$wrong_secret" >/dev/null 2>&1 || true
 }
@@ -20,10 +20,18 @@ openssl rand -hex 32 | podman secret create "$key_secret" - >/dev/null
 openssl rand -hex 32 | podman secret create "$wrong_secret" - >/dev/null
 for volume in "$config_volume" "$state_volume" "$data_volume"; do podman volume create "$volume" >/dev/null; done
 origin=""
+migration=true
+# Seed migration inputs before the first boot, just like an existing deployment.
+podman create --name "$task_id-seed" -v "$config_volume:/config:U" -v "$state_volume:/state:U" "$image" healthcheck >/dev/null
+podman cp internal/state/testdata/legacy-state/. "$task_id-seed:/state"
+podman cp scripts/testdata/migration-config.yaml "$task_id-seed:/config/config.yaml"
+podman rm "$task_id-seed" >/dev/null
 launch() {
+  local legacy_mount=()
+  if [[ $migration == true ]]; then legacy_mount=(-v "$state_volume:/state:U"); fi
   podman run -d --name "$container" --secret "$key_secret,type=mount,target=torii_db_key,uid=65532,gid=65532,mode=0400" \
     -e TORII_DB_KEY=invalid-env-ignored -e TORII_CONFIG_BOOTSTRAP=true -p 127.0.0.1::8080 \
-    -v "$config_volume:/config:U" -v "$state_volume:/state:U" -v "$data_volume:/data" \
+    -v "$config_volume:/config:U" "${legacy_mount[@]}" -v "$data_volume:/data" \
     "$image" serve --config /config/config.yaml >/dev/null
   origin="http://$(podman port "$container" 8080/tcp)"
   for attempt in {1..100}; do if curl -fsS "$origin/healthz" >/dev/null 2>&1; then return; fi; sleep .2; done
@@ -40,6 +48,15 @@ request() {
   } | curl --silent --show-error --config -
 }
 launch
+mountpoint=$(podman volume inspect --format '{{.Mountpoint}}' "$data_volume")
+check_runtime_state() {
+  [[ $(podman unshare sqlite3 "$mountpoint/torii.db" 'PRAGMA user_version;') == 3 ]]
+  [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT requests||'|'||input_tokens||'|'||output_tokens||'|'||estimated_cost FROM usage_aggregates WHERE model_id='setup/setup';") == '7|70|35|0.25' ]]
+  [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT value FROM application_settings WHERE key='codex_host_id';") == urn:uuid:12345678-1234-4234-8234-123456789abc ]]
+}
+check_runtime_state
+[[ $(podman cp "$container:/state/usage.json" - | tar -xOf -) == "$(<internal/state/testdata/legacy-state/usage.json)" ]]
+[[ $(podman cp "$container:/state/auth/codex-host-id" - | tar -xOf -) == "$(<internal/state/testdata/legacy-state/auth/codex-host-id)" ]]
 [[ $(podman inspect --format '{{.Config.User}}' "$container") != root ]]
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == true ]]
 [[ $(request GET /gateway/v1/config '' '' true) == 401 ]]
@@ -85,14 +102,22 @@ rotated=$(request POST /gateway/v1/admin/api-key "$basic" | jq -er .api_key)
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
 podman rm -f "$container" >/dev/null
 launch
+check_runtime_state
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == false ]]
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
 benchmark=$(request GET /gateway/v1/intelligence "Bearer $rotated")
 [[ $(printf '%s' "$benchmark" | jq '.sources["smoke-cache"].observations | length') == 1 ]]
 # Prove SQLite is authoritative: a different legacy file must not be re-imported.
+# Remove the migration path before recreating without the old state volume.
+configuration=$(request GET /gateway/v1/config "$basic")
+updated=$(printf '%s' "$configuration" | jq 'del(.state.directory)')
+request PUT /gateway/v1/config "$basic" "$updated" >/dev/null
 podman cp config.example.yaml "$container:/state/benchmark-intelligence.json"
 podman rm -f "$container" >/dev/null
+migration=false
 launch
+check_runtime_state
+[[ $(podman inspect --format '{{range .Mounts}}{{.Destination}} {{end}}' "$container") != *'/state'* ]]
 benchmark=$(request GET /gateway/v1/intelligence "Bearer $rotated")
 [[ $(printf '%s' "$benchmark" | jq -r '.sources["smoke-cache"].observations[0].version') == fixture-v1 ]]
 metadata=$(request GET /gateway/v1/credentials "$basic")
@@ -105,8 +130,8 @@ terminal_key=$(printf '%s\n' "$terminal_result" | tail -n1)
 [[ $(request GET /v1/models "Bearer $terminal_key" '' true) == 200 ]]
 podman rm -f "$container" >/dev/null
 if wrong_output=$(podman run --rm --name "$task_id-wrong" --secret "$wrong_secret,type=mount,target=torii_db_key,uid=65532,gid=65532,mode=0400" \
-  -v "$config_volume:/config:U" -v "$state_volume:/state:U" -v "$data_volume:/data" "$image" serve --config /config/config.yaml 2>&1); then
+  -v "$config_volume:/config:U" -v "$data_volume:/data" "$image" serve --config /config/config.yaml 2>&1); then
   printf '%s\n' 'Wrong master key was accepted.' >&2; exit 1
 fi
 [[ $wrong_output == *'cannot decrypt credential database'* ]]
-printf '%s\n' 'PASS: non-root startup, mounted key, admin setup, encrypted credentials, SQLite benchmark migration/restarts, cache authority, console/CLI rotation, and wrong-key rejection.'
+printf '%s\n' 'PASS: explicit legacy migration, database-only recreation, usage/identity/benchmark persistence, encrypted credentials, admin setup, console/CLI rotation, and wrong-key rejection.'

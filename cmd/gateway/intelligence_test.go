@@ -47,6 +47,7 @@ func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testin
 		t.Fatal(err)
 	}
 	runtime := &handlerRuntime{configPath: path}
+	defer runtime.closeUsage()
 	handler, err := buildHandlerWithRuntime(cfg, path, runtime)
 	if err != nil {
 		t.Fatalf("one missing source key prevented startup: %v", err)
@@ -104,6 +105,7 @@ func TestBenchmarkWorkerOnlyStartsForActiveHandlerAndStopsOnReload(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runtime := &handlerRuntime{configPath: path, background: ctx}
+	defer runtime.closeUsage()
 	handler, err := buildHandlerWithRuntime(cfg, path, runtime)
 	if err != nil {
 		t.Fatal(err)

@@ -875,6 +875,48 @@ test("client key creation prompts for a name and reveals only the new generated 
   assert.deepEqual(app.storageWrites,[]);
 });
 
+test("credential cards group wrapping metadata separately from their delete action", async () => {
+  const longName = "x".repeat(128);
+  const app = consoleFixture(() => response({api_keys:[
+    {id:"first",name:'Hermes <client> "work"',created_at:"2026-10-02T12:34:56.123456789Z"},
+    {id:"second",name:longName,created_at:"2026-10-02T12:34:56Z"},
+  ]}));
+  app.run('adminAuthorization="Basic admin-login"');
+  await app.run("loadCredentialMetadata()");
+  const html = app.run('document.querySelector("#credential-list").innerHTML');
+  assert.equal([...html.matchAll(/class="credential-card"/g)].length,2);
+  assert.match(html, /<div class="credential-card-content"><h3 class="credential-card-name">Hermes &lt;client&gt; &quot;work&quot;<\/h3><p class="credential-card-meta">Created 2026-10-02T12:34:56\.123456789Z<\/p><\/div><button/);
+  assert.ok(html.includes(`<h3 class="credential-card-name">${longName}</h3>`));
+  assert.match(html,/class="button quiet credential-card-delete"[^>]*aria-label="Delete API key Hermes &lt;client&gt; &quot;work&quot;"/);
+  assert.doesNotMatch(html, /class="card"/);
+  assert.equal(app.run('document.querySelector("#credential-list").buttons.length'),2);
+});
+
+test("credential card styles keep long text and actions readable on narrow screens", () => {
+  const styles = readFileSync(new URL("./static/styles.css", import.meta.url),"utf8");
+  const index = readFileSync(new URL("./static/index.html", import.meta.url),"utf8");
+  const rule = selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    const match = styles.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+    assert.ok(match,`missing style for ${selector}`);
+    return match[1];
+  };
+  assert.match(index, /id="credential-list" class="grid credential-list"/);
+  assert.match(rule(".credential-list"), /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(rule(".credential-list"), /margin-bottom:\s*20px/);
+  assert.match(rule(".credential-card"), /display:\s*flex/);
+  assert.match(rule(".credential-card"), /gap:\s*18px/);
+  assert.match(rule(".credential-card"), /padding:\s*18px/);
+  assert.match(rule(".credential-card-content"), /min-width:\s*0/);
+  assert.match(rule(".credential-card-content"), /overflow-wrap:\s*anywhere/);
+  assert.match(rule(".credential-card-name"), /margin:\s*0 0 8px/);
+  assert.match(rule(".credential-card-meta"), /margin:\s*0;/);
+  assert.match(rule(".credential-card-delete"), /flex:\s*0 0 auto/);
+  const mobile = styles.slice(styles.indexOf("@media (max-width: 580px)"));
+  assert.match(mobile, /\.credential-card\s*\{[^}]*flex-direction:\s*column/);
+  assert.match(mobile, /\.credential-card-delete\s*\{[^}]*align-self:\s*flex-start/);
+});
+
 test("deleting a listed client key calls the authenticated API and reloads metadata", async () => {
   let deleted = false;
   const app = consoleFixture((url, options) => {

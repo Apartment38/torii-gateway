@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#071a35" />
     <title>Torii Gateway Console</title>
     <link rel="icon" href="/web/torii-gateway-icon.png" />
-    <link rel="stylesheet" href="/web/styles.css" />
+    <link rel="stylesheet" href="/web/styles.css?v=8" />
   </head>
   <body>
     <dialog id="login-dialog"><form id="login-form"><h2>Sign in to Torii Gateway</h2><p>Use your administrator account. Login stays in memory only.</p><label>Username<input id="login-username" autocomplete="off" required /></label><label>Password<input id="login-password" type="password" autocomplete="off" required /></label><p id="login-error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form></dialog>
@@ -58,7 +58,7 @@
           <section id="credentials" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">Client access</p><h2>Gateway API keys</h2></div><button id="refresh-credentials" class="button secondary" type="button">Refresh keys</button></div>
             <p>Create a named API key for each client connecting to Torii. Keys are displayed only once; deleting a key immediately blocks subsequent requests using it. Provider credentials are configured on the Providers page.</p>
-            <div id="credential-list" class="grid"></div>
+            <div id="credential-list" class="grid credential-list"></div>
             <button id="create-credential" class="button secondary" type="button">Add credential</button>
           </section>
           <section id="server" class="page section-block">
@@ -136,6 +136,6 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=7"></script>
+    <script type="module" src="/web/app.js?v=8"></script>
   </body>
 </html>

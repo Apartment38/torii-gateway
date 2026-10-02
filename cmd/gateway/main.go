@@ -715,6 +715,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	openAI.SetQuotaCache(quotaCache)
 	usageStore, usageErr := usage.Open(cfg.State.Directory)
 	if usageErr != nil {
+		if benchmarkManager != nil {
+			benchmarkManager.Close()
+		}
 		return nil, fmt.Errorf("initialize usage state: %w", usageErr)
 	}
 	openAI.SetUsageStore(usageStore)
@@ -852,6 +855,9 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if err := persistConfig(r.configPath, &next); err != nil {
+		if h, ok := newHandler.(*catalogHandler); ok {
+			h.stopIntelligence()
+		}
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Isolated non-root Podman smoke test. No live configuration or volumes are used.
+# Isolated non-root Podman credential/benchmark smoke test. No live volumes used.
 # Usage: bash scripts/test-credential-container.sh [IMAGE]
 set -euo pipefail
 image=${1:-localhost/torii-credential-validation:local}
@@ -56,6 +56,18 @@ credential=$(request POST /gateway/v1/credentials "$basic" '{"service":"setup","
 configuration=$(request GET /gateway/v1/config "$basic")
 updated=$(printf '%s' "$configuration" | jq --arg id "$credential" '.providers[0].bearer_token={credential:$id}')
 request PUT /gateway/v1/config "$basic" "$updated" >/dev/null
+# Import a published legacy fixture without any external benchmark HTTP calls.
+podman cp internal/intelligence/testdata/legacy-cache.json "$container:/state/benchmark-intelligence.json"
+configuration=$(request GET /gateway/v1/config "$basic")
+updated=$(printf '%s' "$configuration" | jq '.intelligence={enabled:true,sources:[{id:"smoke-cache",type:"benchlm",enabled:false}]}')
+request PUT /gateway/v1/config "$basic" "$updated" >/dev/null
+benchmark=$(request GET /gateway/v1/intelligence "Bearer $api_key")
+[[ $(printf '%s' "$benchmark" | jq '.sources["smoke-cache"].observations | length') == 1 ]]
+[[ $(printf '%s' "$benchmark" | jq -r '.sources["smoke-cache"].observations[0].external_model_id') == synthetic-benchmark-model-42 ]]
+# Disabled sources remain inspectable but must not contribute routing signals.
+[[ $(printf '%s' "$benchmark" | jq -r '.sources["smoke-cache"].enabled') == false ]]
+[[ $(request GET /gateway/v1/intelligence/unmatched "Bearer $api_key" | jq 'length') == 0 ]]
+[[ $(podman cp "$container:/state/benchmark-intelligence.json" - | tar -xOf -) == "$(<internal/intelligence/testdata/legacy-cache.json)" ]]
 configuration=$(request GET /gateway/v1/config "$basic")
 [[ $configuration != *synthetic-provider-secret-42* && $configuration != *"$api_key"* && $configuration != *"$password"* ]]
 saved_yaml=$(podman cp "$container:/config/config.yaml" - | tar -xOf -)
@@ -75,6 +87,14 @@ podman rm -f "$container" >/dev/null
 launch
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == false ]]
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
+benchmark=$(request GET /gateway/v1/intelligence "Bearer $rotated")
+[[ $(printf '%s' "$benchmark" | jq '.sources["smoke-cache"].observations | length') == 1 ]]
+# Prove SQLite is authoritative: a different legacy file must not be re-imported.
+podman cp config.example.yaml "$container:/state/benchmark-intelligence.json"
+podman rm -f "$container" >/dev/null
+launch
+benchmark=$(request GET /gateway/v1/intelligence "Bearer $rotated")
+[[ $(printf '%s' "$benchmark" | jq -r '.sources["smoke-cache"].observations[0].version') == fixture-v1 ]]
 metadata=$(request GET /gateway/v1/credentials "$basic")
 [[ $metadata == *"$credential"* && $metadata != *synthetic-provider-secret-42* && $metadata != *"$rotated"* ]]
 terminal_result=$(printf '%s\n' "$password" | podman exec -i "$container" /gateway admin api-key --config /config/config.yaml)
@@ -89,4 +109,4 @@ if wrong_output=$(podman run --rm --name "$task_id-wrong" --secret "$wrong_secre
   printf '%s\n' 'Wrong master key was accepted.' >&2; exit 1
 fi
 [[ $wrong_output == *'cannot decrypt credential database'* ]]
-printf '%s\n' 'PASS: non-root startup, secret-file precedence, first-run admin setup, authenticated save, encrypted storage, console/CLI rotation, restart persistence, and wrong-key rejection.'
+printf '%s\n' 'PASS: non-root startup, mounted key, admin setup, encrypted credentials, SQLite benchmark migration/restarts, cache authority, console/CLI rotation, and wrong-key rejection.'

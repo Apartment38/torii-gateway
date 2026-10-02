@@ -1,7 +1,9 @@
 package intelligence
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/catalog"
+	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
 type fakeSource struct {
@@ -36,10 +39,17 @@ func observation(source, benchmark, category, model string, score float64, at ti
 func options() Options { return Options{Logger: slog.New(slog.NewJSONHandler(io.Discard, nil))} }
 func manager(t *testing.T, sources []Source, opts Options) (*Manager, *Store) {
 	t.Helper()
-	store, err := OpenStore(t.TempDir())
+	dir := t.TempDir()
+	db, err := state.OpenDatabase(filepath.Join(dir, "torii.db"), bytes.Repeat([]byte{1}, 32))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { db.Close() })
+	store, err := OpenStore(context.Background(), db, dir, opts.Defaults().Logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
 	m, err := NewManager(store, sources, modelCatalog(), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +200,12 @@ func TestRefreshPartialFailureRetainsGoodCacheAndInspection(t *testing.T) {
 	} else {
 		near(t, model.Scores[Coding], .9)
 	}
-	info, err := os.Stat(store.path)
+	var sequence int
+	var name, path string
+	if err := store.db.QueryRow("PRAGMA database_list").Scan(&sequence, &name, &path); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatal("cache permissions are not owner-only")
 	}
@@ -267,7 +282,8 @@ func TestCacheAtomicFailureDisabledSourcesStalenessAndCorruption(t *testing.T) {
 	if err := m.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(store.path)
+	beforeSnapshot, err := store.Load(context.Background())
+	before, _ := json.Marshal(beforeSnapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,19 +291,23 @@ func TestCacheAtomicFailureDisabledSourcesStalenessAndCorruption(t *testing.T) {
 	state := bad.Sources["source"]
 	state.Metadata = map[string]any{"unserializable": func() {}}
 	bad.Sources["source"] = state
-	if err := store.Save(bad); err == nil {
+	if err := store.Save(context.Background(), bad); err == nil {
 		t.Fatal("invalid replacement accepted")
 	}
-	after, _ := os.ReadFile(store.path)
+	afterSnapshot, _ := store.Load(context.Background())
+	after, _ := json.Marshal(afterSnapshot)
 	if string(before) != string(after) {
 		t.Fatal("failed atomic save replaced good cache")
 	}
-	oldPath := store.path
-	store.path = filepath.Join(t.TempDir(), "missing", "cache.json")
+	if _, err := store.db.Exec(`CREATE TRIGGER reject_publication BEFORE UPDATE ON benchmark_storage BEGIN SELECT RAISE(ABORT,'test failure'); END`); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.Refresh(context.Background()); err == nil {
 		t.Fatal("failed persistence unreported")
 	}
-	store.path = oldPath
+	if _, err := store.db.Exec("DROP TRIGGER reject_publication"); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := m.Lookup("local/model-a"); !ok {
 		t.Fatal("failed persistence destroyed memory snapshot")
 	}
@@ -307,11 +327,11 @@ func TestCacheAtomicFailureDisabledSourcesStalenessAndCorruption(t *testing.T) {
 	if _, ok := m.Lookup("local/model-a"); ok {
 		t.Fatal("stale cache consumed by routing")
 	}
-	if err := os.WriteFile(store.path, []byte(`{"version":999}`), 0o600); err != nil {
+	if _, err := store.db.Exec("UPDATE benchmark_observations SET metadata='invalid json'"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Load(); err == nil {
-		t.Fatal("future schema accepted")
+	if _, err := store.Load(context.Background()); err == nil {
+		t.Fatal("corrupt database cache accepted")
 	}
 	if _, err := NewManager(store, nil, modelCatalog(), options()); err != nil {
 		t.Fatal("corrupt cache prevented startup")

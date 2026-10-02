@@ -350,10 +350,14 @@ See [credential management and migration](docs/credential-storage.md).
 
 `state.directory` is required and reserves the location for gateway state.
 Use a writable, persistent path such as `/state` for deployments. Version 1
-uses it for aggregate usage and benchmark caches; session affinity is in memory.
-Credentials are stored in encrypted SQLite at `state.database_path`, default
-`/data/torii.db`, overridden by `TORII_DB_PATH`. The database and master key must
-both survive container updates.
+uses it for aggregate usage (`usage.json`); session affinity is in memory.
+Credentials and benchmark observations use SQLite at `state.database_path`,
+default `/data/torii.db`, overridden by `TORII_DB_PATH`. Credentials are encrypted;
+public benchmark data is not. The database and master key must both survive
+container updates. Legacy benchmark JSON caches are imported once when intelligence
+is enabled and retained for recovery. Back up the database before upgrading;
+rolling back to a pre-schema-2 binary requires restoring that backup. See
+[benchmark storage and migration](docs/benchmark-intelligence.md#cache-management-and-refresh).
 
 ### Providers
 

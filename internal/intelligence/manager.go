@@ -49,7 +49,7 @@ func (o Options) Defaults() Options {
 type Manager struct {
 	mu             sync.RWMutex
 	refreshMu      sync.Mutex
-	store          *Store
+	store          SnapshotStore
 	sources        []Source
 	options        Options
 	models         []catalog.Descriptor
@@ -60,7 +60,7 @@ type Manager struct {
 	closeLifecycle context.CancelFunc
 }
 
-func NewManager(store *Store, sources []Source, models []catalog.Descriptor, options Options) (*Manager, error) {
+func NewManager(store SnapshotStore, sources []Source, models []catalog.Descriptor, options Options) (*Manager, error) {
 	options = options.Defaults()
 	seen := map[string]bool{}
 	for _, source := range sources {
@@ -69,7 +69,7 @@ func NewManager(store *Store, sources []Source, models []catalog.Descriptor, opt
 		}
 		seen[source.ID()] = true
 	}
-	snapshot, err := store.Load()
+	snapshot, err := store.Load(context.Background())
 	if err != nil {
 		options.Logger.Warn("benchmark_cache_load_failed", "error", err)
 		// A corrupt cache never prevents inference startup. It is not overwritten
@@ -166,9 +166,9 @@ func (m *Manager) Refresh(ctx context.Context) error {
 		all = append(all, <-updates)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].id < all[j].id })
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
 	next := cloneJSON(m.snapshot)
+	m.mu.RUnlock()
 	var failures []error
 	now := m.now().UTC()
 	for _, update := range all {
@@ -201,26 +201,31 @@ func (m *Manager) Refresh(ctx context.Context) error {
 	}
 	next.UpdatedAt = now
 	// Persist before publication. A failed write cannot replace the good memory
-	// snapshot or the good file. Derived scores are rebuilt from raw data.
+	// snapshot or published dataset. No routing read lock is held during I/O.
 	next.Models, next.Unmatched = nil, nil
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if err := m.store.Save(next); err != nil {
+	if err := m.store.Save(ctx, next); err != nil {
 		m.options.Logger.Error("benchmark_cache_save_failed", "error", err)
 		return err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.snapshot = next
 	m.rebuildLocked()
 	return errors.Join(failures...)
 }
 
 // Close cancels all in-flight refreshes (including manual API refreshes) before
-// another handler can become the writer for the same persistent state file.
+// another handler becomes the writer, then releases its benchmark connection.
 func (m *Manager) Close() {
 	m.closeLifecycle()
 	m.refreshMu.Lock()
-	m.refreshMu.Unlock()
+	defer m.refreshMu.Unlock()
+	if err := m.store.Close(); err != nil {
+		m.options.Logger.Warn("benchmark_storage_close_failed", "message", "Could not close benchmark connection")
+	}
 }
 
 // ReloadCache picks up the prior active handler's final successful update when
@@ -228,7 +233,7 @@ func (m *Manager) Close() {
 func (m *Manager) ReloadCache() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	loaded, err := m.store.Load()
+	loaded, err := m.store.Load(context.Background())
 	if err != nil {
 		return
 	}

@@ -14,12 +14,21 @@ import (
 
 	"github.com/Apartment38/torii-gateway/internal/config"
 	"github.com/Apartment38/torii-gateway/internal/intelligence"
+	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
 func benchmarkConfig(t *testing.T, url string) *config.Config {
 	t.Helper()
+	db, err := state.OpenDatabase(filepath.Join(t.TempDir(), "torii.db"), bytes.Repeat([]byte{0x24}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.AdoptGatewayAPIKey("test-gateway-key"); err != nil {
+		t.Fatal(err)
+	}
 	discover := false
-	return &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080", Authentication: &config.ServerAuthenticationConfig{APIKey: config.SecretRef{Value: "test-gateway-key"}}}, State: config.StateConfig{Directory: t.TempDir()}, Providers: []config.ProviderConfig{{ID: "local", Type: "openai_compatible", BaseURL: "https://example.test", DiscoverModels: &discover, Models: []string{"model"}}}, Intelligence: config.IntelligenceConfig{Enabled: true, Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "bench", Type: "benchlm", Enabled: true, URL: url}}}}}
+	return &config.Config{Credentials: db, Server: config.ServerConfig{Listen: "127.0.0.1:8080", Authentication: &config.ServerAuthenticationConfig{APIKey: config.SecretRef{Value: "test-gateway-key"}}}, State: config.StateConfig{Directory: t.TempDir()}, Providers: []config.ProviderConfig{{ID: "local", Type: "openai_compatible", BaseURL: "https://example.test", DiscoverModels: &discover, Models: []string{"model"}}}, Intelligence: config.IntelligenceConfig{Enabled: true, Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "bench", Type: "benchlm", Enabled: true, URL: url}}}}}
 }
 
 func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testing.T) {
@@ -43,6 +52,7 @@ func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testin
 		t.Fatalf("one missing source key prevented startup: %v", err)
 	}
 	runtime.swap(handler)
+	defer runtime.stopIntelligence()
 	if calls.Load() != 0 {
 		t.Fatal("handler construction fetched benchmarks")
 	}

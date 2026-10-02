@@ -3,8 +3,9 @@
 Torii encrypts credential payloads with AES-256-GCM before storing them in
 SQLite. SQLite metadata is not encrypted: provider/service, purpose, owner,
 timestamps and opaque IDs are readable. No SQLCipher or external service is
-required. Non-sensitive settings remain in YAML; usage and benchmark caches
-remain in `state.directory`.
+required. Non-sensitive settings remain in YAML; usage remains in `state.directory`.
+Public benchmark observations and provenance share the database but are not
+encrypted. See [benchmark migration](benchmark-intelligence.md#cache-management-and-refresh).
 
 The default database is `/data/torii.db`. Set `state.database_path` or override
 it with `TORII_DB_PATH` (use `./state/torii.db` for a local build). Database-path
@@ -212,6 +213,14 @@ with any `torii.db-wal`/`torii.db-shm` files, plus non-sensitive YAML/state. For
 online backup use SQLite's backup API or CLI `.backup`, not a live copy of the
 main file alone. Store the master-key backup separately with restricted access.
 Restore the database and original key together before restarting.
+
+The benchmark-storage update upgrades SQLite to schema version 2 after verifying
+the original encryption key. Credential ciphertext and encryption key versions
+are unchanged. Make a pre-upgrade backup: older binaries reject version 2 and
+cannot be used with the upgraded database. To roll back, stop Torii and restore
+the pre-upgrade database with its matching master key, configuration and legacy
+benchmark JSON. Restoring that backup also rolls credentials/API-key changes back
+to their pre-upgrade values. Do not manually lower `PRAGMA user_version`.
 
 A lost key is unrecoverable cryptographically. Restore its separate backup.
 If no backup exists, stop the application, preserve the inaccessible database,

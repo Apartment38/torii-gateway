@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,6 +20,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/intelligence"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"github.com/Apartment38/torii-gateway/internal/router"
+	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
 type codingClassifier struct{}
@@ -72,14 +75,22 @@ func TestBenchmarkIngestionChangesSmartRoutingWithoutFetchingOnInference(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := intelligence.OpenStore(t.TempDir())
+	dir := t.TempDir()
+	database, err := state.OpenDatabase(filepath.Join(dir, "torii.db"), bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store, err := intelligence.OpenStore(context.Background(), database, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	manager, err := intelligence.NewManager(store, []intelligence.Source{source}, handler.CatalogModels(), intelligence.Options{Logger: slog.New(slog.NewJSONHandler(io.Discard, nil))})
 	if err != nil {
+		store.Close()
 		t.Fatal(err)
 	}
+	defer manager.Close()
 	handler.SetIntelligence(manager)
 	check := func(session, model, want string) {
 		t.Helper()
@@ -120,5 +131,25 @@ func TestBenchmarkIngestionChangesSmartRoutingWithoutFetchingOnInference(t *test
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/gateway/v1/intelligence/refresh", nil))
 	if w.Code != 200 || benchmarkFetches.Load() != 2 {
 		t.Fatal("manual refresh API did not retrieve data")
+	}
+	// Closing SQLite must not affect inference: routing uses the in-memory view.
+	manager.Close()
+	policy.Intelligence = router.IntelligenceWeights{TaskWeights: map[string]map[string]float64{"coding": {intelligence.Coding: 1}}}
+	handler.SetSelectionPolicy(policy)
+	check("closed-store", "smart", "model-b")
+	store, err = intelligence.OpenStore(context.Background(), database, dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := intelligence.NewManager(store, []intelligence.Source{source}, handler.CatalogModels(), intelligence.Options{Logger: slog.New(slog.NewJSONHandler(io.Discard, nil))})
+	if err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	handler.SetIntelligence(restarted)
+	check("restarted-cache", "smart", "model-b")
+	if benchmarkFetches.Load() != 2 {
+		t.Fatal("startup or inference fetched benchmarks")
 	}
 }

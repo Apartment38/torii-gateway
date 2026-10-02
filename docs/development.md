@@ -60,7 +60,7 @@ Run browser-console tests and verify the generated script (Node.js 22.13+):
     node --test internal/web/app_test.mjs
     node scripts/build-console.mjs --check
 
-To validate non-root credential storage and administrator setup in Podman:
+To validate non-root credentials, benchmark persistence and administrator setup in Podman:
 
     podman build --format docker -t localhost/torii-credential-validation:local .
     bash scripts/test-credential-container.sh
@@ -68,6 +68,9 @@ To validate non-root credential storage and administrator setup in Podman:
 This uses disposable containers, volumes and mounted secrets, cleans them up,
 and never touches an existing gateway deployment. It exercises setup, authenticated
 configuration saves, key regeneration, restart persistence and wrong-key rejection.
+It imports a legacy benchmark fixture with sources disabled (no live benchmark
+calls), checks raw observations/external IDs, and verifies SQLite remains
+authoritative across recreation even if the old JSON is replaced with invalid data.
 
 ## Format
 

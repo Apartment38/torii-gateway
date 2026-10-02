@@ -7,7 +7,7 @@ server:
   # container. Set this to 0.0.0.0:8080 for container access.
   listen: 127.0.0.1:8080
 
-# Usage and benchmark caches stay here; encrypted credentials use database_path.
+# Usage stays in directory; credentials and public benchmarks use database_path.
 state:
   directory: ./state
   database_path: /data/torii.db

@@ -260,15 +260,22 @@ multi-turn compatibility coverage remains part of the release audit.
 
 ## Persistent State
 
-The gateway persists aggregate usage and benchmark caches beneath
-`state.directory`; encrypted credentials use `state.database_path`.
+The gateway persists aggregate usage beneath `state.directory`. Credentials and
+public benchmark observations use `state.database_path`; only credential payloads
+are encrypted. Benchmark persistence owns a separate SQLite pool so credential
+reads are not queued behind benchmark staging. Routing uses an in-memory derived
+view and never reads SQLite during inference.
 
-**Version 1 target:** persistent state lives beneath the configured state
-directory (normally `/state`). Expected state includes:
+Persistent state normally includes:
 
     /data/torii.db
     /state/usage.json
-    /state/benchmark-intelligence.json
+
+Legacy `/state/benchmark-intelligence.json` is a one-time migration input, retained
+unchanged after import. SQLite schema version 2 contains dedicated source/status,
+dataset generation, observation, and import metadata tables. Only each source's
+latest published generation is retained. Staged generations become visible through
+one short pointer-publication transaction; failed imports preserve active data.
 
 Configuration is not stored in the state directory.
 

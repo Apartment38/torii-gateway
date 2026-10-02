@@ -22,10 +22,12 @@ import (
 
 const Owner = "default"
 
-// Database stores only encrypted payloads; metadata is deliberately non-secret.
+// Database encrypts credential payloads. Benchmark tables contain public data.
 type Database struct {
-	db   *sql.DB
-	aead cipher.AEAD
+	db            *sql.DB
+	aead          cipher.AEAD
+	dsn           string
+	benchmarkGate chan struct{}
 }
 type SecretMetadata struct {
 	ID         string `json:"id"`
@@ -100,13 +102,13 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 	if err != nil {
 		return nil, errors.New("invalid database path")
 	}
-	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "_pragma=busy_timeout%285000%29&_pragma=foreign_keys%281%29"}
+	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "_pragma=busy_timeout%285000%29&_pragma=foreign_keys%281%29&_pragma=synchronous%28FULL%29"}
 	db, err := sql.Open("sqlite", dsn.String())
 	if err != nil {
 		return nil, errors.New("cannot open credential database")
 	}
 	db.SetMaxOpenConns(1)
-	d := &Database{db: db, aead: aead}
+	d := &Database{db: db, aead: aead, dsn: dsn.String(), benchmarkGate: make(chan struct{}, 1)}
 	ok := false
 	defer func() {
 		if !ok {
@@ -122,8 +124,8 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return nil, err
 	}
-	if version > 1 {
-		return nil, errors.New("credential database schema is newer than this gateway")
+	if version > 2 {
+		return nil, errors.New("database schema is newer than this gateway; restore a compatible backup or upgrade the gateway")
 	}
 	if version == 0 {
 		tx, err := db.Begin()
@@ -169,6 +171,12 @@ func OpenDatabase(path string, key []byte) (*Database, error) {
 	rows.Close()
 	if err != nil {
 		return nil, err
+	}
+	// Verify the existing master key before applying the benchmark migration.
+	if version < 2 {
+		if err := migrateBenchmarks(db); err != nil {
+			return nil, err
+		}
 	}
 	for _, p := range []string{path + "-wal", path + "-shm"} {
 		if err := os.Chmod(p, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {

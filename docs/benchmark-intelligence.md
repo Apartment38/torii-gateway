@@ -10,8 +10,9 @@ when no usable evidence exists.
 
 `internal/intelligence` contains a registered `Source` interface, independent
 adapters, a shared identity resolver, a pure aggregation function, and a manager
-with atomic flat-file persistence. It reuses `catalog.Descriptor` for known
-models and `state.directory` for storage. `config.SecretRef` remains the only
+with a context-aware `SnapshotStore` interface backed by the existing application
+SQLite database. It reuses `catalog.Descriptor` for known models and
+`state.database_path` for storage. `config.SecretRef` remains the only
 credential configuration type. `internal/router` owns ranking weights and policy;
 the benchmark subsystem does not choose models or change capability flags.
 
@@ -233,19 +234,50 @@ remains intact; a benchmark refresh does not switch an ongoing pinned session.
 
 ## Cache, management and refresh
 
-The cache is `state.directory/benchmark-intelligence.json`, schema version 1,
-mode `0600`. It is independent of credentials/usage files, so no migration of
-existing state is required. Old/unsupported/corrupt cache files are logged and
-ignored at startup. Replacements use temp-file write, sync and atomic rename;
-failed persistence leaves both the previous file and published routing snapshot
-intact. The manager loads cached data before the background startup refresh.
+Benchmark data lives in the existing `state.database_path` database (default
+`/data/torii.db`), in schema-version-2 `benchmark_sources`, `benchmark_datasets`,
+`benchmark_observations`, and `benchmark_storage` tables. No new volume or
+configuration setting is needed. Benchmark observations and provenance are public
+data and **not encrypted**; credential payloads remain encrypted with AES-256-GCM.
+Only the latest published dataset per source is retained, including duplicate,
+unnormalized and unmatched observations. Aliases, aggregate scores and freshness
+are recalculated in memory, not stored as another authoritative dataset.
+
+The benchmark store owns a separate connection pool using WAL, foreign keys and
+a 5-second busy timeout. It validates and serializes before writing, stages at
+most 250 observations per transaction, verifies staged datasets, then atomically
+publishes all source pointers/statuses and the update timestamp. Unchanged
+evidence is reused. Failed staging/publication leaves previous datasets and the
+routing snapshot intact. Abandoned and superseded datasets are cleaned in bounded
+batches at open/refresh. Credential reads can continue while benchmark writes
+are active; competing writes may wait for SQLite's write lock. Pools are closed
+when handlers are replaced or discarded. The logical cache remains limited to
+128 MiB, in addition to the existing upstream response and row limits.
+
+On first startup **with intelligence enabled**, Torii imports a valid legacy
+`state.directory/benchmark-intelligence.json` into an empty benchmark store.
+The import is verified and its completion marker is committed with publication.
+The JSON file is left unchanged for recovery; after verifying the management
+API, remove it manually if desired. Established SQLite data always wins, even
+if an old JSON file remains. Missing files mean an empty initial cache; invalid,
+unsupported or oversized files produce a warning and keep the import eligible
+for retry. Fix the file and restart before a successful refresh establishes
+SQLite as authoritative. Corrupt cached observations are logged and ignored so
+the existing inference fallback remains available.
+
+Back up the database with its original master key before upgrading. Schema
+upgrades run only after credential key verification. Older binaries reject
+schema version 2: rollback requires restoring the **pre-upgrade database** and
+its matching master key, plus the retained JSON cache and configuration. See
+[backup instructions](credential-storage.md#backup-recovery-and-security-boundary).
 
 Cached data stays in use during refresh. Freshness is recalculated in the
 background at least once a minute (or the shorter configured refresh interval),
 and cache-only routing lookups reject expired derived views immediately.
 Stopped/replaced handlers cancel their workers and manual refreshes before a
-new handler writes the same cache. Do not run multiple gateway processes
-against the same state directory; cross-process locking is not provided.
+new handler writes the same database. One persistent database volume belongs
+to one gateway process: do not run replicas against the same database. Staging
+coordination is process-local, not a multi-process benchmark writer protocol.
 
 Management routes use the gateway's existing API authentication:
 
@@ -267,7 +299,7 @@ podman compose exec torii-gateway /gateway benchmarks refresh --config /config/c
 ./gateway benchmarks refresh --config ./config.yaml --url https://gateway.example.com
 ```
 
-The CLI uses the configured server API key and calls the running gateway rather
+The CLI loads the inference API key from the credential database and calls the running gateway rather
 than creating a competing cache writer. A partial-source failure returns an
 inspectable summary; check `partial_failure`, not only the command's exit code.
 Disabled intelligence returns HTTP 503. New APIs do not add authentication to
@@ -294,7 +326,7 @@ bodies and credentials. Upstream HTTP status and safe parsing stages are exposed
 - Row-count checking cannot guarantee snapshot isolation if an upstream edits
   values without changing the row count. Prefer versioned/pinned published datasets.
 - The cache keeps the current successful source import and all its observations,
-  not an unbounded history of every periodic response. File size is capped at
+  not an unbounded history of every periodic response. Logical snapshot size is capped at
   128 MiB; oversized replacements are rejected without deleting good data.
 - Unresolved variants and aliases require explicit operator mapping; the API
   reports the actual unmatched list for that installation. No model aliases were

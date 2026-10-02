@@ -62,7 +62,7 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 	if !cfg.Intelligence.Enabled {
 		return nil, nil
 	}
-	store, err := intelligence.OpenStore(cfg.State.Directory)
+	store, err := intelligence.OpenStore(context.Background(), cfg.Credentials, cfg.State.Directory, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,11 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 		}
 		sources = append(sources, source)
 	}
-	return intelligence.NewManager(store, sources, models, cfg.Intelligence.Options())
+	manager, err := intelligence.NewManager(store, sources, models, cfg.Intelligence.Options())
+	if err != nil {
+		store.Close()
+	}
+	return manager, err
 }
 
 // The CLI refreshes the running gateway rather than running a second writer

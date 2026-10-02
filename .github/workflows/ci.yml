@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
@@ -22,6 +23,18 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Verify console and release checks
+        run: |
+          node scripts/build-console.mjs --check
+          node internal/web/app_test.mjs
+          node scripts/check-release.test.mjs
 
       - name: Check formatting
         run: |
@@ -50,9 +63,18 @@ jobs:
         run: go build ./...
 
       - name: Build production container
-        run: docker build --platform linux/amd64 -t torii-gateway:ci .
+        run: docker build --platform linux/amd64 --build-arg VERSION=ci -t torii-gateway:ci .
 
       - name: Check container metadata
         run: |
           test "$(docker image inspect torii-gateway:ci --format '{{.Architecture}}')" = amd64
           test "$(docker image inspect torii-gateway:ci --format '{{.Config.User}}')" = 'nonroot:nonroot'
+          docker run --rm torii-gateway:ci version | tee /tmp/torii-version.txt
+          test "$(head -n1 /tmp/torii-version.txt)" = 'Torii Gateway ci'
+
+      - name: Validate non-root container persistence and recovery
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman sqlite3 jq openssl
+          docker save torii-gateway:ci | podman load
+          bash scripts/test-credential-container.sh docker.io/library/torii-gateway:ci

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/buildinfo"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 )
 
@@ -51,6 +52,10 @@ func main() {
 }
 
 func run(ctx context.Context, args []string) error {
+	if len(args) == 1 && args[0] == "version" {
+		fmt.Printf("Torii Auth %s\nCommit: %s\nBuilt: %s\n", buildinfo.Version, buildinfo.Commit, buildinfo.BuildDate)
+		return nil
+	}
 	flags := flag.NewFlagSet("torii-auth", flag.ContinueOnError)
 	sessionURL := flags.String("session-url", "", "remote Torii login session URL")
 	pairingToken := flags.String("pairing-token", "", "one-time remote Torii pairing token")

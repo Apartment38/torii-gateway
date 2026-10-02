@@ -2,72 +2,163 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      built: ${{ steps.release.outputs.built }}
+      image: ${{ steps.release.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate version and compatibility notes
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-release.mjs "$RELEASE_TAG"
+          printf 'version=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'built=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          printf 'image=ghcr.io/%s\n' "${RELEASE_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
   binaries:
+    needs: [verify, metadata]
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
+          - {goos: linux, goarch: amd64}
+          - {goos: linux, goarch: arm64}
+          - {goos: darwin, goarch: amd64}
+          - {goos: darwin, goarch: arm64}
+          - {goos: windows, goarch: amd64}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Build helper
+      - name: Build gateway and login helper
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          BUILD_DATE: ${{ needs.metadata.outputs.built }}
         run: |
           suffix=""
-          if [ "$GOOS" = "windows" ]; then suffix=".exe"; fi
+          if [ "$GOOS" = windows ]; then suffix=".exe"; fi
           mkdir -p dist
-          CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "dist/torii-auth-${GOOS}-${GOARCH}${suffix}" ./cmd/torii-auth
-
-      - name: Upload helper artifact
-        uses: actions/upload-artifact@v7
+          flags="-s -w -X github.com/Apartment38/torii-gateway/internal/buildinfo.Version=$VERSION -X github.com/Apartment38/torii-gateway/internal/buildinfo.Commit=$COMMIT -X github.com/Apartment38/torii-gateway/internal/buildinfo.BuildDate=$BUILD_DATE"
+          CGO_ENABLED=0 go build -trimpath -ldflags="$flags" -o "dist/torii-gateway-${GOOS}-${GOARCH}$suffix" ./cmd/gateway
+          CGO_ENABLED=0 go build -trimpath -ldflags="$flags" -o "dist/torii-auth-${GOOS}-${GOARCH}$suffix" ./cmd/torii-auth
+      - uses: actions/upload-artifact@v7
         with:
-          name: torii-auth-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/torii-auth-*
+          name: torii-binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/torii-*
 
-  publish:
-    needs: binaries
+  containers:
+    needs: [verify, metadata]
     runs-on: ubuntu-latest
     steps:
-      - name: Download helper artifacts
-        uses: actions/download-artifact@v7
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Build release container archive without publishing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          outputs: type=oci,dest=container-image.tar
+          tags: ${{ needs.metadata.outputs.image }}:${{ needs.metadata.outputs.version }}
+          build-args: |
+            VERSION=${{ needs.metadata.outputs.version }}
+            COMMIT=${{ needs.metadata.outputs.commit }}
+            BUILD_DATE=${{ needs.metadata.outputs.built }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: torii-container
+          path: container-image.tar
+
+  publish:
+    needs: [verify, metadata, binaries, containers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
         with:
           path: dist
-          pattern: torii-auth-*
+          pattern: torii-*
           merge-multiple: true
-
-      - name: Generate checksums
+      - name: Publish versioned image and record its digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+          IMAGE: ${{ needs.metadata.outputs.image }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+          printf '%s' "$REGISTRY_TOKEN" | skopeo login --username "$REGISTRY_USER" --password-stdin ghcr.io
+          # The Packages API returns an explicit 404 for a first publication;
+          # registry pull authorization alone cannot reliably identify absence.
+          package_owner=${IMAGE#ghcr.io/}
+          package_owner=${package_owner%%/*}
+          package_name=${IMAGE##*/}
+          owner_type=$(gh api "users/$package_owner" --jq .type)
+          owner_path=users
+          if [ "$owner_type" = Organization ]; then owner_path=orgs; fi
+          versions_file=$(mktemp)
+          error_file=$(mktemp)
+          if gh api "$owner_path/$package_owner/packages/container/$package_name/versions?per_page=100" --paginate > "$versions_file" 2> "$error_file"; then
+            matches=$(jq -sr --arg tag "$VERSION" '[.[][] | .metadata.container.tags[]? | select(. == $tag)] | length' "$versions_file")
+            if [ "$matches" -ne 0 ]; then
+              echo "This versioned image already exists; publish a new release tag instead of overwriting it."
+              exit 1
+            fi
+          elif ! grep -q 'HTTP 404' "$error_file"; then
+            echo "Cannot establish that the release image is absent; check GHCR permissions and connectivity."
+            exit 1
+          fi
+          skopeo copy --all --preserve-digests oci-archive:dist/container-image.tar "docker://$IMAGE:$VERSION"
+          digest=$(skopeo inspect --raw "docker://$IMAGE:$VERSION" | sha256sum | cut -d' ' -f1)
+          printf '%s@sha256:%s\n' "$IMAGE" "$digest" > dist/CONTAINER_IMAGE.txt
+          printf 'Container: `%s@sha256:%s`\n' "$IMAGE" "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate binary checksums
         working-directory: dist
-        run: sha256sum torii-auth-* > SHA256SUMS
-
-      - name: Publish release
+        run: sha256sum torii-gateway-* torii-auth-* CONTAINER_IMAGE.txt > SHA256SUMS
+      - name: Publish release artifacts and compatibility notes
         uses: softprops/action-gh-release@v2
         with:
+          body_path: docs/releases/${{ needs.metadata.outputs.version }}.md
+          prerelease: ${{ contains(needs.metadata.outputs.version, '-') }}
+          fail_on_unmatched_files: true
           files: |
+            dist/torii-gateway-*
             dist/torii-auth-*
             dist/SHA256SUMS
+            dist/CONTAINER_IMAGE.txt

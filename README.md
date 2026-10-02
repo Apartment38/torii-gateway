@@ -260,14 +260,30 @@ routing weights.
 
 ### Local binary
 
-Pull the new source, validate the existing configuration, build a replacement
-binary, then restart the process or service that runs the gateway. The config
+Before updating, stop Torii gracefully and back up its complete data directory
+and configuration; back up the master key separately. Schemas 1–3 require the
+[one-time fresh setup](docs/runtime-state.md#one-time-baseline-reset).
+
+Published releases provide `torii-gateway-OS-ARCH` (with `.exe` on Windows),
+`torii-auth-OS-ARCH`, `SHA256SUMS`, and `CONTAINER_IMAGE.txt`.
+Download the matching binary and verify its checksum before replacing it.
+On Linux, for example, after downloading the selected release assets:
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS
+chmod 0755 torii-gateway-linux-amd64
+./torii-gateway-linux-amd64 version
+```
+
+Keep the previous binary for recovery. To build from source instead, select
+its source, build a replacement and validate configuration with the new binary
+before restarting the process or service that runs the gateway. The config
 file and database are not changed by the build:
 
 ```sh
 git pull --ff-only
-./bin/gateway config validate --config ./config.yaml
 go build -trimpath -o ./bin/gateway.new ./cmd/gateway
+./bin/gateway.new config validate --config ./config.yaml
 mv ./bin/gateway.new ./bin/gateway
 ```
 
@@ -520,11 +536,14 @@ The health endpoint does not require authentication:
 curl --fail http://127.0.0.1:8080/healthz
 ```
 
+For the client examples below, `GATEWAY_API_KEY` is the once-displayed key
+saved in your client/shell, not a Torii startup setting.
+
 List the models discovered from all configured Ollama servers:
 
 ```sh
 curl --fail http://127.0.0.1:8080/v1/models \
-  -H "Authorization: Bearer $TORII_API_KEY"
+  -H "Authorization: Bearer $GATEWAY_API_KEY"
 ```
 
 Create a non-streaming chat completion (replace the model with one returned by
@@ -532,7 +551,7 @@ the previous command):
 
 ```sh
 curl --fail http://127.0.0.1:8080/v1/chat/completions \
-  -H "Authorization: Bearer $TORII_API_KEY" \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "local/llama3.2",

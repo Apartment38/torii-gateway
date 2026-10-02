@@ -53,6 +53,9 @@ func run(ctx context.Context, args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) > 0 && args[0] == "version" {
+		return printVersion(args[1:], output)
+	}
 	if len(args) > 0 && args[0] == "admin" {
 		return runAdmin(ctx, args[1:], output)
 	}

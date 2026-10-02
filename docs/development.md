@@ -88,7 +88,37 @@ Before committing, verify:
 The GitHub Actions CI workflow runs these checks independently on pushes to
 `main` and on pull requests targeting `main`. It reads the required Go version
 from `go.mod`, caches downloaded modules, and fails rather than rewriting files
-when formatting or committed module metadata is not current.
+when formatting or committed module metadata is not current. It also checks the
+shipped console and release-metadata validator, builds the non-root container,
+and exercises fresh setup, persistence, rotations and stopped-backup recovery
+using disposable Podman volumes. Node 24 is development/CI-only. No frontend
+packages or new runtime services are required.
+
+## Manual releases
+
+1. Choose an unused `vMAJOR.MINOR.PATCH` tag, optionally with a SemVer prerelease
+   suffix. Image tags do not support `+build` metadata.
+2. Copy `docs/releases/TEMPLATE.md` to `docs/releases/VERSION.md`, replacing
+   VERSION with the exact tag, and complete the version heading and all four
+   compatibility sections. Run `node scripts/check-release.mjs VERSION`.
+3. Commit the notes and implementation; the maintainer creates and pushes the
+   release tag. No local implementation command publishes a release.
+4. Release automation reuses the complete CI gate. Gateway/helper binaries are
+   cross-built for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64. An
+   amd64/arm64 OCI image archive is built separately without publication.
+5. Only after all jobs succeed does publication upload the image to GHCR and
+   create a GitHub Release containing binaries, `SHA256SUMS`, compatibility notes,
+   and `CONTAINER_IMAGE.txt` with the multi-platform digest. Existing image tags
+   are not overwritten; a re-release must use a new version.
+6. Repository settings must allow Actions to create releases and packages.
+   Grant the publishing job access if a GHCR package already exists. Set the
+   package visibility to public for anonymous pulls; initial visibility depends
+   on repository/package settings. No extra registry password is committed.
+
+Images and binaries embed version, commit and build time. Inspect with
+`gateway version` or `torii-auth version`. Source builds report `dev` unless
+metadata is supplied through linker flags. See [runtime updates](runtime-state.md)
+for backup, reset and rollback requirements.
 
 ## Configuration
 

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#071a35" />
     <title>Torii Gateway Console</title>
     <link rel="icon" href="/web/torii-gateway-icon.png" />
-    <link rel="stylesheet" href="/web/styles.css?v=9" />
+    <link rel="stylesheet" href="/web/styles.css?v=10" />
   </head>
   <body>
     <dialog id="login-dialog"><form id="login-form"><h2>Sign in to Torii Gateway</h2><p>Use your administrator account. Login stays in memory only.</p><label>Username<input id="login-username" autocomplete="off" required /></label><label>Password<input id="login-password" type="password" autocomplete="off" required /></label><p id="login-error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form></dialog>
@@ -112,10 +112,11 @@
             <section id="benchmark-data" hidden>
               <div class="section-heading"><h3>Current model benchmark data</h3><span id="benchmark-data-count" class="section-note"></span></div>
               <div class="grid three compact-fields">
-                <label data-tooltip="Choose aggregated model capabilities or individual benchmark observations. Raw results also include unmatched models and cached disabled sources.">View<select id="benchmark-table-view"><option value="models">Model capability scores</option><option value="observations">Raw benchmark results</option></select></label>
+                <label data-tooltip="Choose aggregate capability scores or individual benchmark results with capability columns. Raw results also include unmatched models and cached disabled sources.">View<select id="benchmark-table-view"><option value="models">Model capability scores</option><option value="observations">Raw benchmark results</option></select></label>
                 <label data-tooltip="Filter by model or source; raw results can also be filtered by benchmark or category. This does not change routing or stored data.">Filter<input id="benchmark-table-filter" type="search" maxlength="256" placeholder="Model, source, or benchmark" /></label>
                 <label data-tooltip="Choose how many results appear on each page. This applies to both aggregate models and raw benchmark observations.">Rows per page<select id="benchmark-page-size"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
               </div>
+              <p class="section-note">Capability scores are normalized percentages; — means no comparable score is available. Raw rows show only the capability measured by that benchmark; metadata is retained in storage but hidden here.</p>
               <div class="benchmark-table-scroll" tabindex="0" role="region" aria-label="Scrollable benchmark data"><table id="benchmark-table"><thead id="benchmark-table-head"></thead><tbody id="benchmark-table-body"></tbody></table></div>
               <div class="benchmark-pagination"><button id="benchmark-previous" class="button quiet" type="button">Previous</button><span id="benchmark-page-label" role="status"></span><button id="benchmark-next" class="button quiet" type="button">Next</button></div>
             </section>
@@ -136,6 +137,6 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=9"></script>
+    <script type="module" src="/web/app.js?v=10"></script>
   </body>
 </html>

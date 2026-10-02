@@ -740,7 +740,8 @@ test("cached table shows scores, operational data, raw unmatched observations an
   const app=consoleFixture(url=>{
     if(url.endsWith("/sources"))return response({aa:{enabled:true,last_success:"2026-10-02",observation_count:2}});
     if(url.endsWith("/models"))return response({"provider/model":{provider_ids:["provider/model"],scores:{coding:.92,preference:.81},operations:{ttft:.2,context_length:128000},sources:["aa"],observation_count:2,latest_retrieval:"2026-10-02"}});
-    assert.match(url,/observations\?offset=0&limit=25&include_metadata=true&q=/);
+    assert.match(url,/observations\?offset=0&limit=25&q=/);
+    assert.doesNotMatch(url,/include_metadata=true/);
     return response({total:1,observations:[{external_model_id:"<unmatched>",source:"aa",benchmark:"code",category:"coding",original_score:85,normalized_score:.85,version:"v1",retrieved_at:"2026-10-02",date_basis:"retrieval_only",metadata:{confidence_interval:[.8,.9],detail:"<script>upstream</script>"}}]});
   });
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
@@ -750,7 +751,35 @@ test("cached table shows scores, operational data, raw unmatched observations an
   app.run('benchmarkTableView="observations"');await app.run('loadBenchmarkData()');
   html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
   assert.match(html,/&lt;unmatched&gt;/);assert.match(html,/85\.0/);assert.match(html,/Unmatched \/ ambiguous/);
-  assert.match(html,/retrieval_only/);assert.match(html,/confidence_interval/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+  assert.match(html,/retrieval_only/);assert.doesNotMatch(html,/confidence_interval|upstream|<script>|benchmark-metadata/);
+  assert.doesNotMatch(app.run('document.querySelector("#benchmark-table-head").innerHTML'),/>Metadata</);
+});
+
+test("benchmark capability columns show only measured comparable scores and hide metadata", () => {
+  const app=consoleFixture(()=>response({}));
+  app.context.rows=[
+    {external_model_id:"model-a",source:"aa",benchmark:"code",category:"coding",original_score:84,normalized_score:.84,metadata:{hidden:"metadata-sentinel"}},
+    {external_model_id:"model-a",source:"aa",benchmark:"tools",category:"agentic",original_score:0,normalized_score:0},
+    {external_model_id:"model-b",source:"aa",benchmark:"knowledge",category:"knowledge",original_score:99},
+    {external_model_id:"model-c",source:"aa",benchmark:"knowledge",category:"knowledge",original_score:91,normalized_score:.91},
+  ];
+  app.run('benchmarkTableView="observations";benchmarkRawRows=rows;benchmarkRawTotal=4;renderBenchmarkTable()');
+  const headers=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
+  const cells=[...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>(.*?)<\/tr>/g)].map(row=>[...row[1].matchAll(/<td>(.*?)<\/td>/g)].map(match=>match[1]));
+  for(const name of ["Coding %","Agentic %","Knowledge %","Reasoning %","Math %","Instruction following %","Multimodal %","Preference %","General intelligence %"])assert.ok(headers.includes(name));
+  assert.equal(headers.includes("Metadata"),false);
+  assert.equal(cells[0][headers.indexOf("Coding %")],"84.0");
+  assert.equal(cells[0][headers.indexOf("Agentic %")],"—");
+  assert.equal(cells[1][headers.indexOf("Agentic %")],"0.0");
+  assert.equal(cells[2][headers.indexOf("Knowledge %")],"—","unknown scales must not be guessed");
+  assert.equal(cells[3][headers.indexOf("Knowledge %")],"91.0");
+  assert.ok(cells.every(row=>row.length===headers.length));
+  assert.doesNotMatch(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/metadata-sentinel/);
+  app.context.models={"provider/model":{scores:{overall:.9,coding:.92,agentic:.88,knowledge:.94}}};
+  app.run('benchmarkTableView="models";benchmarkModels=models;renderBenchmarkTable()');
+  const modelHeaders=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
+  const modelCells=[...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<td>(.*?)<\/td>/g)].map(match=>match[1]);
+  for(const [name,score] of [["Overall %","90.0"],["Coding %","92.0"],["Agentic %","88.0"],["Knowledge %","94.0"]])assert.equal(modelCells[modelHeaders.indexOf(name)],score);
 });
 
 test("streamed refresh advances actual source progress and updates the table before completion", async () => {

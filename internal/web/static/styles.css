@@ -63,7 +63,6 @@ nav { display: grid; gap: 6px; margin-top: 48px; }
 #benchmark-table th { background: var(--surface-solid); position: sticky; top: 0; }
 #benchmark-table td:first-child { white-space: normal; min-width: 180px; overflow-wrap: anywhere; }
 .benchmark-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 12px; }
-.benchmark-metadata { margin: 0; max-height: 12rem; max-width: 32rem; overflow: auto; white-space: pre; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #38b979; box-shadow: 0 0 0 5px rgba(56,185,121,.14); }
 .content { width: min(1120px, 100%); margin: auto; padding: 42px clamp(22px, 5vw, 72px) 30px; }
 .topbar { display: flex; justify-content: flex-end; gap: 28px; align-items: flex-start; margin-bottom: 36px; }

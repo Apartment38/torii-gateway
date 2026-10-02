@@ -157,7 +157,12 @@ uses the built-in preset instead. Nothing is enabled or contacted by default.
 The **Current model benchmark data** table loads cached data on page entry.
 Choose aggregate capability scores and operational measurements, or raw source
 observations with canonical/external model IDs, original/normalized scores,
-units, dates, versions, date basis, match status and full captured metadata.
+units, dates, versions, date basis and match status. Both views put capability
+columns (including coding, agentic and knowledge) next to the model name.
+Raw rows fill only their measured capability's normalized score; unknown scales
+and unmeasured capabilities remain unknown. JSON metadata is hidden from the
+console table and excluded from its requests, but remains stored in SQLite
+and available through the management API.
 Aggregate results include evaluation/retrieval dates, age and validity as well
 as every capability and operational measurement.
 Raw results include unmatched models and retained disabled-source data; only
@@ -358,7 +363,7 @@ Management routes use the gateway's existing API authentication:
 | `GET /gateway/v1/intelligence` | Full snapshot, source observations, model scores and unmatched IDs |
 | `GET /gateway/v1/intelligence/sources` | Source status, last attempt/success, age, staleness, safe errors and metadata |
 | `GET /gateway/v1/intelligence/models` | Models with aggregates and operational metadata |
-| `GET /gateway/v1/intelligence/observations` | Paginated raw table rows including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; `include_metadata=true` returns complete captured metadata for the console; omitted by default for existing clients |
+| `GET /gateway/v1/intelligence/observations` | Paginated raw table rows including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; `include_metadata=true` returns complete captured metadata for inspection; omitted by default and by the console |
 | `GET /gateway/v1/intelligence/models/{id}` | Raw observations, provenance and aggregates for a canonical or physical ID |
 | `GET /gateway/v1/intelligence/unmatched` | Unmatched/ambiguous source IDs and candidate canonical IDs |
 | `POST /gateway/v1/intelligence/refresh` | Refresh all enabled sources; summary includes `partial_failure` and per-source status |

@@ -22,7 +22,7 @@ let benchmarkProgressCounts = {total:0,completed:0,failed:0};
 let benchmarkPageSize = 25;
 // Injected by build-console.mjs from the same presets.json used by the backend.
 
-const benchmarkCategories = ["general_intelligence", "coding", "agentic", "reasoning", "math", "knowledge", "instruction_following", "multimodal", "preference", "operational"];
+const benchmarkCapabilities = ["coding", "agentic", "knowledge", "reasoning", "math", "instruction_following", "multimodal", "preference", "general_intelligence"];
 const benchmarkOperations                         = { input_price:"USD_per_million_tokens", output_price:"USD_per_million_tokens", latency:"seconds", ttft:"seconds", throughput:"tokens_per_second", context_length:"tokens" };
 
 function benchmarkDraft(source                     , fresh = false)                       {
@@ -131,10 +131,11 @@ function benchmarkSafeMessage(message        )         {
 function benchmarkNumber(raw     , score = false)         { return typeof raw === "number" && Number.isFinite(raw) ? (score ? (raw * 100).toFixed(1) : String(Number(raw.toFixed(4)))) : "—"; }
 function renderBenchmarkTable()       {
   const raw = benchmarkTableView === "observations";
-  const scores = ["overall", ...benchmarkCategories.filter(category => category !== "operational")];
+  const scores = raw ? benchmarkCapabilities : ["overall", ...benchmarkCapabilities];
+  const scoreHeaders = scores.map(score => `${score.replace(/_/g," ").replace(/^./, letter => letter.toUpperCase())} %`);
   const operations = Object.keys(benchmarkOperations);
-  const headers = raw ? ["Model", "External model ID", "Source", "Benchmark", "Category", "Raw score", "Normalized %", "Unit", "Version", "Evaluation date", "Retrieved", "Date basis", "Match", "Metadata"]
-    : ["Model", "Providers", ...scores.map(score => `${score.replace(/_/g," ")} %`), "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Data status", "Latest evaluation", "Last retrieval", "Age seconds", "Valid until"];
+  const headers = raw ? ["Model", ...scoreHeaders, "External model ID", "Source", "Benchmark", "Category", "Raw score", "Normalized %", "Unit", "Version", "Evaluation date", "Retrieved", "Date basis", "Match"]
+    : ["Model", ...scoreHeaders, "Providers", "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Data status", "Latest evaluation", "Last retrieval", "Age seconds", "Valid until"];
   let rows       ;
   let total        ;
   if (raw) { rows = benchmarkRawRows; total = benchmarkRawTotal; }
@@ -147,9 +148,11 @@ function renderBenchmarkTable()       {
   }
   document.querySelector("#benchmark-table-head") .innerHTML = `<tr>${headers.map(header => `<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
   document.querySelector("#benchmark-table-body") .innerHTML = rows.length ? rows.map(row => {
-    const values = raw ? [row.model_id || "—", row.external_model_id, row.source, row.benchmark, row.category, benchmarkNumber(row.original_score), benchmarkNumber(row.normalized_score,true), row.unit || "—", row.version || "—", benchmarkDate(row.evaluated_at), benchmarkDate(row.retrieved_at), row.date_basis || "Unknown", row.model_id ? "Matched" : "Unmatched / ambiguous"]
-      : [row.id, (row.provider_ids || []).join(", "), ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
-    return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}${raw ? `<td><pre class="benchmark-metadata">${escapeHTML(JSON.stringify(row.metadata || {}, null, 2))}</pre></td>` : ""}</tr>`;
+    // Raw rows only score the capability actually measured by the benchmark.
+    // Never guess an aggregate or normalize an unknown upstream scale here.
+    const values = raw ? [row.model_id || row.external_model_id || "—", ...scores.map(score => benchmarkNumber(row.category === score ? row.normalized_score : undefined,true)), row.external_model_id, row.source, row.benchmark, row.category, benchmarkNumber(row.original_score), benchmarkNumber(row.normalized_score,true), row.unit || "—", row.version || "—", benchmarkDate(row.evaluated_at), benchmarkDate(row.retrieved_at), row.date_basis || "Unknown", row.model_id ? "Matched" : "Unmatched / ambiguous"]
+      : [row.id, ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), (row.provider_ids || []).join(", "), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
+    return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}</tr>`;
   }).join("") : `<tr><td colspan="${headers.length}">No cached benchmark data matches this view. Enable sources, save, and refresh to import results.</td></tr>`;
   const pages = Math.max(1, Math.ceil(total / benchmarkPageSize));
   document.querySelector("#benchmark-data-count") .textContent = `${total} ${raw ? "observations" : "models"}`;
@@ -166,7 +169,7 @@ async function loadBenchmarkData()                   {
     const headers = await authProvider.headers();
     // Always check the raw data too: imported models need not match the user's
     // configured providers, and an empty aggregate view must not hide an import.
-    const paths = ["sources", "models", `observations?offset=${benchmarkTableView === "observations" ? benchmarkPage * benchmarkPageSize : 0}&limit=${benchmarkPageSize}&include_metadata=true&q=${encodeURIComponent(benchmarkFilter)}`];
+    const paths = ["sources", "models", `observations?offset=${benchmarkTableView === "observations" ? benchmarkPage * benchmarkPageSize : 0}&limit=${benchmarkPageSize}&q=${encodeURIComponent(benchmarkFilter)}`];
     const replies = await Promise.all(paths.map(async path => {
       const response = await gatewayFetch(`/gateway/v1/intelligence/${path}`, {headers});
       const body = await response.json();

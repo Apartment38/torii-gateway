@@ -15,7 +15,7 @@ const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
 let serverAPIKeyReference: Record<string, string> | null = null;
-const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key_env: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
+const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
 interface ProviderStatus {
   state: "unchecked" | "pending" | "success" | "failure";
@@ -60,6 +60,7 @@ function updateClassifierOptions(): void {
 }
 
 function setProviderStatus(provider: Record<string, string | boolean>, status: ProviderStatus): void {
+  status.message = redactProviderKeys(status.message);
   providerStatuses.set(provider, status);
   const index = providers.indexOf(provider);
   if (index < 0) return;
@@ -71,6 +72,14 @@ function setProviderStatus(provider: Record<string, string | boolean>, status: P
   const button = providerList.querySelector<HTMLButtonElement>(`[data-test="${index}"]`);
   if (button) button.disabled = status.state === "pending";
   updateClassifierOptions();
+}
+
+function redactProviderKeys(message: string): string {
+  providers.forEach(provider => {
+    const key = String(provider.api_key || "");
+    if (key) message = message.split(key).join("[redacted]");
+  });
+  return message;
 }
 
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
@@ -122,9 +131,11 @@ function renderProviders(): void {
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
-        <label data-tooltip="The environment variable containing the upstream API key. The key itself is never written to this provider form.">API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
+        ${provider.type === "ollama" ? "" : `<label data-tooltip="Paste the upstream API key directly; it is masked until you choose Show. Save writes it to the gateway configuration file; environment or file references are available under Advanced.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.api_key_env || provider.api_key_file ? "Using an Advanced secret reference" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Show provider API key" aria-pressed="false">Show</button></span></label>`}
       </div>
       <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
+        <label data-tooltip="Read the API key from this environment variable instead of storing it directly. Setting this clears the direct key and key-file reference.">API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
+        <label data-tooltip="Read the API key from this file inside the gateway host or container. Setting this clears the direct key and environment reference.">API key file<input data-provider="${index}" data-key="api_key_file" value="${value(provider,"api_key_file")}" placeholder="/run/secrets/provider-key" /></label>
         <label data-tooltip="Optional separate management credential used for provider administration or quota lookup.">Management token environment<input data-provider="${index}" data-key="management_env" value="${value(provider,"management_env")}" placeholder="OPENROUTER_MANAGEMENT_KEY" /></label>
         <label data-tooltip="The portal URL used for subscription or account management. It is relevant to providers with a separate portal.">Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
         <label data-tooltip="The OAuth client identifier used by a provider portal. Leave empty to use the provider default.">Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
@@ -146,6 +157,18 @@ function renderProviders(): void {
   providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test)); }));
   providerList.querySelectorAll<HTMLButtonElement>("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
+  providerList.querySelectorAll<HTMLInputElement>('[data-key="api_key"]').forEach(input => {
+    // Assign the property rather than including credentials in HTML attributes.
+    input.value = String(providers[Number(input.dataset.provider)].api_key || "");
+  });
+  providerList.querySelectorAll<HTMLButtonElement>("[data-reveal-provider-key]").forEach(button => button.addEventListener("click", () => {
+    const input = providerList.querySelector<HTMLInputElement>(`#provider-api-key-${button.dataset.revealProviderKey}`)!;
+    const visible = input.type === "password";
+    input.type = visible ? "text" : "password";
+    button.textContent = visible ? "Hide" : "Show";
+    button.setAttribute("aria-label", visible ? "Hide provider API key" : "Show provider API key");
+    button.setAttribute("aria-pressed", String(visible));
+  }));
   providers.forEach(provider => {
     const status = providerStatuses.get(provider);
     if (status) setProviderStatus(provider, status);
@@ -160,7 +183,14 @@ function updateProvider(event: Event): void {
   const key = control.dataset.key!;
   const previousType = providers[index].type;
   providers[index][key] = control instanceof HTMLInputElement && control.type === "checkbox" ? control.checked : control.value;
-  if (key === "api_key_env") delete providers[index].bearer_token;
+  if (["api_key", "api_key_env", "api_key_file"].includes(key)) {
+    delete providers[index].bearer_token;
+    ["api_key", "api_key_env", "api_key_file"].filter(source => source !== key).forEach(source => {
+      providers[index][source] = "";
+      const input = providerList.querySelector<HTMLInputElement>(`[data-provider="${index}"][data-key="${source}"]`);
+      if (input) input.value = "";
+    });
+  }
   if (key === "management_env") delete providers[index].management_token;
   setProviderStatus(providers[index], { state: "unchecked", message: "Settings changed · check connection again" });
   if (key === "id") {
@@ -178,7 +208,9 @@ function updateProvider(event: Event): void {
     if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
     if (classifierProvider(providers[index])) {
       providers[index].api_url = control.value === "jev" ? "https://api.typesafe.ai/v1" : "";
-      providers[index].api_key_env = control.value === "jev" ? "JEV_API_KEY" : "";
+      providers[index].api_key = "";
+      providers[index].api_key_env = "";
+      providers[index].api_key_file = "";
       providers[index].models = "";
       providers[index].management_env = "";
       providers[index].portal_url = "";
@@ -210,7 +242,9 @@ function applyConfig(config: Record<string, any>): void {
   providers = (config.providers || []).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
+    api_key: provider.bearer_token?.value || "",
     api_key_env: provider.bearer_token?.env || "",
+    api_key_file: provider.bearer_token?.file || "",
     management_env: provider.management_token?.env || "",
     tls_ca: provider.tls?.ca_file || "",
     tls_server: provider.tls?.server_name || "",
@@ -225,7 +259,7 @@ function applyConfig(config: Record<string, any>): void {
   if (classifier.type === "jev" && classifier.transport !== "provider") {
     const type = new URL(classifier.base_url).hostname === "api.typesafe.ai" ? "jev" : "jev_compatible";
     const id = type === "jev" ? knownProviderID("jev", -1) : `classifier-${providers.length + 1}`;
-    providers.push({ ...providerDefaults, id, type, api_url:classifier.base_url, api_key_env:classifier.api_key?.env || "", bearer_token:classifier.api_key, models:classifier.model || "jev-latest", discover:true });
+    providers.push({ ...providerDefaults, id, type, api_url:classifier.base_url, api_key:classifier.api_key?.value || "", api_key_env:classifier.api_key?.env || "", api_key_file:classifier.api_key?.file || "", models:classifier.model || "jev-latest", discover:true });
     requestedClassifier = `${id}/${classifier.model || "jev-latest"}`;
   } else if (classifier.type && classifier.type !== "jev" && classifier.type !== "disabled") {
     legacyClassifier = { ...classifier };
@@ -267,7 +301,7 @@ async function loadServerConfig(): Promise<void> {
 
 async function saveConfig(): Promise<void> {
   const response = await fetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(readConfig()) });
-  if (!response.ok) { toast(`Save failed: ${await response.text()}`); return; }
+  if (!response.ok) { toast(redactProviderKeys(`Save failed: ${await response.text()}`)); return; }
   saveState.textContent = "Saved and reloaded";
   await loadServerConfig();
   toast("Configuration saved and reloaded");
@@ -301,9 +335,10 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
     // The API URL is the source of truth; do not overwrite it with fields
     // retained from the loaded YAML after converting it for the form.
     if (key === "base_url" || key === "api_path" || key === "discover_models") return;
+    if (["api_key", "api_key_env", "api_key_file", "bearer_token"].includes(key)) return;
     if (key === "discover") { output.discover_models = Boolean(raw); return; }
     if (String(raw).trim() === "") return;
-    const map: Record<string, string> = { api_key_env: "bearer_token", management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" };
+    const map: Record<string, string> = { management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" };
     const mapped = map[key] || key;
     if (key === "api_url") {
       const url = new URL(String(raw));
@@ -322,6 +357,11 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
     } else if (key.endsWith("_env")) setNested(output, mapped, { env: raw });
     else setNested(output, mapped, raw);
   });
+  if (!subscriptionProvider(provider)) {
+    if (provider.api_key) output.bearer_token = { value:provider.api_key };
+    else if (provider.api_key_env) output.bearer_token = { env:provider.api_key_env };
+    else if (provider.api_key_file) output.bearer_token = { file:provider.api_key_file };
+  }
   return output;
 }
 function readConfig(): Record<string, any> {

@@ -13,19 +13,38 @@ class Element {
   className = "";
   disabled = false;
   dataset = {};
+  listeners = {};
+  attributes = {};
   classList = { add() {}, remove() {}, toggle() {} };
-  addEventListener() {}
-  setAttribute() {}
+  addEventListener(name, callback) { this.listeners[name] = callback; }
+  setAttribute(name, value) { this.attributes[name] = value; }
   querySelector() { return null; }
   querySelectorAll() { return []; }
 }
 class ProviderList extends Element {
   results = new Map();
   buttons = new Map();
+  inputs = [];
+  reveals = new Map();
   set innerHTML(html) {
     this.html = html;
     this.results = new Map();
     this.buttons = new Map();
+    this.inputs = [];
+    this.reveals = new Map();
+    for (const match of html.matchAll(/<input\b[^>]*data-provider="(\d+)"[^>]*data-key="([^"]+)"[^>]*>/g)) {
+      const node = new Element();
+      node.dataset = { provider:match[1], key:match[2] };
+      node.id = /id="([^"]+)"/.exec(match[0])?.[1];
+      node.type = /type="([^"]+)"/.exec(match[0])?.[1] || "text";
+      node.value = /value="([^"]*)"/.exec(match[0])?.[1] || "";
+      this.inputs.push(node);
+    }
+    for (const match of html.matchAll(/data-reveal-provider-key="(\d+)"/g)) {
+      const node = new Element();
+      node.dataset.revealProviderKey = match[1];
+      this.reveals.set(match[1], node);
+    }
     for (const match of html.matchAll(/data-result="(\d+)"/g)) {
       const node = new Element();
       node.textContent = "Not checked yet";
@@ -39,11 +58,17 @@ class ProviderList extends Element {
   }
   get innerHTML() { return this.html; }
   querySelector(selector) {
+    if (selector.startsWith("#")) return this.inputs.find(node => node.id === selector.slice(1));
+    const field = /\[data-provider="(\d+)"\]\[data-key="([^"]+)"\]/.exec(selector);
+    if (field) return this.inputs.find(node => node.dataset.provider === field[1] && node.dataset.key === field[2]);
     const match = /\[data-(result|test|login|remove)="(\d+)"\]/.exec(selector);
     if (!match) return null;
     return match[1] === "result" ? this.results.get(match[2]) : this.buttons.get(`${match[1]}:${match[2]}`);
   }
   querySelectorAll(selector) {
+    if (selector === "[data-reveal-provider-key]") return [...this.reveals.values()];
+    if (selector === "[data-provider]") return this.inputs;
+    if (selector === '[data-key="api_key"]') return this.inputs.filter(node => node.dataset.key === "api_key");
     const match = /\[data-(test|login|remove)\]/.exec(selector);
     return match ? [...this.buttons.values()].filter(node => match[1] in node.dataset) : [];
   }
@@ -331,7 +356,7 @@ test("new classifier provider types set appropriate defaults and custom IDs rema
   app.run("updateProvider(changeEvent)");
   assert.equal(app.run("providers[0].id"), "jev");
   assert.equal(app.run("providers[0].api_url"), "https://api.typesafe.ai/v1");
-  assert.equal(app.run("providers[0].api_key_env"), "JEV_API_KEY");
+  assert.equal(app.run("providers[0].api_key_env"), "");
   control.value = "jev_compatible";
   app.run("updateProvider(changeEvent)");
   assert.equal(app.run("isKnownProvider(providers[0])"), false);
@@ -371,4 +396,95 @@ test("discovery preference is editable rather than overwritten by loaded YAML", 
   const app = consoleFixture(() => response(models(1)));
   app.setProviders([{ ...draft("jev_compatible", "laya"), discover:false, discover_models:true, models:"english" }]);
   assert.equal(app.run("readProviderConfig(providers[0]).discover_models"), false);
+});
+
+test("direct provider keys are masked, revealable, and never included in HTML attributes", () => {
+  const app = consoleFixture(() => response(models(1)));
+  const key = 'test-key-"<&secret';
+  app.setProviders([{ ...draft("jev"), api_key:key }]);
+  const input = app.list.querySelector("#provider-api-key-0");
+  const button = app.list.reveals.get("0");
+  assert.equal(input.type, "password");
+  assert.equal(input.value, key);
+  assert.equal(app.list.innerHTML.includes(key), false);
+  button.listeners.click();
+  assert.equal(input.type, "text");
+  assert.equal(button.textContent, "Hide");
+  assert.equal(button.attributes["aria-pressed"], "true");
+  button.listeners.click();
+  assert.equal(input.type, "password");
+  app.run("renderProviders()");
+  assert.equal(app.list.querySelector("#provider-api-key-0").type, "password");
+});
+
+test("entering a direct key replaces references and connection tests send an inline secret", async () => {
+  const app = consoleFixture((_, options) => {
+    const provider = JSON.parse(options.body).provider;
+    assert.deepEqual(provider.bearer_token, { value:"test-direct-provider-key" });
+    for (const name of ["api_key", "api_key_env", "api_key_file"]) assert.equal(name in provider, false);
+    return response({ models:[{ id:"jev/english" }] });
+  });
+  app.context.config = { providers:[{ id:"jev", type:"jev", base_url:"https://api.typesafe.ai", api_path:"/v1", bearer_token:{ env:"OLD_KEY_ENV" } }] };
+  app.run("applyConfig(config)");
+  const input = app.list.querySelector("#provider-api-key-0");
+  input.value = "test-direct-provider-key";
+  input.listeners.input({ target:input });
+  assert.equal(app.run("providers[0].api_key_env"), "");
+  assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_key_env"]').value, "");
+  await app.run("testProvider(0)");
+  assert.match(app.status(0).textContent, /Working · 1 model discovered/);
+  const config = JSON.parse(app.run("JSON.stringify(readConfig())"));
+  assert.deepEqual(config.providers[0].bearer_token, { value:"test-direct-provider-key" });
+});
+
+test("inline, environment, and file secrets survive reload and can be replaced or removed", () => {
+  const app = consoleFixture(() => response(models(1)));
+  for (const secret of [{ value:"test-reloaded-key" }, { env:"PROVIDER_KEY" }, { file:"/run/secrets/provider" }]) {
+    app.context.config = { providers:[{ id:"custom", type:"openai_compatible", base_url:"https://custom.example", bearer_token:secret }] };
+    app.run("applyConfig(config)");
+    assert.deepEqual(JSON.parse(app.run("JSON.stringify(readProviderConfig(providers[0]).bearer_token)")), secret);
+  }
+  const input = app.list.querySelector("#provider-api-key-0");
+  input.value = "replacement-key";
+  input.listeners.input({ target:input });
+  assert.equal(app.run("providers[0].api_key_file"), "");
+  const env = app.list.querySelector('[data-provider="0"][data-key="api_key_env"]');
+  env.value = "NEW_KEY_ENV";
+  env.listeners.input({ target:env });
+  assert.equal(input.value, "");
+  assert.equal(app.run("readProviderConfig(providers[0]).bearer_token.env"), "NEW_KEY_ENV");
+  env.value = "";
+  env.listeners.input({ target:env });
+  assert.equal(app.run("readProviderConfig(providers[0]).bearer_token"), undefined);
+  app.setProviders([draft("openai-codex"), draft("nous"), draft("ollama")]);
+  assert.equal(app.list.inputs.some(input => input.dataset.key === "api_key"), false);
+});
+
+test("connection and save errors redact directly entered provider keys", async () => {
+  const key = "test-error-redaction-key";
+  const app = consoleFixture(() => response({ error:`Rejected key ${key}` }, false));
+  app.setProviders([{ ...draft("jev"), api_key:key }]);
+  await app.run("testProvider(0)");
+  assert.match(app.status(0).textContent, /Rejected key \[redacted\]/);
+  assert.equal(app.status(0).textContent.includes(key), false);
+  await app.run("saveConfig()");
+  assert.equal(app.run('document.querySelector("#toast").textContent').includes(key), false);
+});
+
+test("saving and reloading restores direct provider keys in a masked field", async () => {
+  let saved;
+  const app = consoleFixture((url, options) => {
+    if (url === "/gateway/v1/providers/test") return response(models(1));
+    if (options?.method === "PUT") {
+      saved = JSON.parse(options.body);
+      return response({ ok:true });
+    }
+    return response(saved);
+  });
+  app.setProviders([{ ...draft("openai"), api_key:"test-save-reload-key" }]);
+  await app.run("saveConfig()");
+  assert.deepEqual(saved.providers[0].bearer_token, { value:"test-save-reload-key" });
+  const input = app.list.querySelector("#provider-api-key-0");
+  assert.equal(input.value, "test-save-reload-key");
+  assert.equal(input.type, "password");
 });

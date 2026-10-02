@@ -34,7 +34,7 @@ ID.
 - transparent request forwarding, including fields the gateway does not know
 - low-overhead, byte-for-byte SSE streaming
 - optional bearer authentication for API endpoints; the embedded console is public
-- secrets loaded from an environment variable or a file, never inline YAML
+- secrets loaded from environment variables, files, or masked console-managed values
 - strict configuration validation and graceful shutdown
 - request IDs, typed OpenAI-style errors, and secret-safe structured logging
 
@@ -117,9 +117,12 @@ podman compose down
 
 Keep `.env` private; it is ignored by Git. If authentication is omitted from
 `config/config.yaml`, the API key environment variable is not required.
-For the TypeSafe Jev provider, set `JEV_API_KEY` in `.env`; Compose passes it
-into the container. Other custom provider key variables must be added to the
-Compose service's `environment` section explicitly.
+Provider API keys can be pasted directly on the console's Providers page; click
+**Test connection**, then **Save & reload** to persist the key without changing
+the container environment. Alternatively, set `JEV_API_KEY` in `.env` and select
+that variable in the provider's **Advanced provider options → API key environment**;
+Compose passes it into the container. Other custom provider key variables must
+be added to the Compose service's `environment` section explicitly.
 
 The compose file mounts only the host `config/` directory at `/config` as a
 writable Podman bind mount with `rw,Z,U`; the container reads
@@ -382,8 +385,14 @@ providers:
 ```
 
 This exposes `private/assistant` while sending `production-model` upstream.
-Provider credentials are never accepted inline, are isolated in a dedicated
-HTTP client, and are not forwarded across redirects.
+Provider credentials are isolated in a dedicated HTTP client and are not
+forwarded across redirects. The console accepts a direct, masked API key and
+saves it as `bearer_token.value` in `config.yaml`; **Show** reveals the field.
+Keys are stored as plaintext, not encrypted, in the owner-only configuration
+file (mode `0600`). Existing environment and file references remain supported
+under **Advanced provider options** and are preserved when loading and saving.
+The console currently has no authentication: restrict it to trusted users and
+use HTTPS or a trusted local connection when entering keys.
 
 The normal OpenAI API can be enabled with its origin-locked profile:
 
@@ -421,8 +430,9 @@ Use `gateway models --config ./config.yaml` to inspect the catalog.
 ### Classifier providers for Smart Routing
 
 Add **TypeSafe AI · Jev** (`type: jev`) on the Providers page for the hosted
-TypeSafe service. Its default API URL is `https://api.typesafe.ai/v1` and its
-key environment variable is `JEV_API_KEY`. Add **Jev compatible · Laya / custom**
+TypeSafe service. Its default API URL is `https://api.typesafe.ai/v1`; paste your
+key into **API key**, or optionally reference `JEV_API_KEY` under Advanced.
+Add **Jev compatible · Laya / custom**
 (`type: jev_compatible`) for a self-hosted decision server; supply your own
 provider ID and API URL, with an optional bearer key. These providers use the
 [typed System One protocol](https://docs.typesafe.ai/api), not Chat Completions.

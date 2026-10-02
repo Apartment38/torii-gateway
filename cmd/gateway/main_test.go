@@ -105,6 +105,66 @@ func TestProviderConnectionReportsClassifierCatalog(t *testing.T) {
 	}
 }
 
+func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
+	const key = "test-console-provider-key"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/v1/models" || req.Header.Get("Authorization") != "Bearer "+key {
+			t.Errorf("provider discovery used incorrect path or authorization")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		_, _ = io.WriteString(w, `{"models":[{"name":"english"}]}`)
+	}))
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := initializeConfigPath(path, "", true); err != nil {
+		t.Fatal(err)
+	}
+	r := &handlerRuntime{configPath: path}
+	updated := fmt.Sprintf(`{"server":{"listen":"127.0.0.1:8080"},"state":{"directory":%q},"providers":[{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}],"router":{"classifier":{"type":"disabled"}}}`, filepath.Dir(path), server.URL, key)
+	put := httptest.NewRecorder()
+	r.putConfig(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(updated)))
+	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
+		t.Fatalf("save direct provider key = HTTP %d", put.Code)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := cfg.Providers[0].BearerToken
+	if secret == nil || secret.Value != key || secret.Env != "" || secret.File != "" {
+		t.Fatal("saved provider key was not preserved as a single inline secret")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("configuration permissions = %o, want 600", info.Mode().Perm())
+	}
+	get := httptest.NewRecorder()
+	r.getConfig(get, httptest.NewRequest(http.MethodGet, "/gateway/v1/config", nil))
+	var document struct {
+		Providers []struct {
+			BearerToken struct {
+				Value string `json:"value"`
+			} `json:"bearer_token"`
+		} `json:"providers"`
+	}
+	if get.Code != http.StatusOK || json.Unmarshal(get.Body.Bytes(), &document) != nil || len(document.Providers) != 1 || document.Providers[0].BearerToken.Value != key {
+		t.Fatal("console config reload did not return the saved provider key")
+	}
+	connection := httptest.NewRecorder()
+	request := fmt.Sprintf(`{"provider":{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}}`, server.URL, key)
+	r.testProvider(connection, httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/test", strings.NewReader(request)))
+	if connection.Code != http.StatusOK || !strings.Contains(connection.Body.String(), `"id":"laya/english"`) {
+		t.Fatalf("connection test with direct key = HTTP %d", connection.Code)
+	}
+	if strings.Contains(connection.Body.String(), key) {
+		t.Fatal("connection status disclosed the provider API key")
+	}
+}
+
 func TestCodexConnectionTestDoesNotTreatFallbackAsSuccess(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "config.yaml")

@@ -1,4 +1,5 @@
 // Generated from benchmarks.ts and app.ts by scripts/build-console.mjs.
+const benchmarkDefinitions = [{"name":"Artificial Analysis","requires_api_key":true,"note":"Imports published capability, pricing and speed measurements. Requires an Artificial Analysis API key.","settings":{"id":"artificial-analysis","type":"artificial_analysis","enabled":false,"url":"https://artificialanalysis.ai/api/v2/data/llms/models"}},{"name":"BenchLM.ai","requires_api_key":false,"note":"Imports public supported benchmark evidence; estimated scores do not influence capabilities. Commercial use requires a BenchLM licence.","settings":{"id":"benchlm","type":"benchlm","enabled":false,"url":"https://benchlm.ai/data/models.json"}},{"name":"Hugging Face leaderboards","requires_api_key":false,"note":"Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models.","settings":{"id":"huggingface","type":"huggingface","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"open-llm-leaderboard/contents","config":"default","split":"train","model_field":"fullname","version":"Open LLM Leaderboard v2","metrics":{"IFEval Raw":{"category":"instruction_following","max":1},"BBH Raw":{"category":"reasoning","max":1},"MATH Lvl 5 Raw":{"category":"math","max":1},"GPQA Raw":{"category":"knowledge","max":1},"MUSR Raw":{"category":"reasoning","max":1},"MMLU-PRO Raw":{"category":"knowledge","max":1}}}]}},{"name":"LMArena","requires_api_key":false,"note":"Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks.","settings":{"id":"lmarena","type":"lmarena","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"lmarena-ai/leaderboard-dataset","config":"text_style_control","split":"latest","model_field":"model_name","date_field":"leaderboard_publish_date"}]}},{"name":"LiveBench","requires_api_key":false,"note":"Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing.","settings":{"id":"livebench","type":"livebench","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"livebench/model_judgment","config":"default","split":"leaderboard","model_field":"model","date_field":"tstamp"}]}}];
 // Source forms and cached evidence views. No browser persistence or dependencies.
 
 let benchmarkConfiguration                      = {};
@@ -17,45 +18,33 @@ let benchmarkAbort                         = null;
 let benchmarkReloadSequence = 0;
 let benchmarkProgressLog           = [];
 let benchmarkProgressCounts = {total:0,completed:0,failed:0};
-const benchmarkPageSize = 100;
-const benchmarkDefinitions = [
-  { type:"artificial_analysis", name:"Artificial Analysis", url:"https://artificialanalysis.ai/api/v2/language/models/free", note:"Requires an Artificial Analysis API key. Published capability, pricing, and speed measurements are imported." },
-  { type:"benchlm", name:"BenchLM.ai", url:"https://benchlm.ai/data/models.json", note:"Imports supported benchmark evidence by default. Estimated evidence is opt-in." },
-  { type:"huggingface", name:"Hugging Face leaderboards", url:"https://datasets-server.huggingface.co/rows", note:"Choose published leaderboard datasets and map their numeric columns to explicit categories and score scales." },
-  { type:"lmarena", name:"LMArena", url:"https://datasets-server.huggingface.co/rows", note:"Arena ratings remain human-preference evidence, not objective intelligence. Dataset fields can be customized." },
-  { type:"livebench", name:"LiveBench", url:"https://datasets-server.huggingface.co/rows", note:"Imports structured published judgments. If the artifact is unavailable or its schema changes, cached data is retained; no HTML scraping is used." },
-];
+let benchmarkPageSize = 25;
+// Injected by build-console.mjs from the same presets.json used by the backend.
+
 const benchmarkCategories = ["general_intelligence", "coding", "agentic", "reasoning", "math", "knowledge", "instruction_following", "multimodal", "preference", "operational"];
 const benchmarkOperations                         = { input_price:"USD_per_million_tokens", output_price:"USD_per_million_tokens", latency:"seconds", ttft:"seconds", throughput:"tokens_per_second", context_length:"tokens" };
 
-function benchmarkMetricDrafts(metrics                      = {})                        {
-  return Object.entries(metrics).map(([column, mapping]) => ({ column, ...mapping }));
-}
-function benchmarkDataset(type        )                      {
-  if (type === "lmarena") return { dataset:"lmarena-ai/leaderboard-dataset", config:"text_style_control", split:"latest", model_field:"model_name", date_field:"leaderboard_publish_date", _metrics:[] };
-  if (type === "livebench") return { dataset:"livebench/model_judgment", config:"default", split:"leaderboard", model_field:"model", date_field:"tstamp", _metrics:[] };
-  return { dataset:"", config:"default", split:"train", model_field:"model", date_field:"", _metrics:[] };
-}
 function benchmarkDraft(source                     , fresh = false)                       {
-  return { ...source, _new:fresh, api_key_input:"", _metrics:benchmarkMetricDrafts(source.metrics),
-    datasets:(source.datasets || (["huggingface", "lmarena", "livebench"].includes(source.type) ? [benchmarkDataset(source.type)] : []))
-      .map((dataset                     ) => ({ ...dataset, _metrics:dataset._metrics || benchmarkMetricDrafts(dataset.metrics) })) };
+  const defaults = structuredClone(benchmarkDefinitions.find(preset => preset.settings.type === source.type)?.settings || {});
+  const configured = { ...defaults, ...structuredClone(source) };
+  if (!source.url || (source.type === "artificial_analysis" && source.url === "https://artificialanalysis.ai/api/v2/language/models/free")) configured.url = defaults.url;
+  if (!source.datasets?.length || (source.type === "huggingface" && source.datasets.length === 1 && ["", "org/your-leaderboard"].includes(String(source.datasets[0].dataset || "").trim()))) configured.datasets = defaults.datasets;
+  return { ...configured, _new:fresh, api_key_input:"" };
 }
 function applyBenchmarkConfig(config                      = {})       {
   benchmarkConfiguration = structuredClone(config);
   benchmarkSources = (config.sources || []).map((source                     ) => benchmarkDraft(source));
   for (const definition of benchmarkDefinitions) {
-    if (benchmarkSources.some(source => source.type === definition.type)) continue;
-    let id = definition.type.replace(/_/g, "-");
+    if (benchmarkSources.some(source => source.type === definition.settings.type)) continue;
+    let id = definition.settings.id;
     const base = id;
     for (let suffix = 2; benchmarkSources.some(source => source.id === id); suffix++) id = `${base}-${suffix}`;
-    benchmarkSources.push(benchmarkDraft({ id, type:definition.type, enabled:false }, true));
+    benchmarkSources.push(benchmarkDraft({ ...definition.settings, id }, true));
   }
   benchmarkDirty = false;
   benchmarkSourceActivity = {};
   benchmarksEnabledSaved = config.enabled === true;
   document.querySelector                  ("#intelligence-enabled") .checked = benchmarksEnabledSaved;
-  document.querySelectorAll                  ("[data-benchmark-global]").forEach(input => { input.value = String(config[input.dataset.benchmarkGlobal ] ?? ""); });
   renderBenchmarkSources();
   updateBenchmarkControls();
 }
@@ -63,6 +52,7 @@ function clearBenchmarkConsole()       {
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {}; benchmarkRawRows = [];
   benchmarkRawTotal = 0; benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
+  benchmarkPageSize = 25;
   benchmarkDirty = false; benchmarkRefreshRunning = false; benchmarkProgressLog = [];
   benchmarkProgressCounts = {total:0,completed:0,failed:0};
   document.querySelector                  ("#intelligence-enabled") .checked = false;
@@ -70,44 +60,22 @@ function clearBenchmarkConsole()       {
   document.querySelector("#benchmark-refresh-log") .textContent = "";
   document.querySelector                  ("#benchmark-table-filter") .value = "";
   document.querySelector                   ("#benchmark-table-view") .value = "models";
-  document.querySelectorAll                  ("[data-benchmark-global]").forEach(input => { input.value = ""; });
+  document.querySelector                   ("#benchmark-page-size") .value = "25";
   renderBenchmarkSources(); renderBenchmarkTable();
 }
-function benchmarkAttributes(source        , field        , dataset         , mapping         )         {
-  return `data-benchmark-source="${source}" data-benchmark-field="${field}"${dataset === undefined ? "" : ` data-benchmark-dataset="${dataset}"`}${mapping === undefined ? "" : ` data-benchmark-mapping="${mapping}"`}`;
-}
-function benchmarkInput(source        , field        , label        , raw     , help        , dataset         , mapping         , type = "text")         {
-  return `<label data-tooltip="${escapeHTML(help)}">${escapeHTML(label)}<input ${benchmarkAttributes(source, field, dataset, mapping)} type="${type}" value="${escapeHTML(String(raw ?? ""))}" /></label>`;
-}
-function benchmarkMappings(source        , rows                       , dataset         )         {
-  return rows.map((row, index) => `<div class="benchmark-mapping"><div class="section-heading"><h4>Metric mapping ${index + 1}</h4><button type="button" class="button quiet" data-benchmark-action="remove-metric" ${benchmarkAttributes(source, "", dataset, index)}>Remove</button></div><div class="grid three">
-    ${benchmarkInput(source, "column", "Upstream column / benchmark", row.column, "The numeric column or benchmark key in the upstream data. Nested dataset columns can use dot paths.", dataset, index)}
-    <label data-tooltip="The capability this measurement describes. Arena measurements always remain preference evidence.">Category<select ${benchmarkAttributes(source, "category", dataset, index)}>${benchmarkCategories.map(category => `<option value="${category}" ${row.category === category ? "selected" : ""}>${category.replace(/_/g, " ")}</option>`).join("")}</select></label>
-    ${benchmarkInput(source, "min", "Minimum score", row.min ?? 0, "The declared lower end of the score scale. This is not inferred from observed values.", dataset, index, "number")}
-    ${benchmarkInput(source, "max", "Maximum score", row.max ?? 1, "The declared upper end of the score scale. Scores outside this range reject the source update.", dataset, index, "number")}
-    <label class="checkbox" data-tooltip="Invert normalized scores for measurements where a smaller value is better. Operational measurements keep their original units."><input type="checkbox" ${benchmarkAttributes(source, "lower_is_better", dataset, index)} ${row.lower_is_better ? "checked" : ""} /> Lower is better</label>
-    <label data-tooltip="For operational mappings, choose a canonical measurement; its unit is set automatically. Leave empty for capability scores.">Operational metric<select ${benchmarkAttributes(source, "metric", dataset, index)}><option value="">Not operational</option>${Object.entries(benchmarkOperations).map(([metric, unit]) => `<option value="${metric}" ${row.metric === metric ? "selected" : ""}>${metric} (${unit})</option>`).join("")}</select></label>
-  </div></div>`).join("") + `<button type="button" class="button quiet" data-benchmark-action="add-metric" ${benchmarkAttributes(source, "", dataset)}>＋ Add metric mapping</button>`;
+function benchmarkAttributes(source        , field        )         {
+  return `data-benchmark-source="${source}" data-benchmark-field="${field}"`;
 }
 function renderBenchmarkSources()       {
   const list = document.querySelector                ("#benchmark-sources-list") ;
   list.innerHTML = benchmarkSources.map((source, index) => {
-    const definition = benchmarkDefinitions.find(item => item.type === source.type) ;
-    const datasets = ["huggingface", "lmarena", "livebench"].includes(source.type);
-    return `<article class="provider-card"><div class="provider-card-head"><h3>${escapeHTML(definition?.name || source.type)}${source._new ? "" : ` · ${escapeHTML(source.id)}`}</h3><label class="checkbox" data-tooltip="Enable this source for background and manual refreshes. Save and reload before ingestion starts."><input type="checkbox" ${benchmarkAttributes(index, "enabled")} ${source.enabled ? "checked" : ""} /> Enabled</label></div>
+    const definition = benchmarkDefinitions.find(item => item.settings.type === source.type);
+    const needsKey = definition?.requires_api_key || source.api_key;
+    return `<article class="provider-card"><div class="provider-card-head"><h3>${escapeHTML(definition?.name || source.type)}${source._new ? "" : ` · ${escapeHTML(source.id)}`}</h3><label class="checkbox" data-tooltip="Enable this preconfigured source for background and manual refreshes. Save and reload before ingestion starts."><input type="checkbox" ${benchmarkAttributes(index, "enabled")} ${source.enabled ? "checked" : ""} /> Enabled</label></div>
       <div class="provider-result" data-benchmark-status="${index}" role="status" aria-live="polite"></div>
-      <div class="benchmark-source-options" data-benchmark-options="${index}" ${source.enabled ? "" : "hidden"}>
-      <p>${escapeHTML(definition?.note || "")}</p><div class="grid two">
-      ${benchmarkInput(index, "id", "Source ID", source.id, "The stable source identifier for cache, provenance, and weights. Changing it starts a separate source history.")}
-      ${benchmarkInput(index, "url", "Data API URL", source.url || "", `Leave empty to use ${definition?.url || "the adapter default"}. Use a machine-readable endpoint, not an HTML page.`)}
-      <label data-tooltip="Enter a source API key or token; saved values cannot be revealed. Save encrypts new values in SQLite and keeps only a reference in YAML.">API key${source.type === "artificial_analysis" ? " (required)" : " (optional)"}<span class="password-field"><input type="password" autocomplete="new-password" ${benchmarkAttributes(index, "api_key_input")} placeholder="${source.api_key?.credential ? "Configured · leave blank to keep" : "Enter source API key"}" /><button type="button" class="reveal-button" data-benchmark-action="reveal-key" ${benchmarkAttributes(index, "")}>Reveal</button></span></label>
-      ${datasets ? benchmarkInput(index, "max_rows", "Maximum rows", source.max_rows, "Reject datasets exceeding this limit rather than silently truncating them. The default and maximum are 100000.", undefined, undefined, "number") : ""}
-      ${source.type === "benchlm" ? `<label class="checkbox" data-tooltip="Allow estimated BenchLM evidence to influence aggregation. Uncertain measurements are still retained with provenance."><input type="checkbox" ${benchmarkAttributes(index, "include_estimated")} ${source.include_estimated ? "checked" : ""} /> Include estimated evidence</label>` : ""}
-      </div>
-      ${datasets ? (source.datasets || []).map((dataset                     , datasetIndex        ) => `<div class="benchmark-dataset"><div class="section-heading"><h4>Dataset ${datasetIndex + 1}</h4><button type="button" class="button quiet" data-benchmark-action="remove-dataset" ${benchmarkAttributes(index, "", datasetIndex)}>Remove</button></div><div class="grid three">
-        ${[ ["dataset", "Dataset ID", "The published Hugging Face dataset identifier, such as organization/leaderboard. It must contain published model results."], ["config", "Dataset configuration", "The Dataset Viewer configuration or subset name. This must match the published artifact."], ["split", "Split", "The published split containing benchmark rows, such as train or leaderboard."], ["model_field", "Model ID column", "The column containing each upstream model identifier. Nested fields may use dot paths."], ["date_field", "Evaluation date column", "The column containing the evaluation date. Leave empty when unavailable; retrieval-only freshness will be marked."], ["version", "Benchmark version", "An optional version label retained with each observation. This does not replace the evaluation date."] ].map(([field, label, help]) => benchmarkInput(index, field, label, dataset[field], help, datasetIndex)).join("")}
-      </div>${source.type === "livebench" ? "<p>LiveBench uses published score, category and task columns with a 0–1 scale.</p>" : benchmarkMappings(index, dataset._metrics || [], datasetIndex)}</div>`).join("") + `<button type="button" class="button quiet" data-benchmark-action="add-dataset" ${benchmarkAttributes(index, "")} ${(source.datasets || []).length >= 8 ? "disabled" : ""}>＋ Add dataset</button>`
-        : `<details class="advanced-provider"><summary>Benchmark category / scale overrides</summary>${benchmarkMappings(index, source._metrics || [])}</details>`}
+      <div class="benchmark-source-options" ${source.enabled ? "" : "hidden"}>
+      <p>${escapeHTML(definition?.note || "Uses your saved source configuration.")}</p>
+      ${needsKey ? `<label data-tooltip="Enter a source API key; saved values cannot be revealed. Save encrypts new values in SQLite and keeps only a reference in YAML.">API key<span class="password-field"><input type="password" autocomplete="new-password" ${benchmarkAttributes(index, "api_key_input")} placeholder="${source.api_key?.credential ? "Configured · leave blank to keep" : "Enter source API key"}" /><button type="button" class="reveal-button" data-benchmark-action="reveal-key" ${benchmarkAttributes(index, "")}>Reveal</button></span></label>` : ""}
       </div></article>`;
   }).join("");
   list.querySelectorAll                  ('[data-benchmark-field="api_key_input"]').forEach(input => { input.value = benchmarkSources[Number(input.dataset.benchmarkSource)].api_key_input || ""; });
@@ -126,71 +94,31 @@ function renderBenchmarkSourceStatus()       {
   });
 }
 function updateBenchmarkSource(event       )       {
-  const input = event.target                                        ;
-  if (input.dataset.benchmarkSource === undefined || !input.dataset.benchmarkField) return;
+  const input = event.target                    ;
+  if (input.dataset.benchmarkSource === undefined || !["enabled", "api_key_input"].includes(input.dataset.benchmarkField || "")) return;
   const source = benchmarkSources[Number(input.dataset.benchmarkSource)];
-  const dataset = input.dataset.benchmarkDataset === undefined ? undefined : source.datasets[Number(input.dataset.benchmarkDataset)];
-  const target = input.dataset.benchmarkMapping === undefined ? (dataset || source) : (dataset || source)._metrics[Number(input.dataset.benchmarkMapping)];
-  const field = input.dataset.benchmarkField;
-  target[field] = input.type === "checkbox" ? (input                    ).checked : input.value;
-  if (field === "metric" && input.value) { target.category = "operational"; target.unit = benchmarkOperations[input.value]; }
+  const field = input.dataset.benchmarkField ;
+  source[field] = input.type === "checkbox" ? input.checked : input.value;
   benchmarkDirty = true; markDirty(); updateBenchmarkControls();
-  if (field === "enabled" || field === "metric") renderBenchmarkSources();
+  if (field === "enabled") renderBenchmarkSources();
 }
 function benchmarkSourceAction(event       )       {
   const button = (event.target               ).closest                   ("[data-benchmark-action]");
-  if (!button || button.disabled) return;
-  const source = benchmarkSources[Number(button.dataset.benchmarkSource)];
-  const datasetIndex = button.dataset.benchmarkDataset === undefined ? undefined : Number(button.dataset.benchmarkDataset);
-  const target = datasetIndex === undefined ? source : source.datasets[datasetIndex];
-  const action = button.dataset.benchmarkAction;
-  if (action === "reveal-key") {
-    const input = document.querySelector                  (`[data-benchmark-source="${button.dataset.benchmarkSource}"][data-benchmark-field="api_key_input"]`) ;
-    input.type = input.type === "password" ? "text" : "password";
-    button.textContent = input.type === "text" ? "Hide" : "Reveal";
-    button.setAttribute("aria-pressed", String(input.type === "text")); return;
-  }
-  if (action === "add-dataset" && source.datasets.length < 8) source.datasets.push(benchmarkDataset(source.type));
-  if (action === "remove-dataset") source.datasets.splice(datasetIndex, 1);
-  if (action === "add-metric") target._metrics.push({ column:"", category:source.type === "lmarena" ? "preference" : "coding", min:0, max:1 });
-  if (action === "remove-metric") target._metrics.splice(Number(button.dataset.benchmarkMapping), 1);
-  benchmarkDirty = true; renderBenchmarkSources(); markDirty(); updateBenchmarkControls();
-}
-function readBenchmarkMappings(rows                       )                      {
-  const mappings                      = Object.create(null);
-  for (const row of rows) {
-    const column = String(row.column || "").trim();
-    if (!column || Object.hasOwn(mappings, column)) throw new Error("Benchmark metric columns must be nonempty and unique");
-    const { column:ignored, ...mapping } = row;
-    mapping.min = Number(mapping.min || 0); mapping.max = Number(mapping.max ?? 1);
-    if (!Number.isFinite(mapping.min) || !Number.isFinite(mapping.max)) throw new Error("Benchmark score scales must be finite numbers");
-    mappings[column] = mapping;
-  }
-  return mappings;
+  if (!button || button.disabled || button.dataset.benchmarkAction !== "reveal-key") return;
+  const input = document.querySelector                  (`[data-benchmark-source="${button.dataset.benchmarkSource}"][data-benchmark-field="api_key_input"]`) ;
+  input.type = input.type === "password" ? "text" : "password";
+  button.textContent = input.type === "text" ? "Hide" : "Reveal";
+  button.setAttribute("aria-pressed", String(input.type === "text"));
 }
 function readBenchmarkConfiguration()                      {
   const config = structuredClone(benchmarkConfiguration);
   config.enabled = document.querySelector                  ("#intelligence-enabled") .checked;
   config.sources = benchmarkSources.filter(source => !source._new || source.enabled).map(source => {
-    const { _new, _metrics, api_key_input, datasets, ...output } = source;
-    output.id = String(output.id || "").trim();
-    if (!output.id) throw new Error("Each benchmark source needs a source ID");
-    if (output.url === "") delete output.url;
-    if (output.max_rows === "" || output.max_rows === undefined) delete output.max_rows; else output.max_rows = Number(output.max_rows);
-    output.metrics = readBenchmarkMappings(_metrics || []);
-    if (datasets?.length) output.datasets = datasets.map((dataset                     ) => {
-      const { _metrics:rows, ...saved } = dataset;
-      saved.metrics = readBenchmarkMappings(rows || []);
-      return saved;
-    });
+    const { _new, api_key_input, ...fields } = source;
+    const output = structuredClone(fields);
     if (api_key_input) output.api_key = { value:api_key_input };
     if (output.enabled && output.type === "artificial_analysis" && !output.api_key) throw new Error("Artificial Analysis requires an API key");
-    if (output.type === "huggingface" && (!output.datasets?.length || output.datasets.some((dataset     ) => !dataset.dataset || Object.keys(dataset.metrics).length === 0))) throw new Error("Hugging Face requires a dataset ID and at least one metric mapping per dataset");
     return output;
-  });
-  document.querySelectorAll                  ("[data-benchmark-global]").forEach(input => {
-    const field = input.dataset.benchmarkGlobal ;
-    if (input.value.trim() === "") delete config[field]; else config[field] = field === "retries" ? Number(input.value) : input.value.trim();
   });
   return config;
 }
@@ -204,8 +132,8 @@ function renderBenchmarkTable()       {
   const raw = benchmarkTableView === "observations";
   const scores = ["overall", ...benchmarkCategories.filter(category => category !== "operational")];
   const operations = Object.keys(benchmarkOperations);
-  const headers = raw ? ["Model / external ID", "Source", "Benchmark", "Category", "Raw score", "Normalized %", "Unit", "Version", "Evaluation date", "Retrieved", "Match"]
-    : ["Model", "Providers", ...scores.map(score => `${score.replace(/_/g," ")} %`), "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Data status", "Last retrieval"];
+  const headers = raw ? ["Model", "External model ID", "Source", "Benchmark", "Category", "Raw score", "Normalized %", "Unit", "Version", "Evaluation date", "Retrieved", "Date basis", "Match", "Metadata"]
+    : ["Model", "Providers", ...scores.map(score => `${score.replace(/_/g," ")} %`), "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Data status", "Latest evaluation", "Last retrieval", "Age seconds", "Valid until"];
   let rows       ;
   let total        ;
   if (raw) { rows = benchmarkRawRows; total = benchmarkRawTotal; }
@@ -218,9 +146,9 @@ function renderBenchmarkTable()       {
   }
   document.querySelector("#benchmark-table-head") .innerHTML = `<tr>${headers.map(header => `<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
   document.querySelector("#benchmark-table-body") .innerHTML = rows.length ? rows.map(row => {
-    const values = raw ? [row.model_id || row.external_model_id, row.source, row.benchmark, row.category, benchmarkNumber(row.original_score), benchmarkNumber(row.normalized_score,true), row.unit || "—", row.version || "—", benchmarkDate(row.evaluated_at), benchmarkDate(row.retrieved_at), row.model_id ? "Matched" : "Unmatched / ambiguous"]
-      : [row.id, (row.provider_ids || []).join(", "), ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), row.stale ? "Stale" : "Current", benchmarkDate(row.latest_retrieval)];
-    return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}</tr>`;
+    const values = raw ? [row.model_id || "—", row.external_model_id, row.source, row.benchmark, row.category, benchmarkNumber(row.original_score), benchmarkNumber(row.normalized_score,true), row.unit || "—", row.version || "—", benchmarkDate(row.evaluated_at), benchmarkDate(row.retrieved_at), row.date_basis || "Unknown", row.model_id ? "Matched" : "Unmatched / ambiguous"]
+      : [row.id, (row.provider_ids || []).join(", "), ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
+    return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}${raw ? `<td><pre class="benchmark-metadata">${escapeHTML(JSON.stringify(row.metadata || {}, null, 2))}</pre></td>` : ""}</tr>`;
   }).join("") : `<tr><td colspan="${headers.length}">No cached benchmark data matches this view. Enable sources, save, and refresh to import results.</td></tr>`;
   const pages = Math.max(1, Math.ceil(total / benchmarkPageSize));
   document.querySelector("#benchmark-data-count") .textContent = `${total} ${raw ? "observations" : "models"}`;
@@ -229,29 +157,31 @@ function renderBenchmarkTable()       {
   document.querySelector                   ("#benchmark-next") .disabled = (benchmarkPage + 1) * benchmarkPageSize >= total;
 }
 function benchmarkDate(value     )         { return value && !String(value).startsWith("0001-") ? String(value) : "Unknown"; }
-async function loadBenchmarkData()                {
-  if (!benchmarksEnabledSaved || !adminAuthorization) return;
+async function loadBenchmarkData()                   {
+  if (!benchmarksEnabledSaved || !adminAuthorization) return false;
   const sequence = ++benchmarkReloadSequence;
   const login = adminAuthorization;
   try {
     const headers = await authProvider.headers();
-    const paths = ["sources", "models", ...(benchmarkTableView === "observations" ? [`observations?offset=${benchmarkPage * benchmarkPageSize}&limit=${benchmarkPageSize}&q=${encodeURIComponent(benchmarkFilter)}`] : [])];
+    const paths = ["sources", "models", ...(benchmarkTableView === "observations" ? [`observations?offset=${benchmarkPage * benchmarkPageSize}&limit=${benchmarkPageSize}&include_metadata=true&q=${encodeURIComponent(benchmarkFilter)}`] : [])];
     const replies = await Promise.all(paths.map(async path => {
       const response = await gatewayFetch(`/gateway/v1/intelligence/${path}`, {headers});
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message || body.error || "Unable to load benchmark data");
       return body;
     }));
-    if (sequence !== benchmarkReloadSequence || login !== adminAuthorization) return;
+    if (sequence !== benchmarkReloadSequence || login !== adminAuthorization) return false;
     [benchmarkSourceStatus, benchmarkModels] = replies;
     if (replies[2]) { benchmarkRawRows = replies[2].observations || []; benchmarkRawTotal = replies[2].total || 0; }
+    if (replies[2] && benchmarkPage > 0 && benchmarkPage * benchmarkPageSize >= benchmarkRawTotal) {benchmarkPage = Math.max(0,Math.ceil(benchmarkRawTotal/benchmarkPageSize)-1);return await loadBenchmarkData();}
     renderBenchmarkSourceStatus(); renderBenchmarkTable();
     if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status") .textContent = "Showing saved benchmark evidence. Missing scores are unknown, not zero; human preference remains a separate signal.";
-  } catch (error) { if (sequence === benchmarkReloadSequence) document.querySelector("#benchmark-status") .textContent = benchmarkSafeMessage(error instanceof Error ? error.message : "Unable to load benchmark data"); }
+    return true;
+  } catch (error) { if (sequence === benchmarkReloadSequence) document.querySelector("#benchmark-status") .textContent = benchmarkSafeMessage(error instanceof Error ? error.message : "Unable to load benchmark data");return false; }
 }
 function benchmarkProgress(event                     )       {
   if (event.source) {
-    const labels                         = {fetching:"Fetching and parsing",persisting:"Saving validated data",failed:"Update failed; previous cache retained"};
+    const labels                         = {fetching:"Fetching and parsing",rate_limited:"Waiting for upstream rate limit",persisting:"Saving validated data",failed:"Update failed; previous cache retained"};
     if (labels[event.phase]) benchmarkSourceActivity[event.source] = labels[event.phase];
     if (event.phase === "published") delete benchmarkSourceActivity[event.source];
     renderBenchmarkSourceStatus();
@@ -261,12 +191,34 @@ function benchmarkProgress(event                     )       {
   }
   const {total, completed, failed} = benchmarkProgressCounts;
   const bar = document.querySelector                     ("#benchmark-progress") ;
-  bar.max = Math.max(1, total); bar.value = total ? Math.min(total, completed) : event.phase === "complete" ? 1 : 0;
-  document.querySelector("#benchmark-progress-label") .textContent = `${completed} of ${total} sources finished${failed ? ` · ${failed} failed` : ""} · ${benchmarkSafeMessage(String(event.message || ""))}`;
-  benchmarkProgressLog.push(benchmarkSafeMessage(`${event.source ? `${event.source}: ` : ""}${event.message || event.phase}${event.observations ? ` (${event.observations} observations)` : ""}`));
+  bar.max = total + 1; bar.value = Math.min(total, completed) + (event.phase === "table_loaded" ? 1 : 0);
+  const message = event.phase === "complete" ? "Source ingestion complete; preparing the table update" : String(event.message || "");
+  document.querySelector("#benchmark-progress-label") .textContent = `${completed} of ${total} sources finished${failed ? ` · ${failed} failed` : ""} · ${benchmarkSafeMessage(message)}`;
+  benchmarkProgressLog.push(benchmarkSafeMessage(`${event.source ? `${event.source}: ` : ""}${message || event.phase}${event.observations ? ` (${event.observations} observations)` : ""}`));
   benchmarkProgressLog = benchmarkProgressLog.slice(-256);
   const log = document.querySelector             ("#benchmark-refresh-log") ;
   log.textContent = benchmarkProgressLog.join("\n"); log.scrollTop = log.scrollHeight;
+}
+async function finishBenchmarkRefresh(result                    , login        , abort                 )                {
+  if (login !== adminAuthorization || abort.signal.aborted) return;
+  document.querySelector("#benchmark-status") .textContent = "Loading benchmark results into the table…";
+  benchmarkProgress({phase:"loading_table",message:"Loading results into the table"});
+  while (login === adminAuthorization && !abort.signal.aborted) {
+    const expectedSequence = benchmarkReloadSequence + 1;
+    if (!await loadBenchmarkData()) {
+      if (login !== adminAuthorization || abort.signal.aborted) return;
+      if (benchmarkReloadSequence > expectedSequence) continue; // View changed during loading.
+      throw new Error("Sources ingested, but the table could not finish updating. Reload cached data to try again.");
+    }
+    const loadedSequence = benchmarkReloadSequence;
+    // Let the browser paint the new rows before announcing completion.
+    await new Promise      (resolve => window.requestAnimationFrame ? window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>resolve())) : window.setTimeout(resolve,0));
+    if (loadedSequence === benchmarkReloadSequence) break;
+  }
+  if (login !== adminAuthorization || abort.signal.aborted) return;
+  const message = result.partial_failure ? "Benchmark refresh finished with source failures; table updated with available data." : "Benchmark refresh finished; table updated.";
+  benchmarkProgress({phase:"table_loaded",message});
+  document.querySelector("#benchmark-status") .textContent = message;
 }
 async function inspectBenchmarks(refresh         )                {
   if (!refresh) { await loadBenchmarkData(); return; }
@@ -275,6 +227,7 @@ async function inspectBenchmarks(refresh         )                {
   if (benchmarkRefreshRunning) return;
   const login = adminAuthorization;
   const abort = new AbortController();
+  output.textContent = "Refreshing sources; cached results remain available…";
   benchmarkRefreshRunning = true; benchmarkAbort = abort; benchmarkProgressLog = []; benchmarkSourceActivity = {};
   benchmarkProgressCounts = {total:0,completed:0,failed:0};
   document.querySelector                ("#benchmark-refresh-panel") .hidden = false;
@@ -286,8 +239,8 @@ async function inspectBenchmarks(refresh         )                {
       const body = await response.json();
       if (login !== adminAuthorization || abort.signal.aborted) return;
       benchmarkSourceStatus = body.sources || {}; renderBenchmarkSourceStatus();
-      output.textContent = body.partial_failure ? "Refresh finished with source failures; previous data retained." : "Benchmark refresh finished.";
-      await loadBenchmarkData(); return;
+      benchmarkProgress({phase:"complete",total:Object.values(body.sources || {}).filter((source    )=>source.enabled).length,completed:Object.values(body.sources || {}).filter((source    )=>source.enabled).length});
+      await finishBenchmarkRefresh(body,login,abort);return;
     }
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let finished = false;
     try {
@@ -303,7 +256,7 @@ async function inspectBenchmarks(refresh         )                {
           if (!data || login !== adminAuthorization || abort.signal.aborted) continue;
           const event = JSON.parse(data);
           if (kind === "progress") { benchmarkProgress(event); if (event.phase === "published" || event.phase === "failed") await loadBenchmarkData(); }
-          if (kind === "result") { finished = true; benchmarkSourceStatus = event.sources || {}; renderBenchmarkSourceStatus(); output.textContent = event.partial_failure ? "Refresh finished with source failures; previous good data retained." : "Benchmark refresh finished."; await loadBenchmarkData(); }
+          if (kind === "result") { finished = true; benchmarkSourceStatus = event.sources || {}; renderBenchmarkSourceStatus(); await finishBenchmarkRefresh(event,login,abort); }
         }
         if (chunk.done) break;
       }
@@ -315,7 +268,7 @@ async function inspectBenchmarks(refresh         )                {
 function initializeBenchmarks()       {
   const list = document.querySelector("#benchmark-sources-list") ;
   list.addEventListener("input", updateBenchmarkSource); list.addEventListener("click", benchmarkSourceAction);
-  document.querySelectorAll                  ("[data-benchmark-global]").forEach(input => input.addEventListener("input",()=>{benchmarkDirty=true;markDirty();updateBenchmarkControls();}));
+  document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
   document.querySelector("#benchmark-table-view") .addEventListener("change",()=>{benchmarkTableView=document.querySelector                   ("#benchmark-table-view") .value;benchmarkPage=0;void loadBenchmarkData();});
   document.querySelector("#benchmark-table-filter") .addEventListener("input",()=>{benchmarkFilter=document.querySelector                  ("#benchmark-table-filter") .value;benchmarkPage=0;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
   document.querySelector("#benchmark-previous") .addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();}});

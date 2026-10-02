@@ -29,7 +29,7 @@ func (o Options) Defaults() Options {
 		o.RefreshInterval = 24 * time.Hour
 	}
 	if o.SourceTimeout <= 0 {
-		o.SourceTimeout = 10 * time.Minute
+		o.SourceTimeout = 30 * time.Minute
 	}
 	if o.StaleAfter <= 0 {
 		o.StaleAfter = 7 * 24 * time.Hour
@@ -157,10 +157,11 @@ func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(Refresh
 		return context.Canceled
 	}
 	type update struct {
-		id      string
-		result  Result
-		err     error
-		started bool
+		id       string
+		result   Result
+		err      error
+		started  bool
+		activity string
 	}
 	completed, failed := 0, 0
 	notify := func(phase, id, message string, observations int) {
@@ -170,15 +171,28 @@ func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(Refresh
 	updates := make(chan update, 2*len(m.sources))
 	for _, source := range m.sources {
 		go func(source Source) {
-			updates <- update{id: source.ID(), started: true}
+			select {
+			case updates <- update{id: source.ID(), started: true}:
+			case <-ctx.Done():
+				return
+			}
 			m.options.Logger.Info("benchmark_refresh_started", "source", source.ID())
-			ctx, cancel := context.WithTimeout(ctx, m.options.SourceTimeout)
+			sourceCtx, cancel := context.WithTimeout(ctx, m.options.SourceTimeout)
 			defer cancel()
-			result, err := source.Fetch(ctx)
+			sourceCtx = context.WithValue(sourceCtx, refreshActivityKey{}, func(message string) {
+				select {
+				case updates <- update{id: source.ID(), activity: message}:
+				case <-sourceCtx.Done():
+				}
+			})
+			result, err := source.Fetch(sourceCtx)
 			if err == nil {
 				err = ValidateObservations(result.Observations)
 			}
-			updates <- update{id: source.ID(), result: result, err: err}
+			select {
+			case updates <- update{id: source.ID(), result: result, err: err}:
+			case <-ctx.Done():
+			}
 		}(source)
 	}
 	var failures []error
@@ -191,6 +205,10 @@ func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(Refresh
 		}
 		if update.started {
 			notify("fetching", update.id, "Fetching and parsing published benchmark data", 0)
+			continue
+		}
+		if update.activity != "" {
+			notify("rate_limited", update.id, update.activity, 0)
 			continue
 		}
 		m.mu.RLock()

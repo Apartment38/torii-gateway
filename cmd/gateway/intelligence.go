@@ -67,6 +67,7 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 		return nil, err
 	}
 	timeout, _ := time.ParseDuration(cfg.Intelligence.HTTPTimeout)
+	requestInterval, _ := time.ParseDuration(cfg.Intelligence.RequestInterval)
 	retries := 2
 	if cfg.Intelligence.Retries != nil {
 		retries = *cfg.Intelligence.Retries
@@ -91,7 +92,7 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 				resolveKey = settings.APIKey.Resolve
 			}
 		}
-		source, err := registry.New(settings.SourceSettings, key, intelligence.FetchOptions{Timeout: timeout, Retries: retries, ResolveKey: resolveKey})
+		source, err := registry.New(settings.SourceSettings, key, intelligence.FetchOptions{Timeout: timeout, Retries: retries, ResolveKey: resolveKey, RequestInterval: requestInterval})
 		if err != nil {
 			sources = append(sources, unavailableBenchmarkSource{id: settings.ID})
 			continue

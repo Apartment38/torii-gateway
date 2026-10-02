@@ -2,7 +2,6 @@ package intelligence
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -15,23 +14,17 @@ type huggingFace struct {
 }
 
 func newHuggingFace(cfg SourceSettings, key string, options FetchOptions) (Source, error) {
-	if len(cfg.Datasets) == 0 {
-		return nil, errors.New("Hugging Face sources require configured datasets and metric mappings")
-	}
+	cfg = WithSourceDefaults(cfg)
 	r, err := newRemote(cfg, key, "https://datasets-server.huggingface.co/rows", options)
 	return &huggingFace{remote: r, mode: "huggingface"}, err
 }
 func newArena(cfg SourceSettings, key string, options FetchOptions) (Source, error) {
-	if len(cfg.Datasets) == 0 {
-		cfg.Datasets = []Dataset{{ID: "lmarena-ai/leaderboard-dataset", Config: "text_style_control", Split: "latest", ModelField: "model_name", DateField: "leaderboard_publish_date"}}
-	}
+	cfg = WithSourceDefaults(cfg)
 	r, err := newRemote(cfg, key, "https://datasets-server.huggingface.co/rows", options)
 	return &huggingFace{remote: r, mode: "lmarena"}, err
 }
 func newLiveBench(cfg SourceSettings, key string, options FetchOptions) (Source, error) {
-	if len(cfg.Datasets) == 0 {
-		cfg.Datasets = []Dataset{{ID: "livebench/model_judgment", Config: "default", Split: "leaderboard", ModelField: "model", DateField: "tstamp"}}
-	}
+	cfg = WithSourceDefaults(cfg)
 	r, err := newRemote(cfg, key, "https://datasets-server.huggingface.co/rows", options)
 	return &huggingFace{remote: r, mode: "livebench"}, err
 }

@@ -1,0 +1,80 @@
+[
+  {
+    "name": "Artificial Analysis",
+    "requires_api_key": true,
+    "note": "Imports published capability, pricing and speed measurements. Requires an Artificial Analysis API key.",
+    "settings": {
+      "id": "artificial-analysis",
+      "type": "artificial_analysis",
+      "enabled": false,
+      "url": "https://artificialanalysis.ai/api/v2/data/llms/models"
+    }
+  },
+  {
+    "name": "BenchLM.ai",
+    "requires_api_key": false,
+    "note": "Imports public supported benchmark evidence; estimated scores do not influence capabilities. Commercial use requires a BenchLM licence.",
+    "settings": {
+      "id": "benchlm",
+      "type": "benchlm",
+      "enabled": false,
+      "url": "https://benchlm.ai/data/models.json"
+    }
+  },
+  {
+    "name": "Hugging Face leaderboards",
+    "requires_api_key": false,
+    "note": "Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models.",
+    "settings": {
+      "id": "huggingface",
+      "type": "huggingface",
+      "enabled": false,
+      "url": "https://datasets-server.huggingface.co/rows",
+      "datasets": [
+        {
+          "dataset": "open-llm-leaderboard/contents",
+          "config": "default",
+          "split": "train",
+          "model_field": "fullname",
+          "version": "Open LLM Leaderboard v2",
+          "metrics": {
+            "IFEval Raw": {"category": "instruction_following", "max": 1},
+            "BBH Raw": {"category": "reasoning", "max": 1},
+            "MATH Lvl 5 Raw": {"category": "math", "max": 1},
+            "GPQA Raw": {"category": "knowledge", "max": 1},
+            "MUSR Raw": {"category": "reasoning", "max": 1},
+            "MMLU-PRO Raw": {"category": "knowledge", "max": 1}
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "LMArena",
+    "requires_api_key": false,
+    "note": "Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks.",
+    "settings": {
+      "id": "lmarena",
+      "type": "lmarena",
+      "enabled": false,
+      "url": "https://datasets-server.huggingface.co/rows",
+      "datasets": [
+        {"dataset": "lmarena-ai/leaderboard-dataset", "config": "text_style_control", "split": "latest", "model_field": "model_name", "date_field": "leaderboard_publish_date"}
+      ]
+    }
+  },
+  {
+    "name": "LiveBench",
+    "requires_api_key": false,
+    "note": "Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing.",
+    "settings": {
+      "id": "livebench",
+      "type": "livebench",
+      "enabled": false,
+      "url": "https://datasets-server.huggingface.co/rows",
+      "datasets": [
+        {"dataset": "livebench/model_judgment", "config": "default", "split": "leaderboard", "model_field": "model", "date_field": "tstamp"}
+      ]
+    }
+  }
+]

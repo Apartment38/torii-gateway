@@ -248,9 +248,11 @@ Ingestion is opt-in, uses a persistent cache, and never runs in inference
 requests. Source failures retain their previous data independently.
 
 Configure the top-level `intelligence` section or use the console's **Benchmarks**
-page for source toggles, encrypted API keys and source-specific settings. Save
+page for preconfigured source toggles and encrypted API keys where required. Save
 and reload before refreshing. The page shows cached model scores and raw results,
-plus streamed refresh activity, source-count progress and live table updates.
+plus streamed refresh activity, source-count and table-loading progress, and live
+table updates. Choose 25, 50 or 100 rows per page. Shared per-host request pacing
+and rate-limit cooldowns protect benchmark upstreams without affecting inference.
 Source enablement, aliases, freshness thresholds, aggregation weights and
 smart-routing weights are documented in [Benchmark intelligence](docs/benchmark-intelligence.md),
 with defaults in [config.example.yaml](config.example.yaml). BenchLM's export

@@ -69,13 +69,30 @@ intelligence:
 	}
 }
 
+func TestPresetSourcesValidateWithOnlyEnablementAndRequiredKey(t *testing.T) {
+	var cfg config.IntelligenceConfig
+	for _, preset := range intelligence.SourcePresets() {
+		source := config.BenchmarkSourceConfig{SourceSettings: intelligence.SourceSettings{ID: preset.Settings.ID, Type: preset.Settings.Type, Enabled: true}}
+		if preset.RequiresAPIKey {
+			source.APIKey = &config.SecretRef{Credential: "source-key"}
+		}
+		cfg.Sources = append(cfg.Sources, source)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Options().Sources[2].Datasets) != 1 {
+		t.Fatal("runtime did not receive preset dataset")
+	}
+}
+
 func TestIntelligenceConfigurationRejectsUnsafeOrAmbiguousSettings(t *testing.T) {
 	ptr := func(value float64) *float64 { return &value }
 	cases := []config.IntelligenceConfig{
-		{RefreshInterval: "-1s"}, {Retries: func() *int { v := 9; return &v }()},
+		{RefreshInterval: "-1s"}, {RequestInterval: "0s"}, {RequestInterval: "invalid"}, {Retries: func() *int { v := 9; return &v }()},
 		{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "same", Type: "benchlm"}}, {SourceSettings: intelligence.SourceSettings{ID: "same", Type: "benchlm"}}}},
 		{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "aa", Type: "artificial_analysis", Enabled: true}}}},
-		{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "hf", Type: "huggingface"}}}},
+		{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "hf", Type: "huggingface", Datasets: []intelligence.Dataset{{ID: "custom/results", Config: "default", Split: "train"}}}}}},
 		{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "bad", Type: "benchlm", URL: "https://user:secret@example.org"}}}},
 		{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "bad", Type: "benchlm", URL: "https://example.org?api_key=secret"}}}},
 		{Aggregation: intelligence.Aggregation{SourceWeights: map[string]float64{"aa": math.NaN()}}},

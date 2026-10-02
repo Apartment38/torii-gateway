@@ -3,7 +3,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 
-const source = ["benchmarks.ts", "app.ts"].map(file => readFileSync(new URL(`../internal/web/static/${file}`, import.meta.url), "utf8")).join("\n");
+const presets = JSON.parse(readFileSync(new URL("../internal/intelligence/presets.json", import.meta.url), "utf8"));
+const source = `const benchmarkDefinitions = ${JSON.stringify(presets)};\n` + ["benchmarks.ts", "app.ts"].map(file => readFileSync(new URL(`../internal/web/static/${file}`, import.meta.url), "utf8")).join("\n");
 const target = new URL("../internal/web/static/app.js", import.meta.url);
 const script = "// Generated from benchmarks.ts and app.ts by scripts/build-console.mjs.\n" +
   stripTypeScriptTypes(source, { mode: "strip" })

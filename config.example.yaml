@@ -18,7 +18,8 @@ intelligence:
   enabled: false
   refresh_interval: 24h
   http_timeout: 30s
-  source_timeout: 10m
+  source_timeout: 30m
+  request_interval: 1s # Shared pacing and one in-flight request per benchmark host.
   retries: 2
   stale_after: 168h
   max_age: 4320h
@@ -34,18 +35,8 @@ intelligence:
     - id: hf
       type: huggingface
       enabled: false
-      datasets:
-        # Replace with the published dataset, subset, split and real columns.
-        - dataset: org/your-leaderboard
-          config: default
-          split: train
-          model_field: model
-          date_field: evaluation_date
-          metrics:
-            accuracy:
-              category: knowledge
-              min: 0
-              max: 100
+      # Preconfigured Open LLM Leaderboard v2 dataset and raw score mappings.
+      # Optional explicit datasets override this preset; see the documentation.
     - id: arena
       type: lmarena
       enabled: false

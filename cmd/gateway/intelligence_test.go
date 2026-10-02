@@ -112,6 +112,9 @@ func TestBenchmarkWorkerOnlyStartsForActiveHandlerAndStopsOnReload(t *testing.T)
 	defer upstream.Close()
 	cfg := benchmarkConfig(t, upstream.URL)
 	cfg.Intelligence.RefreshInterval = "10ms"
+	// Exercise worker ownership quickly; production's one-second request pace
+	// is tested independently and intentionally prevents two requests in 1s.
+	cfg.Intelligence.RequestInterval = "1ms"
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := persistConfig(path, cfg); err != nil {
 		t.Fatal(err)

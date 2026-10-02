@@ -6,20 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 type FetchOptions struct {
-	ResolveKey func() (string, error)
-	Client     *http.Client
-	Timeout    time.Duration
-	Retries    int
+	ResolveKey      func() (string, error)
+	Client          *http.Client
+	Timeout         time.Duration
+	Retries         int
+	RequestInterval time.Duration
 }
 
 type SourceError struct {
@@ -35,11 +36,12 @@ func (e *SourceError) Error() string {
 }
 
 type remote struct {
-	resolveKey func() (string, error)
-	cfg        SourceSettings
-	key        string
-	client     *http.Client
-	retries    int
+	resolveKey      func() (string, error)
+	cfg             SourceSettings
+	key             string
+	client          *http.Client
+	retries         int
+	requestInterval time.Duration
 }
 
 func (r *remote) ID() string { return r.cfg.ID }
@@ -109,7 +111,10 @@ func newRemote(cfg SourceSettings, key, defaultURL string, options FetchOptions)
 	}
 	// Never forward credentials to redirects, including cross-origin downloads.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &remote{cfg: cfg, key: key, resolveKey: options.ResolveKey, client: client, retries: options.Retries}, nil
+	if options.RequestInterval <= 0 {
+		options.RequestInterval = time.Second
+	}
+	return &remote{cfg: cfg, key: key, resolveKey: options.ResolveKey, client: client, retries: options.Retries, requestInterval: options.RequestInterval}, nil
 }
 
 func ValidateURL(raw string) error {
@@ -128,9 +133,15 @@ func ValidateURL(raw string) error {
 
 func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, error) {
 	var last error
+	lane := laneFor(rawURL)
 	for attempt := 0; attempt <= r.retries; attempt++ {
+		release, err := lane.acquire(ctx, r.requestInterval)
+		if err != nil {
+			return nil, &SourceError{Stage: "upstream timeout or cancellation"}
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
+			release()
 			return nil, &SourceError{Stage: "request construction"}
 		}
 		req.Header.Set("Accept", "application/json")
@@ -139,6 +150,7 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 		if r.resolveKey != nil {
 			key, err = r.resolveKey()
 			if err != nil || strings.ContainsAny(key, "\r\n") {
+				release()
 				return nil, &SourceError{Stage: "source credentials"}
 			}
 		}
@@ -150,13 +162,15 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 			req.Header.Set(authHeader, value)
 		}
 		resp, err := r.client.Do(req)
-		delay := time.Duration(attempt+1) * 250 * time.Millisecond
+		delay := retryBackoff(attempt, false)
 		if err != nil {
 			last = &SourceError{Stage: "upstream request"}
 		} else {
 			data, readErr := io.ReadAll(io.LimitReader(resp.Body, (16<<20)+1))
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
+				lane.succeeded()
+				release()
 				if readErr != nil || len(data) > 16<<20 {
 					return nil, &SourceError{Stage: "response size or read"}
 				}
@@ -164,21 +178,30 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 			}
 			last = &SourceError{Stage: "upstream request", Status: resp.StatusCode}
 			if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < 500 {
+				release()
 				return nil, last
 			}
-			if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {
-				delay = min(time.Duration(seconds)*time.Second, 5*time.Second)
+			throttled := resp.StatusCode == http.StatusTooManyRequests
+			if throttled {
+				delay = retryBackoff(attempt, true)
+			}
+			if instructed, ok := retryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+				delay = max(instructed, r.requestInterval)
+			}
+			if throttled || resp.Header.Get("Retry-After") != "" {
+				lane.pause(delay, r.requestInterval, throttled)
+			}
+			if throttled {
+				slog.Warn("benchmark_upstream_rate_limited", "source", r.ID(), "retry", attempt, "wait_seconds", delay.Seconds())
+				reportRateLimit(ctx, fmt.Sprintf("Upstream rate limit; waiting %.1f seconds before more requests", delay.Seconds()))
 			}
 		}
+		release()
 		if attempt == r.retries {
 			break
 		}
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		if err := waitDuration(ctx, delay); err != nil {
 			return nil, &SourceError{Stage: "upstream timeout or cancellation"}
-		case <-timer.C:
 		}
 	}
 	return nil, last

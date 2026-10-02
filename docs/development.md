@@ -60,9 +60,10 @@ Run browser-console tests and verify the generated script (Node.js 22.13+):
     node --test internal/web/app_test.mjs
     node scripts/build-console.mjs --check
 
-The dependency-free build combines `internal/web/static/benchmarks.ts` and
-`app.ts` into the committed `app.js`. Run `node scripts/build-console.mjs` after
-editing either TypeScript source. Console tests use a mocked DOM and gateway;
+The dependency-free build combines `internal/intelligence/presets.json`,
+`internal/web/static/benchmarks.ts` and `app.ts` into the committed `app.js`.
+Run `node scripts/build-console.mjs` after editing either TypeScript source or
+the shared presets. Console tests use a mocked DOM and gateway;
 benchmark tests exercise fragmented streaming updates without live services.
 
 To validate non-root credentials, benchmark persistence and administrator setup in Podman:

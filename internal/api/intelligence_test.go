@@ -154,6 +154,13 @@ func TestBenchmarkObservationTablePaginationPreservesUnmatchedAndProvenance(t *t
 	if body.Observations[0].Metadata != nil || body.Observations[0].Score != 90 || body.Observations[0].RetrievedAt.IsZero() {
 		t.Fatal("table provenance or metadata filtering incorrect")
 	}
+	w = get("/gateway/v1/intelligence/observations?include_metadata=true&limit=25")
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Observations[0].Metadata["large_upstream_row"] != "not needed in table" {
+		t.Fatal("complete table omitted captured metadata")
+	}
 	w = get("/gateway/v1/intelligence/observations?q=MODEL-A")
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
@@ -161,7 +168,7 @@ func TestBenchmarkObservationTablePaginationPreservesUnmatchedAndProvenance(t *t
 	if body.Total != 1 || body.Observations[0].ModelID != "local/model-a" {
 		t.Fatalf("filter=%s", w.Body.String())
 	}
-	for _, query := range []string{"limit=0", "limit=501", "offset=-1", "limit=bad", "offset=bad", "q=" + strings.Repeat("a", 257)} {
+	for _, query := range []string{"limit=0", "limit=501", "offset=-1", "limit=bad", "offset=bad", "include_metadata=invalid", "q=" + strings.Repeat("a", 257)} {
 		if w := get("/gateway/v1/intelligence/observations?" + query); w.Code != 400 {
 			t.Fatalf("query=%s status=%d", query, w.Code)
 		}

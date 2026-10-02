@@ -16,6 +16,7 @@ type IntelligenceConfig struct {
 	Enabled           bool                       `yaml:"enabled,omitempty"`
 	RefreshInterval   string                     `yaml:"refresh_interval,omitempty"`
 	HTTPTimeout       string                     `yaml:"http_timeout,omitempty"`
+	RequestInterval   string                     `yaml:"request_interval,omitempty"`
 	SourceTimeout     string                     `yaml:"source_timeout,omitempty"`
 	Retries           *int                       `yaml:"retries,omitempty"`
 	StaleAfter        string                     `yaml:"stale_after,omitempty"`
@@ -32,7 +33,7 @@ type BenchmarkSourceConfig struct {
 }
 
 func (c IntelligenceConfig) Validate() error {
-	for name, raw := range map[string]string{"refresh_interval": c.RefreshInterval, "http_timeout": c.HTTPTimeout, "source_timeout": c.SourceTimeout, "stale_after": c.StaleAfter, "max_age": c.MaxAge, "freshness_half_life": c.FreshnessHalfLife} {
+	for name, raw := range map[string]string{"refresh_interval": c.RefreshInterval, "http_timeout": c.HTTPTimeout, "request_interval": c.RequestInterval, "source_timeout": c.SourceTimeout, "stale_after": c.StaleAfter, "max_age": c.MaxAge, "freshness_half_life": c.FreshnessHalfLife} {
 		if raw != "" {
 			if value, err := time.ParseDuration(raw); err != nil || value <= 0 {
 				return fmt.Errorf("%s must be a positive Go duration", name)
@@ -47,6 +48,7 @@ func (c IntelligenceConfig) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, source := range c.Sources {
+		source.SourceSettings = intelligence.WithSourceDefaults(source.SourceSettings)
 		if provider.ValidateID(source.ID) != nil || seen[source.ID] {
 			return errors.New("source IDs must be valid and unique")
 		}
@@ -182,7 +184,7 @@ func (c IntelligenceConfig) Options() intelligence.Options {
 	duration := func(raw string) time.Duration { value, _ := time.ParseDuration(raw); return value }
 	options := intelligence.Options{RefreshInterval: duration(c.RefreshInterval), SourceTimeout: duration(c.SourceTimeout), StaleAfter: duration(c.StaleAfter), MaxAge: duration(c.MaxAge), HalfLife: duration(c.FreshnessHalfLife), Aggregation: c.Aggregation, Identities: c.Identities}
 	for _, source := range c.Sources {
-		options.Sources = append(options.Sources, source.SourceSettings)
+		options.Sources = append(options.Sources, intelligence.WithSourceDefaults(source.SourceSettings))
 	}
 	return options.Defaults()
 }

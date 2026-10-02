@@ -85,8 +85,14 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 	case r.URL.Path == "/gateway/v1/intelligence/observations":
 		limit, offset := 100, 0
 		var err error
+		includeMetadata := false
+		if raw := r.URL.Query().Get("include_metadata"); raw != "" {
+			includeMetadata, err = strconv.ParseBool(raw)
+		}
 		if raw := r.URL.Query().Get("limit"); raw != "" {
-			limit, err = strconv.Atoi(raw)
+			if err == nil {
+				limit, err = strconv.Atoi(raw)
+			}
 		}
 		if err == nil && r.URL.Query().Get("offset") != "" {
 			offset, err = strconv.Atoi(r.URL.Query().Get("offset"))
@@ -109,7 +115,9 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 					continue
 				}
 				if total >= offset && len(observations) < limit {
-					observation.Metadata = nil
+					if !includeMetadata {
+						observation.Metadata = nil
+					}
 					observations = append(observations, observation)
 				}
 				total++

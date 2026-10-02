@@ -5,6 +5,7 @@ import "context"
 type benchLM struct{ *remote }
 
 func newBenchLM(cfg SourceSettings, key string, options FetchOptions) (Source, error) {
+	cfg = WithSourceDefaults(cfg)
 	r, err := newRemote(cfg, key, "https://benchlm.ai/data/models.json", options)
 	return &benchLM{r}, err
 }

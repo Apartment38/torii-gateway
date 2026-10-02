@@ -10,7 +10,8 @@ import (
 type artificialAnalysis struct{ *remote }
 
 func newArtificialAnalysis(cfg SourceSettings, key string, options FetchOptions) (Source, error) {
-	r, err := newRemote(cfg, key, "https://artificialanalysis.ai/api/v2/language/models/free", options)
+	cfg = WithSourceDefaults(cfg)
+	r, err := newRemote(cfg, key, "https://artificialanalysis.ai/api/v2/data/llms/models", options)
 	return &artificialAnalysis{r}, err
 }
 

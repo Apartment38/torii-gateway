@@ -204,13 +204,7 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 
 const bootstrapConfig = `server:
   listen: 0.0.0.0:8080
-providers:
-  - id: setup
-    type: openai_compatible
-    base_url: https://example.invalid
-    api_path: /v1
-    discover_models: false
-    models: [setup]
+providers: []
 `
 
 // initializeConfigPath seeds a missing writable configuration from a supplied

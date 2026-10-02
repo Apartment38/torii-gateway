@@ -62,9 +62,14 @@ setup_body=$(printf '%s' "$setup_code" | jq -Rs '{username:"test-admin",password
 api_key=$(request POST /gateway/v1/setup '' "$setup_body" | jq -er .api_key)
 [[ $api_key == torii_* ]]
 [[ $(request GET /gateway/v1/config "Bearer $api_key" '' true) == 401 ]]
-credential=$(request POST /gateway/v1/credentials "$basic" '{"service":"setup","purpose":"bearer_token","value":"synthetic-provider-secret-42"}' | jq -er .credential)
 configuration=$(request GET /gateway/v1/config "$basic")
-updated=$(printf '%s' "$configuration" | jq --arg id "$credential" '.providers[0].bearer_token={credential:$id} | .intelligence={enabled:true,sources:[{id:"smoke-cache",type:"benchlm",enabled:false}]}')
+[[ $(printf '%s' "$configuration" | jq '.providers | length') == 0 ]]
+[[ $(request GET /v1/models "Bearer $api_key" | jq -r '[.data[].id] == ["smart"]') == true ]]
+request PUT /gateway/v1/config "$basic" "$configuration" >/dev/null
+credential=$(request POST /gateway/v1/credentials "$basic" '{"service":"smoke","purpose":"bearer_token","value":"synthetic-provider-secret-42"}' | jq -er .credential)
+# Add a static fixture explicitly; bootstrap must not invent a provider. No
+# upstream request is made because model discovery is disabled for this fixture.
+updated=$(printf '%s' "$configuration" | jq --arg id "$credential" '.providers=[{id:"smoke",type:"openai_compatible",base_url:"http://127.0.0.1:9",discover_models:false,models:["fixture"],bearer_token:{credential:$id}}] | .intelligence={enabled:true,sources:[{id:"smoke-cache",type:"benchlm",enabled:false}]}')
 request PUT /gateway/v1/config "$basic" "$updated" >/dev/null
 # Persist an empty, disabled source through the normal refresh API (no network).
 request POST /gateway/v1/intelligence/refresh "Bearer $api_key" >/dev/null
@@ -83,13 +88,13 @@ rotated=$(request POST /gateway/v1/admin/api-key "$basic" | jq -er .api_key)
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
 stop
 # Seed only this disposable stopped database to validate public counter storage.
-podman unshare sqlite3 "$mountpoint/torii.db" "INSERT INTO usage_aggregates VALUES('setup/setup','7','70','35',0.25,'2026-10-02T12:00:00Z');"
+podman unshare sqlite3 "$mountpoint/torii.db" "INSERT INTO usage_aggregates VALUES('smoke/fixture','7','70','35',0.25,'2026-10-02T12:00:00Z');"
 podman unshare tar -C "$mountpoint" -cf "$backup_directory/data.tar" .
 launch
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == false ]]
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
 [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT value FROM application_settings WHERE key='codex_host_id';") == "$host_id" ]]
-[[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT requests FROM usage_aggregates WHERE model_id='setup/setup';") == 7 ]]
+[[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT requests FROM usage_aggregates WHERE model_id='smoke/fixture';") == 7 ]]
 [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT count(*) FROM benchmark_sources WHERE source_id='smoke-cache';") == 1 ]]
 metadata=$(request GET /gateway/v1/credentials "$basic")
 [[ $metadata == *"$credential"* && $metadata != *synthetic-provider-secret-42* && $metadata != *"$rotated"* ]]

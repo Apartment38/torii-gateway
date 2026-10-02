@@ -166,10 +166,8 @@ func (c Config) Validate() error {
 	if _, _, err := net.SplitHostPort(c.Server.Listen); err != nil {
 		return fmt.Errorf("server.listen must be a host:port address: %w", err)
 	}
-	if len(c.Providers) == 0 {
-		return errors.New("at least one provider is required")
-	}
-
+	// An empty provider list is valid during console setup or after removing
+	// the last upstream. Inference still requires an available model.
 	ids := make(map[string]struct{}, len(c.Providers))
 	for i, providerConfig := range c.Providers {
 		field := fmt.Sprintf("providers[%d]", i)

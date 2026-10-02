@@ -122,6 +122,53 @@ function consoleFixture(handler) {
   };
 }
 
+test("empty configurations show an add-provider notice without connection tests", async () => {
+  for (const config of [{ providers:[] }, {}]) {
+    const app = consoleFixture(() => response(config));
+    await app.run("loadServerConfig()");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.run('document.querySelector("#providers-empty-notice").hidden'), false);
+    assert.equal(app.run('document.querySelector("#classifier-provider-notice").hidden'), false);
+    assert.equal(app.list.innerHTML, "");
+    assert.equal(app.run("readConfig().providers.length"), 0);
+    assert.equal(app.calls.filter(call => call.url === "/gateway/v1/providers/test").length, 0);
+    await app.run("saveConfig()");
+    await new Promise(resolve => setImmediate(resolve));
+    const saved = app.calls.find(call => call.options?.method === "PUT");
+    assert.deepEqual(JSON.parse(saved.options.body).providers, []);
+    assert.equal(app.calls.filter(call => call.url === "/gateway/v1/providers/test").length, 0);
+  }
+});
+
+test("generated setup placeholders display the empty state instead of testing an invalid URL", async () => {
+  const placeholder = { id:"setup", type:"openai_compatible", base_url:"https://example.invalid", api_path:"/v1", discover_models:false, models:["setup"] };
+  const app = consoleFixture(() => response({ providers:[placeholder] }));
+  await app.run("loadServerConfig()");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(app.run('document.querySelector("#providers-empty-notice").hidden'), false);
+  assert.equal(app.list.innerHTML, "");
+  assert.equal(app.run("readConfig().providers.length"), 0);
+  assert.equal(app.calls.filter(call => call.url === "/gateway/v1/providers/test").length, 0);
+  // Never hide configured credentials or real endpoints just because the ID is setup.
+  for (const provider of [{ ...placeholder, base_url:"https://real.example" }, { ...placeholder, bearer_token:{ credential:"stored-key" } }]) {
+    app.context.config = { providers:[provider] };
+    app.run("applyConfig(config)");
+    assert.equal(app.run("providers.length"), 1);
+    assert.equal(app.run('document.querySelector("#providers-empty-notice").hidden'), true);
+  }
+});
+
+test("adding and removing the last provider toggles the empty-state notice", () => {
+  const app = consoleFixture(() => response({ providers:[] }));
+  app.run('document.querySelector("#add-provider").listeners.click()');
+  assert.equal(app.run('document.querySelector("#providers-empty-notice").hidden'), true);
+  assert.match(app.list.innerHTML, /data-remove="0"/);
+  app.list.buttons.get("remove:0").listeners.click();
+  assert.equal(app.run('document.querySelector("#providers-empty-notice").hidden'), false);
+  assert.equal(app.list.innerHTML, "");
+  assert.equal(app.run("readConfig().providers.length"), 0);
+});
+
 test("all provider types show a working status and discovered model count", async () => {
   const app = consoleFixture((_, options) => {
     const provider = JSON.parse(options.body).provider;
@@ -412,12 +459,18 @@ test("direct provider keys are masked, revealable, and never included in HTML at
   assert.equal(input.type, "password");
   assert.equal(input.value, key);
   assert.equal(app.list.innerHTML.includes(key), false);
+  assert.match(app.list.innerHTML, />API key<span/);
+  assert.match(app.list.innerHTML, />Reveal<\/button>/);
+  assert.doesNotMatch(app.list.innerHTML, /New API key|Show new/);
   button.listeners.click();
   assert.equal(input.type, "text");
   assert.equal(button.textContent, "Hide");
   assert.equal(button.attributes["aria-pressed"], "true");
   button.listeners.click();
   assert.equal(input.type, "password");
+  assert.equal(button.textContent, "Reveal");
+  assert.equal(button.attributes["aria-label"], "Reveal entered provider API key");
+  assert.equal(button.attributes["aria-pressed"], "false");
   app.run("renderProviders()");
   assert.equal(app.list.querySelector("#provider-api-key-0").type, "password");
 });

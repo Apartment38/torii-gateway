@@ -53,7 +53,7 @@ func TestInitializeConfigPathBootstrapsConsoleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootstrap config is invalid: %v", err)
 	}
-	if cfg.Server.Listen != "0.0.0.0:8080" || len(cfg.Providers) != 1 || cfg.Providers[0].ID != "setup" {
+	if cfg.Server.Listen != "0.0.0.0:8080" || len(cfg.Providers) != 0 {
 		t.Fatalf("unexpected bootstrap config: %+v", cfg)
 	}
 }
@@ -65,6 +65,71 @@ func TestInitializeConfigPathDoesNotCreateWithoutBootstrap(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("config exists or stat failed: %v", err)
+	}
+}
+
+func TestConsoleBootstrapWithoutProvidersCanServeAndReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := initializeConfigPath(path, "", true); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := runtimeStateDB(t)
+	key, err := db.CreateAdmin("admin", "synthetic-admin-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.BindSecrets(db); err != nil {
+		t.Fatal(err)
+	}
+	r := &handlerRuntime{configPath: path, credentials: db}
+	defer r.closeUsage()
+	defer r.stopIntelligence()
+	handler, err := buildHandlerWithRuntime(cfg, path, r)
+	if err != nil {
+		t.Fatalf("empty provider startup failed: %v", err)
+	}
+	r.swap(handler)
+	request := func(method, url, body string, bearer bool) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, url, strings.NewReader(body))
+		if bearer {
+			req.Header.Set("Authorization", "Bearer "+key)
+		} else {
+			req.SetBasicAuth("admin", "synthetic-admin-password")
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	for _, url := range []string{"/healthz", "/", "/gateway/v1/config"} {
+		if w := request(http.MethodGet, url, "", false); w.Code != http.StatusOK {
+			t.Fatalf("GET %s: HTTP %d", url, w.Code)
+		}
+	}
+	w := request(http.MethodGet, "/v1/models", "", true)
+	var models struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &models) != nil || len(models.Data) != 1 || models.Data[0].ID != "smart" {
+		t.Fatalf("empty catalog should advertise only smart: HTTP %d %s", w.Code, w.Body.String())
+	}
+	w = request(http.MethodPut, "/gateway/v1/config", `{"server":{"listen":"0.0.0.0:8080"},"providers":[]}`, false)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"reloaded":true`) {
+		t.Fatalf("empty provider save/reload failed: HTTP %d %s", w.Code, w.Body.String())
+	}
+	reloaded, err := config.Load(path)
+	if err != nil || len(reloaded.Providers) != 0 {
+		t.Fatalf("empty providers did not persist: cfg=%+v err=%v", reloaded, err)
+	}
+	w = request(http.MethodPost, "/v1/chat/completions", `{"model":"smart","messages":[{"role":"user","content":"hello"}]}`, true)
+	if w.Code == http.StatusOK {
+		t.Fatal("inference without an upstream must not succeed")
 	}
 }
 

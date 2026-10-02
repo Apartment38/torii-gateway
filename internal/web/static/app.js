@@ -22,7 +22,7 @@ const saveState = document.querySelector                 ("#save-state") ;
 let adminAuthorization = "";
 function basicAuthorization(username       ,password       )        {return "Basic "+btoa(Array.from(new TextEncoder().encode(`${username}:${password}`),byte=>String.fromCharCode(byte)).join(""));}
 const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
-let providers                                     = [ { ...providerDefaults } ];
+let providers                                     = [];
 
 
 
@@ -128,16 +128,17 @@ function initializeTooltips()       {
 }
 
 function renderProviders()       {
+  document.querySelector                ("#providers-empty-notice") .hidden = providers.length > 0;
   providers.forEach((provider, index) => { if (!provider.id && isKnownProvider(provider)) provider.id = knownProviderID(String(provider.type), index); });
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}${providers.length > 1 ? `<button class="remove-provider" type="button" data-remove="${index}">Remove</button>` : ""}</div></div>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
       ${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
-        ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter a new upstream API key to replace the configured credential. Save encrypts it in SQLite; existing keys cannot be revealed.">New API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Show newly entered provider API key" aria-pressed="false">Show new</button></span></label>`}
+        ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Reveal entered provider API key" aria-pressed="false">Reveal</button></span></label>`}
       </div>
       <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
         <label data-tooltip="Select a credential ID from the Credentials page. Values remain encrypted and cannot be revealed.">Stored API credential<input data-provider="${index}" data-key="credential_id" value="${escapeHTML(String((provider.bearer_token       )?.credential || provider.credential_id || ""))}" placeholder="Credential ID" /></label>
@@ -170,8 +171,8 @@ function renderProviders()       {
     const input = providerList.querySelector                  (`#provider-api-key-${button.dataset.revealProviderKey}`) ;
     const visible = input.type === "password";
     input.type = visible ? "text" : "password";
-    button.textContent = visible ? "Hide" : "Show";
-    button.setAttribute("aria-label", visible ? "Hide provider API key" : "Show provider API key");
+    button.textContent = visible ? "Hide" : "Reveal";
+    button.setAttribute("aria-label", visible ? "Hide entered provider API key" : "Reveal entered provider API key");
     button.setAttribute("aria-pressed", String(visible));
   }));
   providers.forEach(provider => {
@@ -237,6 +238,17 @@ function updateProvider(event       )       {
 
 function markDirty()       { saveState.textContent = "Unsaved changes"; }
 
+// Recognize only the exact inert provider generated by earlier console bootstraps.
+// Real providers (even those named setup) must remain visible and testable.
+function isSetupPlaceholder(provider                     )          {
+  const fields = ["id", "type", "base_url", "api_path", "discover_models", "models"];
+  return provider.id === "setup" && provider.type === "openai_compatible"
+    && provider.base_url === "https://example.invalid" && provider.api_path === "/v1"
+    && provider.discover_models === false && Array.isArray(provider.models)
+    && provider.models.length === 1 && provider.models[0] === "setup"
+    && Object.keys(provider).every(key => fields.includes(key));
+}
+
 function applyConfig(config                     )       {
   classifierDiscoveryPending = true;
   configurationLoaded = true;
@@ -245,7 +257,7 @@ function applyConfig(config                     )       {
   requestedClassifier = classifier.type === "disabled" ? "disabled" : classifier.type === "jev" && classifier.transport === "provider"
     ? `${classifier.provider}/${classifier.model}` : "";
   document.querySelector                     ("#intelligence-config") .value = config.intelligence ? JSON.stringify(config.intelligence, null, 2) : "";
-  providers = (config.providers || []).map((provider                     ) => ({
+  providers = (config.providers || []).filter((provider                     ) => !isSetupPlaceholder(provider)).map((provider                     ) => ({
     ...providerDefaults,
     ...provider,
     api_key: "",
@@ -277,7 +289,6 @@ function applyConfig(config                     )       {
       if (String(provider.api_url).startsWith("https://example.invalid")) provider.api_url = "https://chatgpt.com/backend-api/codex";
     }
   });
-  if (!providers.length) providers = [{ ...providerDefaults }];
   renderProviders();
   const fill = (value     , prefix = "")       => Object.entries(value || {}).forEach(([key, raw]) => {
     const name = prefix ? `${prefix}.${key}` : key;
@@ -543,7 +554,7 @@ renderProviders(); navigate(); void checkSetup();
 
 document.querySelector("#console-login") .addEventListener("click",()=>document.querySelector                   ("#login-dialog") .showModal());
 document.querySelector("#console-logout") .addEventListener("click",()=>{
-  adminAuthorization="";clearNewAPIKey();document.querySelector                   ("#new-key-dialog") .close();providers=[{...providerDefaults}];configurationLoaded=false;form.reset();document.querySelector                     ("#intelligence-config") .value="";document.querySelector("#credential-list") .textContent="";renderProviders();saveState.textContent="Signed out";
+  adminAuthorization="";clearNewAPIKey();document.querySelector                   ("#new-key-dialog") .close();providers=[];configurationLoaded=false;form.reset();document.querySelector                     ("#intelligence-config") .value="";document.querySelector("#credential-list") .textContent="";renderProviders();saveState.textContent="Signed out";
 });
 document.querySelector("#login-form") .addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector                  ("#login-username") .value;const input=document.querySelector                  ("#login-password") ;adminAuthorization=basicAuthorization(username,input.value);input.value="";

@@ -30,6 +30,18 @@ func TestDecodeValidConfiguration(t *testing.T) {
 	}
 }
 
+func TestDecodeAllowsNoProviders(t *testing.T) {
+	for _, input := range []string{
+		"server:\n  listen: 127.0.0.1:8080\nproviders: []\n",
+		"server:\n  listen: 127.0.0.1:8080\n",
+	} {
+		cfg, err := config.Decode(strings.NewReader(input))
+		if err != nil || len(cfg.Providers) != 0 {
+			t.Fatalf("empty provider configuration rejected: cfg=%+v err=%v", cfg, err)
+		}
+	}
+}
+
 func TestLoadConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(validConfig), 0o600); err != nil {

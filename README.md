@@ -116,6 +116,10 @@ default, stores all durable gateway state in the named
 `TORII_PORT` in `.env` to publish a different host port or `TORII_IMAGE` to use
 a prebuilt image. Only the master key and published port are needed in `.env`.
 The default deployment mounts only `/data` and `/config`.
+Without an initial configuration, Torii starts with no providers. After signing
+in, open **Providers** and click **Add provider**, then **Save & reload**.
+The empty-state notification remains until you add a provider; no placeholder
+connection is tested.
 Existing schemas 1–3 require the [one-time baseline reset](docs/runtime-state.md#one-time-baseline-reset).
 Future updates preserve the database. Keep the same master key on every restart:
 

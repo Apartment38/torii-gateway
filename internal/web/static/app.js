@@ -11,6 +11,7 @@ let benchmarkRawRows                        = [];
 let benchmarkRawTotal = 0;
 let benchmarkPage = 0;
 let benchmarkTableView = "models";
+let benchmarkViewChosen = false;
 let benchmarkFilter = "";
 let benchmarkDirty = false;
 let benchmarkRefreshRunning = false;
@@ -51,7 +52,7 @@ function applyBenchmarkConfig(config                      = {})       {
 function clearBenchmarkConsole()       {
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {}; benchmarkRawRows = [];
-  benchmarkRawTotal = 0; benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
+  benchmarkRawTotal = 0; benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models"; benchmarkViewChosen = false;
   benchmarkPageSize = 25;
   benchmarkDirty = false; benchmarkRefreshRunning = false; benchmarkProgressLog = [];
   benchmarkProgressCounts = {total:0,completed:0,failed:0};
@@ -163,7 +164,9 @@ async function loadBenchmarkData()                   {
   const login = adminAuthorization;
   try {
     const headers = await authProvider.headers();
-    const paths = ["sources", "models", ...(benchmarkTableView === "observations" ? [`observations?offset=${benchmarkPage * benchmarkPageSize}&limit=${benchmarkPageSize}&include_metadata=true&q=${encodeURIComponent(benchmarkFilter)}`] : [])];
+    // Always check the raw data too: imported models need not match the user's
+    // configured providers, and an empty aggregate view must not hide an import.
+    const paths = ["sources", "models", `observations?offset=${benchmarkTableView === "observations" ? benchmarkPage * benchmarkPageSize : 0}&limit=${benchmarkPageSize}&include_metadata=true&q=${encodeURIComponent(benchmarkFilter)}`];
     const replies = await Promise.all(paths.map(async path => {
       const response = await gatewayFetch(`/gateway/v1/intelligence/${path}`, {headers});
       const body = await response.json();
@@ -173,7 +176,11 @@ async function loadBenchmarkData()                   {
     if (sequence !== benchmarkReloadSequence || login !== adminAuthorization) return false;
     [benchmarkSourceStatus, benchmarkModels] = replies;
     if (replies[2]) { benchmarkRawRows = replies[2].observations || []; benchmarkRawTotal = replies[2].total || 0; }
-    if (replies[2] && benchmarkPage > 0 && benchmarkPage * benchmarkPageSize >= benchmarkRawTotal) {benchmarkPage = Math.max(0,Math.ceil(benchmarkRawTotal/benchmarkPageSize)-1);return await loadBenchmarkData();}
+    if (!benchmarkViewChosen && benchmarkTableView === "models" && Object.keys(benchmarkModels).length === 0 && benchmarkRawTotal > 0) {
+      benchmarkTableView = "observations"; benchmarkPage = 0;
+      document.querySelector                   ("#benchmark-table-view") .value = "observations";
+    }
+    if (benchmarkTableView === "observations" && replies[2] && benchmarkPage > 0 && benchmarkPage * benchmarkPageSize >= benchmarkRawTotal) {benchmarkPage = Math.max(0,Math.ceil(benchmarkRawTotal/benchmarkPageSize)-1);return await loadBenchmarkData();}
     renderBenchmarkSourceStatus(); renderBenchmarkTable();
     if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status") .textContent = "Showing saved benchmark evidence. Missing scores are unknown, not zero; human preference remains a separate signal.";
     return true;
@@ -181,8 +188,8 @@ async function loadBenchmarkData()                   {
 }
 function benchmarkProgress(event                     )       {
   if (event.source) {
-    const labels                         = {fetching:"Fetching and parsing",rate_limited:"Waiting for upstream rate limit",persisting:"Saving validated data",failed:"Update failed; previous cache retained"};
-    if (labels[event.phase]) benchmarkSourceActivity[event.source] = labels[event.phase];
+    const labels                         = {fetching:"Fetching and parsing",parsing:"Parsing dataset rows",rate_limited:"Waiting for upstream rate limit",persisting:"Saving validated data",failed:"Update failed; previous cache retained"};
+    if (labels[event.phase]) benchmarkSourceActivity[event.source] = event.phase === "failed" ? labels.failed : String(event.message || labels[event.phase]);
     if (event.phase === "published") delete benchmarkSourceActivity[event.source];
     renderBenchmarkSourceStatus();
   }
@@ -212,7 +219,7 @@ async function finishBenchmarkRefresh(result                    , login        ,
     }
     const loadedSequence = benchmarkReloadSequence;
     // Let the browser paint the new rows before announcing completion.
-    await new Promise      (resolve => window.requestAnimationFrame ? window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>resolve())) : window.setTimeout(resolve,0));
+    await new Promise      (resolve => window.requestAnimationFrame && document.visibilityState !== "hidden" ? window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>resolve())) : window.setTimeout(resolve,0));
     if (loadedSequence === benchmarkReloadSequence) break;
   }
   if (login !== adminAuthorization || abort.signal.aborted) return;
@@ -232,6 +239,7 @@ async function inspectBenchmarks(refresh         )                {
   benchmarkProgressCounts = {total:0,completed:0,failed:0};
   document.querySelector                ("#benchmark-refresh-panel") .hidden = false;
   benchmarkProgress({phase:"connecting",total:0,message:"Connecting to the refresh worker"}); updateBenchmarkControls();
+  void loadBenchmarkData();
   try {
     const response = await gatewayFetch("/gateway/v1/intelligence/refresh", {method:"POST",headers:{Accept:"text/event-stream",...await authProvider.headers()},signal:abort.signal});
     if (!response.ok) { const body = await response.json(); throw new Error(body.error?.message || body.error || "Refresh failed"); }
@@ -255,7 +263,10 @@ async function inspectBenchmarks(refresh         )                {
           const data = lines.filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
           if (!data || login !== adminAuthorization || abort.signal.aborted) continue;
           const event = JSON.parse(data);
-          if (kind === "progress") { benchmarkProgress(event); if (event.phase === "published" || event.phase === "failed") await loadBenchmarkData(); }
+          // Table requests must not block reading activity from a long import.
+          // The final table step below still waits for the latest view to render.
+          if (kind === "progress") { benchmarkProgress(event); if (event.phase === "published" || event.phase === "failed") void loadBenchmarkData(); }
+          if (kind === "heartbeat") document.querySelector("#benchmark-progress-label") .textContent = `${benchmarkProgressCounts.completed} of ${benchmarkProgressCounts.total} sources finished · Refresh is still running; waiting for upstream data or cooldown`;
           if (kind === "result") { finished = true; benchmarkSourceStatus = event.sources || {}; renderBenchmarkSourceStatus(); await finishBenchmarkRefresh(event,login,abort); }
         }
         if (chunk.done) break;
@@ -269,7 +280,7 @@ function initializeBenchmarks()       {
   const list = document.querySelector("#benchmark-sources-list") ;
   list.addEventListener("input", updateBenchmarkSource); list.addEventListener("click", benchmarkSourceAction);
   document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
-  document.querySelector("#benchmark-table-view") .addEventListener("change",()=>{benchmarkTableView=document.querySelector                   ("#benchmark-table-view") .value;benchmarkPage=0;void loadBenchmarkData();});
+  document.querySelector("#benchmark-table-view") .addEventListener("change",()=>{benchmarkTableView=document.querySelector                   ("#benchmark-table-view") .value;benchmarkViewChosen=true;benchmarkPage=0;void loadBenchmarkData();});
   document.querySelector("#benchmark-table-filter") .addEventListener("input",()=>{benchmarkFilter=document.querySelector                  ("#benchmark-table-filter") .value;benchmarkPage=0;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
   document.querySelector("#benchmark-previous") .addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();}});
   document.querySelector("#benchmark-next") .addEventListener("click",()=>{benchmarkPage++;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
@@ -725,6 +736,7 @@ function readConfig()                      {
 function updateBenchmarkControls()       {
   const enabled = document.querySelector                  ("#intelligence-enabled") .checked;
   document.querySelector                   ("#refresh-benchmarks") .disabled = !benchmarksEnabledSaved || !enabled || benchmarkDirty || benchmarkRefreshRunning;
+  document.querySelector("#refresh-benchmarks") .textContent = benchmarkRefreshRunning ? "Refreshing…" : "Refresh benchmarks";
   document.querySelector                ("#benchmark-configuration") .hidden = !enabled;
   document.querySelector                ("#benchmark-data") .hidden = !benchmarksEnabledSaved;
   document.querySelector("#benchmark-enable-notice") .textContent = enabled !== benchmarksEnabledSaved || benchmarkDirty
@@ -842,7 +854,7 @@ async function testAllProviders()                {
 function toast(message        )       { const node = document.querySelector                ("#toast") ; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
 document.querySelector("#add-provider") .addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); markDirty(); });
-document.querySelector("#refresh-benchmarks") .addEventListener("click", () => { void inspectBenchmarks(true); });
+document.querySelector("#refresh-benchmarks") .addEventListener("click", () => inspectBenchmarks(true));
 document.querySelector("#inspect-benchmarks") .addEventListener("click", () => { void inspectBenchmarks(false); });
 document.querySelector("#save-button") .addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });

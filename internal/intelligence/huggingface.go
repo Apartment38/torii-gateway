@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"sync"
 )
 
 type huggingFace struct {
@@ -78,6 +77,7 @@ func (h *huggingFace) page(ctx context.Context, dataset Dataset, offset int) (hf
 func (h *huggingFace) Fetch(ctx context.Context) (Result, error) {
 	result := Result{Metadata: map[string]any{"datasets": h.cfg.Datasets, "transport": "Hugging Face dataset-viewer rows API"}}
 	for _, dataset := range h.cfg.Datasets {
+		reportActivity(ctx, "fetching", "Loading the first dataset page")
 		first, err := h.page(ctx, dataset, 0)
 		if err != nil {
 			return Result{}, err
@@ -88,48 +88,20 @@ func (h *huggingFace) Fetch(ctx context.Context) (Result, error) {
 		count := (first.total + 99) / 100
 		pages := make([]hfPage, count)
 		pages[0] = first
-		// Bounded parallel pages make the published LiveBench judgments usable
-		// without requiring a parquet library, Python service, or hundreds of
-		// sequential round trips. Any missing page rejects the entire update.
-		jobs := make(chan int, count)
-		for i := 1; i < count; i++ {
-			jobs <- i
+		// One page at a time lets a throttled page retry before new pages from
+		// this source consume the same budget. Adapters still run independently.
+		for index := 1; index < count; index++ {
+			reportActivity(ctx, "fetching", fmt.Sprintf("Loading dataset page %d of %d (%d rows)", index+1, count, first.total))
+			page, err := h.page(ctx, dataset, index*100)
+			if err != nil {
+				return Result{}, err
+			}
+			if page.total != first.total {
+				return Result{}, &SourceError{Stage: "dataset changed during pagination"}
+			}
+			pages[index] = page
 		}
-		close(jobs)
-		ctx, cancel := context.WithCancel(ctx)
-		var wg sync.WaitGroup
-		var firstErr error
-		var mu sync.Mutex
-		for range min(8, count) {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for index := range jobs {
-					if ctx.Err() != nil {
-						return
-					}
-					page, err := h.page(ctx, dataset, index*100)
-					if err == nil && page.total != first.total {
-						err = &SourceError{Stage: "dataset changed during pagination"}
-					}
-					if err != nil {
-						mu.Lock()
-						if firstErr == nil {
-							firstErr = err
-						}
-						mu.Unlock()
-						cancel()
-						return
-					}
-					pages[index] = page
-				}
-			}()
-		}
-		wg.Wait()
-		cancel()
-		if firstErr != nil {
-			return Result{}, firstErr
-		}
+		reportActivity(ctx, "parsing", fmt.Sprintf("Parsing %d dataset rows", first.total))
 		seen := 0
 		for _, page := range pages {
 			seen += len(page.rows)

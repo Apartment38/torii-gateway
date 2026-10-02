@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#071a35" />
     <title>Torii Gateway Console</title>
     <link rel="icon" href="/web/torii-gateway-icon.png" />
-    <link rel="stylesheet" href="/web/styles.css?v=8" />
+    <link rel="stylesheet" href="/web/styles.css?v=9" />
   </head>
   <body>
     <dialog id="login-dialog"><form id="login-form"><h2>Sign in to Torii Gateway</h2><p>Use your administrator account. Login stays in memory only.</p><label>Username<input id="login-username" autocomplete="off" required /></label><label>Password<input id="login-password" type="password" autocomplete="off" required /></label><p id="login-error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form></dialog>
@@ -99,16 +99,16 @@
             <div class="section-heading"><div><p class="eyebrow">Model evidence</p><h2>Benchmark intelligence</h2></div><button id="refresh-benchmarks" class="button secondary" type="button">Refresh benchmarks</button></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Save and reload to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable benchmark intelligence</label></div>
             <div class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it and click Save &amp; reload before refreshing.</span></div>
-            <div id="benchmark-configuration" hidden>
-              <div class="section-heading"><h3>Benchmark sources</h3><button id="inspect-benchmarks" class="button quiet" type="button">Reload cached data</button></div>
-              <div id="benchmark-sources-list" class="provider-list"></div>
-            </div>
             <section id="benchmark-refresh-panel" class="benchmark-refresh" aria-label="Benchmark refresh activity" hidden>
               <h3>Refresh activity</h3><p id="benchmark-progress-label" role="status" aria-live="polite"></p>
               <progress id="benchmark-progress" max="1" value="0" aria-label="Completed benchmark sources and table update"></progress>
               <pre id="benchmark-refresh-log" role="log" aria-live="polite"></pre>
             </section>
             <p id="benchmark-status" role="status" aria-live="polite">Enable and save benchmark intelligence to inspect cached results.</p>
+            <div id="benchmark-configuration" hidden>
+              <div class="section-heading"><h3>Benchmark sources</h3><button id="inspect-benchmarks" class="button quiet" type="button">Reload cached data</button></div>
+              <div id="benchmark-sources-list" class="provider-list"></div>
+            </div>
             <section id="benchmark-data" hidden>
               <div class="section-heading"><h3>Current model benchmark data</h3><span id="benchmark-data-count" class="section-note"></span></div>
               <div class="grid three compact-fields">
@@ -136,6 +136,6 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=8"></script>
+    <script type="module" src="/web/app.js?v=9"></script>
   </body>
 </html>

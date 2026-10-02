@@ -21,6 +21,7 @@ type requestLane struct {
 	next, cooldown time.Time
 	penalty        time.Duration
 	successes      int
+	throttles      int
 }
 
 func laneFor(rawURL string) *requestLane {
@@ -92,7 +93,8 @@ func (l *requestLane) pause(delay, interval time.Duration, throttled bool) {
 		l.cooldown = deadline
 	}
 	if throttled {
-		l.penalty = min(15*time.Second, max(interval, l.penalty)) * 2
+		l.penalty = min(time.Minute, max(interval, l.penalty)*2)
+		l.throttles++
 		l.successes = 0
 	}
 }
@@ -103,8 +105,65 @@ func (l *requestLane) succeeded() {
 	l.successes++
 	if l.successes >= 10 {
 		l.penalty /= 2
+		l.throttles = max(0, l.throttles-1)
 		l.successes = 0
 	}
+}
+
+func (l *requestLane) throttleBackoff(attempt int) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return retryBackoff(max(attempt, l.throttles), true)
+}
+
+// Hugging Face also advertises reset delays using the standard RateLimit
+// structured field (for example: "api";r=0;t=120), not just Retry-After.
+func quotaWindow(header http.Header) (remaining uint64, reset time.Duration, ok bool) {
+	for _, value := range header.Values("RateLimit") {
+		for _, bucket := range strings.Split(value, ",") {
+			var r, t string
+			for _, parameter := range strings.Split(bucket, ";")[1:] {
+				name, value, found := strings.Cut(strings.TrimSpace(parameter), "=")
+				if found {
+					switch name {
+					case "r":
+						r = value
+					case "t":
+						t = value
+					}
+				}
+			}
+			n, err := strconv.ParseUint(r, 10, 64)
+			delay, valid := retryAfter(t, time.Now())
+			if err == nil && valid && (!ok || delay.Seconds()/(float64(n)+1) > reset.Seconds()/(float64(remaining)+1)) {
+				remaining, reset, ok = n, delay, true
+			}
+		}
+	}
+	return
+}
+
+func (l *requestLane) observeQuota(header http.Header) {
+	remaining, reset, ok := quotaWindow(header)
+	if !ok || reset <= 0 {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	if remaining == 0 {
+		l.cooldown = maxTime(l.cooldown, now.Add(reset))
+	} else {
+		// Spread the advertised remaining budget across its reset window.
+		l.next = maxTime(l.next, now.Add(time.Duration(float64(reset)/float64(remaining))))
+	}
+}
+
+func maxTime(first, second time.Time) time.Time {
+	if first.After(second) {
+		return first
+	}
+	return second
 }
 
 // Honor both standard Retry-After forms without the previous five-second cap.
@@ -123,7 +182,7 @@ func retryAfter(raw string, now time.Time) (time.Duration, bool) {
 func retryBackoff(attempt int, throttled bool) time.Duration {
 	base, ceiling := 250*time.Millisecond, 5*time.Second
 	if throttled {
-		base, ceiling = 30*time.Second, 2*time.Minute
+		base, ceiling = 30*time.Second, 5*time.Minute
 	}
 	return min(ceiling, base*time.Duration(1<<min(attempt, 5))) + time.Duration(rand.Int64N(int64(250*time.Millisecond)))
 }
@@ -131,7 +190,14 @@ func retryBackoff(attempt int, throttled bool) time.Duration {
 type refreshActivityKey struct{}
 
 func reportRateLimit(ctx context.Context, message string) {
-	if report, ok := ctx.Value(refreshActivityKey{}).(func(string)); ok {
+	reportActivity(ctx, "rate_limited", message)
+}
+
+func reportActivity(ctx context.Context, phase, message string) {
+	switch report := ctx.Value(refreshActivityKey{}).(type) {
+	case func(string, string):
+		report(phase, message)
+	case func(string):
 		report(message)
 	}
 }

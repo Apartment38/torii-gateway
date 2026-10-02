@@ -166,6 +166,7 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 		if err != nil {
 			last = &SourceError{Stage: "upstream request"}
 		} else {
+			lane.observeQuota(resp.Header)
 			data, readErr := io.ReadAll(io.LimitReader(resp.Body, (16<<20)+1))
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -183,9 +184,15 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 			}
 			throttled := resp.StatusCode == http.StatusTooManyRequests
 			if throttled {
-				delay = retryBackoff(attempt, true)
+				delay = lane.throttleBackoff(attempt)
+			}
+			if remaining, reset, ok := quotaWindow(resp.Header); ok && remaining == 0 {
+				delay = max(reset, r.requestInterval)
 			}
 			if instructed, ok := retryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+				if remaining, reset, valid := quotaWindow(resp.Header); valid && remaining == 0 {
+					instructed = max(instructed, reset)
+				}
 				delay = max(instructed, r.requestInterval)
 			}
 			if throttled || resp.Header.Get("Retry-After") != "" {

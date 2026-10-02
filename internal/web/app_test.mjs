@@ -591,6 +591,7 @@ test("benchmark refresh uses memory-only login rather than configuration credent
     assert.equal(options.headers.Authorization, "Basic test-admin-login");
     if (url.endsWith("/sources")) return response({aa:{last_success:"2026-10-01",enabled:true,observation_count:10}});
     if (url.endsWith("/models")) return response({});
+    if (url.includes("/observations?")) return response({total:0,observations:[]});
     assert.equal(url, "/gateway/v1/intelligence/refresh");
     assert.equal(options.method, "POST");
     assert.equal(options.headers.Accept,"text/event-stream");
@@ -785,9 +786,58 @@ test("streamed refresh advances actual source progress and updates the table bef
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/source failures/);
 });
 
+test("refresh button shows activity immediately and table requests cannot block progress",async()=>{
+  const index = readFileSync(new URL("./static/index.html", import.meta.url),"utf8");
+  assert.ok(index.indexOf('id="benchmark-refresh-panel"') < index.indexOf('id="benchmark-sources-list"'),"progress must appear above the long source-card list");
+  let controller;
+  const pendingModels=[];
+  const app=consoleFixture(url=>{
+    if(url.endsWith("/refresh"))return {ok:true,headers:{get:()=>"text/event-stream"},body:new ReadableStream({start(c){controller=c;}})};
+    if(url.endsWith("/sources"))return response({aa:{enabled:true,observation_count:1}});
+    if(url.includes("/observations?"))return response({total:0,observations:[]});
+    return new Promise(resolve=>pendingModels.push(()=>resolve(response({ready:{scores:{coding:.9}}}))));
+  });
+  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  const refresh=app.run('document.querySelector("#refresh-benchmarks").listeners.click()');
+  assert.equal(app.run('document.querySelector("#benchmark-refresh-panel").hidden'),false);
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").textContent'),"Refreshing…");
+  await new Promise(resolve=>setImmediate(resolve));
+  const send=(kind,event)=>controller.enqueue(new TextEncoder().encode(`event: ${kind}\ndata: ${JSON.stringify(event)}\n\n`));
+  send("progress",{phase:"published",source:"aa",completed:1,total:2,message:"Saved first source"});
+  send("progress",{phase:"rate_limited",source:"livebench",completed:1,total:2,message:"Waiting 120 seconds for quota reset"});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(app.run('document.querySelector("#benchmark-refresh-log").textContent'),/Waiting 120 seconds/);
+  assert.equal(app.run('document.querySelector("#benchmark-progress").value'),1);
+  send("heartbeat",{});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(app.run('document.querySelector("#benchmark-progress-label").textContent'),/still running/);
+  send("progress",{phase:"published",source:"livebench",completed:2,total:2});
+  send("result",{sources:{aa:{enabled:true},livebench:{enabled:true}}});controller.close();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/Loading/);
+  pendingModels.forEach(resolve=>resolve());
+  await refresh;
+  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/ready/);
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/finished; table updated/);
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").textContent'),"Refresh benchmarks");
+});
+
+test("imported unmatched data populates the table without silently merging model identities",async()=>{
+  const app=consoleFixture(url=>url.endsWith("/sources")?response({benchlm:{enabled:true,observation_count:1}}):url.endsWith("/models")?response({}):response({total:1,observations:[{external_model_id:"external-model",source:"benchlm",benchmark:"coding",category:"coding",original_score:80,normalized_score:.8,metadata:{}}]}));
+  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  await app.run('loadBenchmarkData()');
+  assert.equal(app.run('document.querySelector("#benchmark-table-view").value'),"observations");
+  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/external-model/);
+  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/Unmatched \/ ambiguous/);
+  assert.equal(app.run('Object.keys(benchmarkModels).length'),0);
+  app.run('document.querySelector("#benchmark-table-view").value="models";document.querySelector("#benchmark-table-view").listeners.change()');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(app.run('benchmarkTableView'),"models","an explicitly selected view must remain selected");
+});
+
 test("refresh completion waits for both the table response and the browser paint",async()=>{
   let finishModels;
-  const app=consoleFixture(url=>url.endsWith("/sources")?response({}):new Promise(resolve=>{finishModels=()=>resolve(response({ready:{scores:{coding:.9}}}));}));
+  const app=consoleFixture(url=>url.endsWith("/sources")?response({}):url.includes("/observations?")?response({total:0,observations:[]}):new Promise(resolve=>{finishModels=()=>resolve(response({ready:{scores:{coding:.9}}}));}));
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkRefreshRunning=true;benchmarkProgressCounts={total:2,completed:2,failed:0}');
   const frames=[];app.context.window.requestAnimationFrame=callback=>frames.push(callback);
   const finished=app.run('finishBenchmarkRefresh({partial_failure:false},adminAuthorization,new AbortController())');

@@ -447,6 +447,7 @@ function readConfig(): Record<string, any> {
 function updateBenchmarkControls(): void {
   const enabled = document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked;
   document.querySelector<HTMLButtonElement>("#refresh-benchmarks")!.disabled = !benchmarksEnabledSaved || !enabled || benchmarkDirty || benchmarkRefreshRunning;
+  document.querySelector("#refresh-benchmarks")!.textContent = benchmarkRefreshRunning ? "Refreshing…" : "Refresh benchmarks";
   document.querySelector<HTMLDivElement>("#benchmark-configuration")!.hidden = !enabled;
   document.querySelector<HTMLDivElement>("#benchmark-data")!.hidden = !benchmarksEnabledSaved;
   document.querySelector("#benchmark-enable-notice")!.textContent = enabled !== benchmarksEnabledSaved || benchmarkDirty
@@ -564,7 +565,7 @@ async function testAllProviders(): Promise<void> {
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
 document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); markDirty(); });
-document.querySelector("#refresh-benchmarks")!.addEventListener("click", () => { void inspectBenchmarks(true); });
+document.querySelector("#refresh-benchmarks")!.addEventListener("click", () => inspectBenchmarks(true));
 document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => { void inspectBenchmarks(false); });
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });

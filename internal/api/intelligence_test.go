@@ -127,6 +127,69 @@ func TestBenchmarkRefreshStreamsPublicationBeforeSlowSourceFinishes(t *testing.T
 	}
 }
 
+func TestBenchmarkConsoleJoinsBackgroundRefreshThroughRequestMiddleware(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	var fetches atomic.Int64
+	source := consoleBenchmarkSource{id: "source", fetch: func(ctx context.Context) (intelligence.Result, error) {
+		fetches.Add(1)
+		close(started)
+		select {
+		case <-release:
+			return intelligence.Result{Observations: []intelligence.Observation{consoleBenchmarkObservation("unknown-model")}}, nil
+		case <-ctx.Done():
+			return intelligence.Result{}, ctx.Err()
+		}
+	}}
+	handler, m := consoleBenchmarkManager(t, []intelligence.Source{source})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- m.Refresh(ctx) }()
+	<-started
+	server := httptest.NewServer(api.RequestIDMiddleware(slog.New(slog.NewTextHandler(io.Discard, nil)), handler))
+	defer server.Close()
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/gateway/v1/intelligence/refresh", nil)
+	request.Header.Set("Accept", "text/event-stream")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	scanner := bufio.NewScanner(response.Body)
+	joined, completed := false, false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !joined && strings.Contains(line, `"phase":"fetching"`) {
+			joined = true
+			close(release)
+		}
+		if line == "event: result" {
+			completed = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !joined || !completed || fetches.Load() != 1 {
+		t.Fatalf("background refresh was not followed: joined=%v completed=%v fetches=%d", joined, completed, fetches.Load())
+	}
+	reply, err := server.Client().Get(server.URL + "/gateway/v1/intelligence/observations?include_metadata=true&limit=25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reply.Body.Close()
+	var rows struct {
+		Total        int                        `json:"total"`
+		Observations []intelligence.Observation `json:"observations"`
+	}
+	if err := json.NewDecoder(reply.Body).Decode(&rows); err != nil || rows.Total != 1 || len(rows.Observations) != 1 || rows.Observations[0].ModelID != "" {
+		t.Fatalf("unmatched imported results unavailable to the table: %+v %v", rows, err)
+	}
+}
+
 func TestBenchmarkObservationTablePaginationPreservesUnmatchedAndProvenance(t *testing.T) {
 	source := consoleBenchmarkSource{id: "aa", fetch: func(context.Context) (intelligence.Result, error) {
 		return intelligence.Result{Observations: []intelligence.Observation{consoleBenchmarkObservation("model-a"), consoleBenchmarkObservation("unknown")}}, nil

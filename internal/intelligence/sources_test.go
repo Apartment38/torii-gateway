@@ -207,6 +207,37 @@ func TestHuggingFaceConfigurableMappingsAndCompletePagination(t *testing.T) {
 	}
 }
 
+func TestHuggingFaceReportsPageProgressAndImportsMultipleDatasets(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := 100
+		if r.URL.Query().Get("offset") == "100" {
+			n = 1
+		}
+		rows := make([]any, n)
+		for i := range rows {
+			rows[i] = map[string]any{"row": map[string]any{"model": "model-a", "accuracy": .8}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"num_rows_total": 101, "rows": rows})
+	}))
+	defer server.Close()
+	dataset := func(id string) Dataset {
+		return Dataset{ID: id, Config: "default", Split: "train", Metrics: map[string]Mapping{"accuracy": {Category: Coding, Max: 1}}}
+	}
+	source, err := Builtins().New(SourceSettings{ID: "hf", Type: "huggingface", URL: server.URL, Datasets: []Dataset{dataset("org/first"), dataset("org/second")}}, "", FetchOptions{RequestInterval: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var activity []string
+	ctx := context.WithValue(context.Background(), refreshActivityKey{}, func(phase, message string) { activity = append(activity, phase+": "+message) })
+	result, err := source.Fetch(ctx)
+	if err != nil || len(result.Observations) != 202 {
+		t.Fatalf("multi-dataset pagination: %d %v", len(result.Observations), err)
+	}
+	if !strings.Contains(strings.Join(activity, "\n"), "Loading dataset page 2 of 2") || !strings.Contains(strings.Join(activity, "\n"), "Parsing 101 dataset rows") {
+		t.Fatal("long imports did not emit page and parsing progress")
+	}
+}
+
 func TestRetriesCancellationNoRedirectSecretsAndPaginationFailure(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -104,8 +104,14 @@ Benchmark requests share one in-flight request lane per host/port, with at least
 Arena and LiveBench therefore share a budget rather than each bursting through
 their pagination workers. Different hosts proceed independently. A 429 pauses
 all sources using that host, honors the full `Retry-After` delay (seconds or HTTP
-date), and temporarily slows subsequent requests. Without a valid header, 429
-retries back off from 30 seconds to 2 minutes with jitter. Network/server failures
+date), and temporarily slows subsequent requests. Torii also reads structured
+`RateLimit` remaining/reset fields (including Hugging Face's `r` and `t` fields),
+spaces successful requests across the advertised remaining budget and waits for
+exhausted windows to reset. Without a valid header, 429
+retries back off from 30 seconds to 5 minutes with jitter. Repeated throttles
+increase that backoff across pages and sources, rather than resetting it on each
+new page. Dataset adapters request one page at a time, so new pages cannot jump
+ahead of that source's throttled retry. Network/server failures
 use shorter exponential backoff. All waits are cancellable and bounded by the
 source deadline; exhausted retries preserve the cached dataset. Cooldowns survive
 configuration reloads in the running process, not gateway restarts.
@@ -117,6 +123,9 @@ unchanged; if an installation still specifies `10m`, increase it to `30m` in
 429s, but cannot guarantee access if the upstream quota is exhausted by other
 applications or the service is overloaded. Inference requests are unaffected.
 Rate-limit pauses are logged safely and appear in manual refresh activity.
+Startup uses a recently updated cached snapshot without repeating its imports;
+newly enabled sources still trigger an initial import, and manual refresh remains
+available regardless of cache age.
 
 Source keys use `{credential: ID}` references from the authenticated provider
 credential API, or transient `{value: "key"}` input encrypted on console save.
@@ -152,19 +161,29 @@ units, dates, versions, date basis, match status and full captured metadata.
 Aggregate results include evaluation/retrieval dates, age and validity as well
 as every capability and operational measurement.
 Raw results include unmatched models and retained disabled-source data; only
-enabled, matched evidence contributes to aggregates. Both views are filterable
+enabled, matched evidence contributes to aggregates. If imported observations
+exist but no models match configured providers, the console automatically shows
+raw results rather than an empty aggregate table. Explicitly choosing a view
+keeps that choice. Both views are filterable
 and paginated; choose **25, 50 or 100 rows per page** (default 25).
 Missing values are unknown, not zero, and preference stays separate.
 
-**Refresh activity** streams real fetch/parse, persistence, publication and failure
-milestones. The progress bar counts completed sources, including failed sources,
+**Refresh activity** streams real fetch/parse (including dataset page counts),
+rate-limit waits, persistence, publication and failure
+milestones above the source cards, immediately after clicking Refresh benchmarks.
+The progress bar counts completed sources, including failed sources,
 plus a final **Loading results into the table** step; it is not a download-byte
 percentage. Completion is announced only after the current table page has been
 loaded, rendered and painted. Failed table loading reports an incomplete update
-instead of claiming the refresh finished. Each source is published only after its
-validated data is saved atomically, and the table reloads after each publication
-or failure without waiting for slower sources. Closing the connection cancels
-the manual refresh; already published results remain available. Scheduled
+instead of claiming success. Table loading does not block progress stream reads.
+When a startup, scheduled or other manual import is already running, a console
+refresh follows that worker's recent and ongoing progress rather than queuing a
+duplicate import. Disconnecting an observer does not cancel the existing worker.
+Heartbeats indicate that the worker is still active during long upstream waits.
+Each source is published only after its validated data is saved atomically,
+and the table reloads after each publication or failure without waiting for slower
+sources. Closing the connection cancels a refresh started by that request, not
+an existing worker it joined; already published results remain available. Scheduled
 refreshes also publish incrementally, but their activity is not attached to
 this manual-refresh stream.
 Authenticated direct submissions are encrypted before saving; configuration

@@ -120,6 +120,99 @@ func TestRefreshPublishesAndPersistsCompletedSourceBeforeSlowSourceFinishes(t *t
 	}
 }
 
+func TestManualRefreshFollowsActiveWorkerAndCancellationDoesNotStopIt(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var fetches atomic.Int64
+	source := fakeSource{id: "livebench", fetch: func(ctx context.Context) (Result, error) {
+		fetches.Add(1)
+		reportActivity(ctx, "fetching", "Loading dataset page 2 of 3")
+		close(started)
+		select {
+		case <-release:
+			return Result{Observations: []Observation{observation("", "code", Coding, "model-a", .9, time.Now())}}, nil
+		case <-ctx.Done():
+			return Result{}, ctx.Err()
+		}
+	}}
+	m, _ := manager(t, []Source{source}, options())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- m.Refresh(ctx) }()
+	<-started
+	followerCtx, stopFollower := context.WithCancel(ctx)
+	defer stopFollower()
+	joined := make(chan struct{})
+	followerDone := make(chan error, 1)
+	go func() {
+		followerDone <- m.RefreshWithProgress(followerCtx, func(event RefreshEvent) {
+			if event.Message == "Loading dataset page 2 of 3" {
+				close(joined)
+				stopFollower()
+			}
+		})
+	}()
+	select {
+	case <-joined:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manual refresh queued instead of following active progress")
+	}
+	if err := <-followerDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("follower cancellation: %v", err)
+	}
+	if fetches.Load() != 1 {
+		t.Fatal("manual refresh issued duplicate upstream requests")
+	}
+	// A second observer receives both replay and final publication.
+	observed := make(chan struct{})
+	completed := make(chan error, 1)
+	go func() {
+		completed <- m.RefreshWithProgress(ctx, func(event RefreshEvent) {
+			if event.Message == "Loading dataset page 2 of 3" {
+				close(observed)
+			}
+		})
+	}()
+	select {
+	case <-observed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second observer did not replay current progress")
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-completed; err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Lookup("local/model-a"); !ok || fetches.Load() != 1 {
+		t.Fatal("observer cancellation stopped the worker or duplicated ingestion")
+	}
+}
+
+func TestStartupUsesFreshCachedDataWithoutRepeatingUpstreamImports(t *testing.T) {
+	var fetches atomic.Int64
+	source := fakeSource{id: "source", fetch: func(context.Context) (Result, error) {
+		fetches.Add(1)
+		return Result{Observations: []Observation{observation("", "code", Coding, "model-a", .8, time.Now())}}, nil
+	}}
+	m, store := manager(t, []Source{source}, options())
+	if err := m.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewManager(store, []Source{source}, modelCatalog(), options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	restarted.Run(ctx)
+	if fetches.Load() != 1 {
+		t.Fatal("restart redownloaded fresh cached data")
+	}
+}
+
 func TestRefreshProgressIncludesPartialFailuresWithoutLeakingAdapterErrors(t *testing.T) {
 	good := fakeSource{id: "good", fetch: func(context.Context) (Result, error) {
 		return Result{Observations: []Observation{observation("good", "code", Coding, "model-a", .8, time.Now())}}, nil

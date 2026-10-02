@@ -49,6 +49,8 @@ func (o Options) Defaults() Options {
 type Manager struct {
 	mu             sync.RWMutex
 	refreshMu      sync.Mutex
+	progressMu     sync.Mutex
+	activeRefresh  *refreshRun
 	store          SnapshotStore
 	sources        []Source
 	options        Options
@@ -141,6 +143,79 @@ func (m *Manager) Refresh(ctx context.Context) error {
 // durable storage succeeds. A slow or failed source cannot hide good updates.
 // Progress callbacks run sequentially, outside the snapshot/routing read lock.
 func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(RefreshEvent)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.progressMu.Lock()
+	if run := m.activeRefresh; run != nil {
+		m.progressMu.Unlock()
+		return m.followRefresh(ctx, run, progress)
+	}
+	run := &refreshRun{changed: make(chan struct{})}
+	m.activeRefresh = run
+	m.progressMu.Unlock()
+	err := m.refreshWithProgress(ctx, func(event RefreshEvent) {
+		m.progressMu.Lock()
+		run.events = append(run.events, event)
+		if len(run.events) > 256 {
+			run.events = run.events[1:]
+			run.offset++
+		}
+		close(run.changed)
+		run.changed = make(chan struct{})
+		m.progressMu.Unlock()
+		if progress != nil {
+			progress(event)
+		}
+	})
+	m.progressMu.Lock()
+	run.err, run.finished = err, true
+	close(run.changed)
+	m.activeRefresh = nil
+	m.progressMu.Unlock()
+	return err
+}
+
+// A console joining the startup/scheduled worker receives its existing activity
+// and future updates, rather than queuing another expensive upstream import.
+// Cancelling a follower never cancels the worker it joined.
+type refreshRun struct {
+	events   []RefreshEvent
+	offset   int
+	changed  chan struct{}
+	finished bool
+	err      error
+}
+
+func (m *Manager) followRefresh(ctx context.Context, run *refreshRun, progress func(RefreshEvent)) error {
+	cursor := 0
+	for {
+		m.progressMu.Lock()
+		cursor = max(cursor, run.offset)
+		events := append([]RefreshEvent(nil), run.events[cursor-run.offset:]...)
+		cursor = run.offset + len(run.events)
+		changed, finished, err := run.changed, run.finished, run.err
+		m.progressMu.Unlock()
+		for _, event := range events {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if progress != nil {
+				progress(event)
+			}
+		}
+		if finished {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
+func (m *Manager) refreshWithProgress(ctx context.Context, progress func(RefreshEvent)) error {
 	emit := func(event RefreshEvent) {
 		if progress != nil {
 			progress(event)
@@ -162,6 +237,7 @@ func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(Refresh
 		err      error
 		started  bool
 		activity string
+		phase    string
 	}
 	completed, failed := 0, 0
 	notify := func(phase, id, message string, observations int) {
@@ -179,9 +255,9 @@ func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(Refresh
 			m.options.Logger.Info("benchmark_refresh_started", "source", source.ID())
 			sourceCtx, cancel := context.WithTimeout(ctx, m.options.SourceTimeout)
 			defer cancel()
-			sourceCtx = context.WithValue(sourceCtx, refreshActivityKey{}, func(message string) {
+			sourceCtx = context.WithValue(sourceCtx, refreshActivityKey{}, func(phase, message string) {
 				select {
-				case updates <- update{id: source.ID(), activity: message}:
+				case updates <- update{id: source.ID(), activity: message, phase: phase}:
 				case <-sourceCtx.Done():
 				}
 			})
@@ -208,7 +284,7 @@ func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(Refresh
 			continue
 		}
 		if update.activity != "" {
-			notify("rate_limited", update.id, update.activity, 0)
+			notify(update.phase, update.id, update.activity, 0)
 			continue
 		}
 		m.mu.RLock()
@@ -416,11 +492,23 @@ func (m *Manager) Lookup(publicID string) (Model, bool) {
 // Run owns one background worker and stops when its lifecycle context ends.
 // Reaggregation ages cached evidence even between scheduled network refreshes.
 func (m *Manager) Run(ctx context.Context) {
-	_ = m.Refresh(ctx)
+	// Restarting a container must not redownload a still-fresh cached dataset.
+	m.mu.RLock()
+	due := m.snapshot.UpdatedAt.IsZero() || m.now().Sub(m.snapshot.UpdatedAt) >= m.options.RefreshInterval
+	lastRefresh := m.snapshot.UpdatedAt
+	for _, source := range m.sources {
+		if m.snapshot.Sources[source.ID()].LastAttempt.IsZero() {
+			due = true // Newly enabled sources still get their initial import.
+		}
+	}
+	m.mu.RUnlock()
+	if due {
+		_ = m.Refresh(ctx)
+		lastRefresh = m.now()
+	}
 	interval := min(time.Minute, m.options.RefreshInterval)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	lastRefresh := m.now()
 	for {
 		select {
 		case <-ctx.Done():

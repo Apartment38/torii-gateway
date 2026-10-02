@@ -146,3 +146,77 @@ func TestLaneCancellationWhileAnotherRequestOwnsPermit(t *testing.T) {
 		t.Fatalf("cancel=%v", err)
 	}
 }
+
+func TestQuotaWindowParsingAndProactivePacing(t *testing.T) {
+	for _, item := range []struct {
+		header string
+		left   uint64
+		reset  time.Duration
+		valid  bool
+	}{
+		{`"api";r=0;t=120`, 0, 120 * time.Second, true},
+		{`"api";r=10;t=60`, 10, time.Minute, true},
+		{`"api";r=10;t=60, "pages";r=0;t=120`, 0, 120 * time.Second, true},
+		{`"api";r=0;t=0`, 0, 0, true},
+		{`"api";r=10`, 0, 0, false},
+		{`"api";r=-1;t=10`, 0, 0, false},
+		{`"api";r=bad;t=secret`, 0, 0, false},
+	} {
+		h := http.Header{"Ratelimit": []string{item.header}}
+		remaining, reset, valid := quotaWindow(h)
+		if remaining != item.left || reset != item.reset || valid != item.valid {
+			t.Fatalf("header %q => %d, %v, %v", item.header, remaining, reset, valid)
+		}
+	}
+	lane := &requestLane{permit: make(chan struct{}, 1)}
+	lane.observeQuota(http.Header{"Ratelimit": []string{`"api";r=10;t=60`}})
+	if time.Until(lane.next) < 5*time.Second {
+		t.Fatal("successful responses did not pace the remaining budget")
+	}
+	lane.observeQuota(http.Header{"Ratelimit": []string{`"api";r=0;t=120`}})
+	if time.Until(lane.cooldown) < 119*time.Second {
+		t.Fatal("quota reset did not pause the shared lane")
+	}
+}
+
+func Test429UsesRateLimitResetWhenRetryAfterIsAbsent(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("RateLimit", `"api";r=0;t=120`)
+		w.WriteHeader(429)
+	}))
+	defer server.Close()
+	remote, _ := newRemote(SourceSettings{ID: "quota", URL: server.URL}, "", "", FetchOptions{RequestInterval: time.Millisecond, Retries: 1})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	var activity string
+	ctx = context.WithValue(ctx, refreshActivityKey{}, func(message string) { activity = message })
+	if _, err := remote.get(ctx, server.URL, "Authorization"); err == nil {
+		t.Fatal("quota wait ignored the source deadline")
+	}
+	if calls.Load() != 1 || !strings.Contains(activity, "120.0 seconds") {
+		t.Fatalf("retried before reset: %d %q", calls.Load(), activity)
+	}
+	if time.Until(laneFor(server.URL).cooldown) < 119*time.Second {
+		t.Fatal("reset header was not shared between sources")
+	}
+}
+
+func TestRepeated429BackoffIsSharedBetweenPagesAndSources(t *testing.T) {
+	lane := &requestLane{permit: make(chan struct{}, 1)}
+	first := lane.throttleBackoff(0)
+	lane.pause(first, time.Second, true)
+	second := lane.throttleBackoff(0)
+	lane.pause(second, time.Second, true)
+	third := lane.throttleBackoff(0)
+	if first < 30*time.Second || second < time.Minute || third < 2*time.Minute {
+		t.Fatal("fresh pages reset the origin's throttle backoff")
+	}
+	for range 10 {
+		lane.pause(time.Second, time.Second, true)
+	}
+	if lane.penalty != time.Minute || lane.throttleBackoff(0) < 5*time.Minute {
+		t.Fatal("sustained throttling did not slow the shared origin")
+	}
+}

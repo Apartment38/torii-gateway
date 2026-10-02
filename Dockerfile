@@ -4,6 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o /out/gateway ./cmd/gateway
+RUN mkdir -p /out/data /out/state && chmod 0700 /out/data /out/state
 RUN for target in \
       "linux amd64" \
       "linux arm64" \
@@ -17,7 +18,9 @@ RUN for target in \
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/gateway /gateway
 COPY --from=build /out/torii-auth-* /helpers/
-VOLUME ["/state"]
+COPY --from=build --chown=65532:65532 /out/data /data
+COPY --from=build --chown=65532:65532 /out/state /state
+VOLUME ["/state", "/data"]
 EXPOSE 8080
 USER nonroot:nonroot
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD ["/gateway", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]

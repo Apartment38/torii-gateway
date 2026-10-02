@@ -20,11 +20,8 @@ func TestExampleConfigurationIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode example configuration: %v", err)
 	}
-	if cfg.Server.Authentication == nil {
-		t.Fatal("example configuration must enable server authentication")
-	}
-	if got, want := cfg.Server.Authentication.APIKey.Env, "TORII_API_KEY"; got != want {
-		t.Fatalf("example API key environment variable = %q, want %q", got, want)
+	if cfg.Server.Authentication != nil {
+		t.Fatal("example must use database-managed administrator setup, not an environment API key")
 	}
 	if got, want := len(cfg.Providers), 1; got != want {
 		t.Fatalf("example provider count = %d, want %d", got, want)

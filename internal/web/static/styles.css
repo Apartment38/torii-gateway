@@ -38,6 +38,9 @@ html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; background: radial-gradient(circle at 70% -10%, var(--accent-soft), transparent 34rem), var(--bg); color: var(--text); }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
+dialog { width: min(440px, calc(100% - 32px)); padding: 28px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-solid); color: var(--text); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(7,26,53,.55); backdrop-filter: blur(6px); }
+dialog label { display: grid; gap: 8px; margin-bottom: 18px; }
 .app-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
 .sidebar { position: sticky; top: 0; display: flex; flex-direction: column; height: 100vh; padding: 28px 22px; border-right: 1px solid var(--line); background: var(--surface); backdrop-filter: blur(18px); }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text-strong); font-size: 18px; font-weight: 700; letter-spacing: -.03em; text-decoration: none; }

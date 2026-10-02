@@ -23,6 +23,8 @@ func benchmarkConfig(t *testing.T, url string) *config.Config {
 }
 
 func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testing.T) {
+	t.Setenv("TORII_DB_KEY", strings.Repeat("24", 32))
+	t.Setenv("TORII_DB_PATH", filepath.Join(t.TempDir(), "torii.db"))
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -61,6 +63,12 @@ func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testin
 	}
 	server := httptest.NewServer(runtime)
 	defer server.Close()
+	// CLI imports its authentication key through the database; the running
+	// handler's missing source still demonstrates independent refresh failure.
+	cfg.Intelligence.Sources = cfg.Intelligence.Sources[:1]
+	if err := persistConfig(path, cfg); err != nil {
+		t.Fatal(err)
+	}
 	var output bytes.Buffer
 	if err := runWithIO(context.Background(), []string{"benchmarks", "refresh", "--config", path, "--url", server.URL}, &output); err != nil {
 		t.Fatal(err)

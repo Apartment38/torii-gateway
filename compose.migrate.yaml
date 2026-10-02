@@ -1,0 +1,7 @@
+# First-start migration only. Remove this override after verifying the import.
+# Add any other legacy credential environment variables your YAML references.
+services:
+  torii-gateway:
+    environment:
+      TORII_API_KEY: ${TORII_API_KEY:-}
+      JEV_API_KEY: ${JEV_API_KEY:-}

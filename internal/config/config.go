@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/Apartment38/torii-gateway/internal/state"
 	"io"
 	"math"
 	"net"
@@ -21,6 +22,7 @@ import (
 // Additional sections must not be added until their behavior is implemented;
 // the decoder rejects keys that are not represented here.
 type Config struct {
+	Credentials  *state.Database    `yaml:"-"`
 	Server       ServerConfig       `yaml:"server"`
 	State        StateConfig        `yaml:"state"`
 	Providers    []ProviderConfig   `yaml:"providers"`
@@ -76,7 +78,8 @@ type ServerAuthenticationConfig struct {
 
 // StateConfig identifies the directory used for persistent gateway state.
 type StateConfig struct {
-	Directory string `yaml:"directory"`
+	Directory    string `yaml:"directory"`
+	DatabasePath string `yaml:"database_path,omitempty"`
 }
 
 // ProviderConfig contains common and standard compatible provider settings.
@@ -137,13 +140,13 @@ func Decode(r io.Reader) (*Config, error) {
 		if errors.Is(err, io.EOF) {
 			return nil, errors.New("decode configuration: empty document")
 		}
-		return nil, fmt.Errorf("decode configuration: %w", err)
+		return nil, errors.New("decode configuration: invalid YAML or unknown configuration field (input omitted for credential safety)")
 	}
 
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return nil, fmt.Errorf("decode configuration: %w", err)
+			return nil, errors.New("decode configuration: invalid trailing YAML (input omitted for credential safety)")
 		}
 		return nil, errors.New("decode configuration: multiple YAML documents are not allowed")
 	}
@@ -520,7 +523,7 @@ func validateBaseURL(raw string) error {
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("must be a valid URL: %w", err)
+		return errors.New("must be a valid URL (input omitted for credential safety)")
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return errors.New("scheme must be http or https")

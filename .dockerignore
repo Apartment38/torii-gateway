@@ -1,5 +1,13 @@
 .git
 .github
 state
+config
+config.yaml
+.env
+.env.*
+secrets
+*.db
+*.db-wal
+*.db-shm
 bin
 *.test

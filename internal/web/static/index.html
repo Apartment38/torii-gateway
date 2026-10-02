@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="/web/styles.css" />
   </head>
   <body>
+    <dialog id="login-dialog"><form id="login-form"><h2>Sign in to Torii Gateway</h2><p>Use your administrator account. Login stays in memory only.</p><label>Username<input id="login-username" autocomplete="off" required /></label><label>Password<input id="login-password" type="password" autocomplete="off" required /></label><p id="login-error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form></dialog>
+    <dialog id="setup-dialog"><form id="setup-form"><h2>Create your administrator</h2><p>Use the one-time setup code from the gateway terminal or container logs. A new API key will be displayed only once; save it securely. An imported key is preserved without being shown again.</p><label>Setup code<input id="setup-code" type="password" autocomplete="off" required /></label><label>Choose username<input id="setup-username" pattern="[a-zA-Z0-9._-]{1,64}" maxlength="64" autocomplete="off" required /></label><label>Choose password (at least 12 characters)<input id="setup-password" type="password" minlength="12" autocomplete="off" required /></label><label>Confirm password<input id="setup-confirm" type="password" autocomplete="off" required /></label><p id="setup-error" role="alert"></p><button class="button primary" type="submit">Create administrator</button></form></dialog>
+    <dialog id="new-key-dialog"><h2>Save your new API key</h2><p id="new-key-warning">This key is displayed only once. Save it securely before closing this dialog.</p><label>API key<textarea id="new-api-key" readonly autocomplete="off"></textarea></label><button id="close-new-key" class="button primary" type="button">I have saved it</button></dialog>
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#top" aria-label="Torii Gateway home">
@@ -22,6 +25,7 @@
           <a class="nav-link" href="#providers">Providers</a>
           <a class="nav-link" href="#routing">Routing</a>
           <a class="nav-link" href="#intelligence">Benchmarks</a>
+          <a class="nav-link" href="#credentials">Credentials</a>
           <a class="nav-link" href="#state">State &amp; quota</a>
         </nav>
         <div class="sidebar-foot">
@@ -33,6 +37,8 @@
         <header class="topbar">
           <div class="top-actions">
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">☾</button>
+            <button id="console-login" class="button secondary" type="button">Sign in</button>
+            <button id="console-logout" class="button quiet" type="button">Sign out</button>
             <button id="reset-button" class="button quiet" type="button">Refresh config</button>
             <button id="save-button" class="button primary" type="button">Save &amp; reload</button>
           </div>
@@ -47,13 +53,24 @@
         </section>
 
         <form id="config-form" novalidate>
+          <section id="credentials" class="page section-block">
+            <div class="section-heading"><div><p class="eyebrow">Secure storage</p><h2>Credentials</h2></div><button id="refresh-credentials" class="button secondary" type="button">Refresh credentials</button></div>
+            <p>Stored values cannot be revealed. Replace or delete provider credentials below; provider and benchmark settings use their reference IDs. Use provider login to replace OAuth tokens and the Server page to generate a new gateway API key.</p>
+            <div id="credential-list" class="grid"></div>
+            <div class="grid two">
+              <label data-tooltip="The provider or service that will use this credential.">Service<input id="credential-service" autocomplete="off" placeholder="openai" /></label>
+              <label data-tooltip="What this credential authenticates, such as bearer_token or api_key.">Purpose<input id="credential-purpose" autocomplete="off" placeholder="bearer_token" /></label>
+              <label data-tooltip="The new value to encrypt. It is cleared after submission and never returned by the gateway.">New credential<input id="credential-value" type="password" autocomplete="new-password" /></label>
+              <button id="create-credential" class="button secondary" type="button">Add credential</button>
+            </div>
+          </section>
           <section id="server" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">01 / Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
             <div class="grid two">
               <label data-tooltip="The address and port where Torii listens for HTTP requests. Use 0.0.0.0:8080 inside a container.">Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
-              <label data-tooltip="The client API key accepted by the gateway. It is stored in the configuration file and masked in this form.">API key<span class="password-field"><input id="server-api-key" name="server.authentication.api_key.value" type="password" autocomplete="new-password" placeholder="Enter an API key" /><button id="reveal-api-key" class="reveal-button" type="button">Show</button></span></label>
+              <div><p>Gateway API key</p><button id="generate-api-key" class="button secondary" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Generate new API key</button></div>
             </div>
-            <div class="notice"><span>◎</span><span>Authentication is not required by this console. The gateway API still uses its configured bearer key today; a future auth adapter can add Basic Auth or Authentik without changing this form.</span></div>
+            <div class="notice"><span>◎</span><span>Sign in with your administrator username and password to manage settings. API keys are for inference clients, not console login. Use HTTPS when accessing this console over a network.</span></div>
           </section>
 
           <section id="providers" class="page section-block">
@@ -91,7 +108,8 @@
           <section id="state" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
             <div class="grid two">
-              <label data-tooltip="The directory where credentials, usage data, and other persistent gateway state are stored. It must be writable by the gateway process.">State directory<input name="state.directory" value="./state" /></label>
+              <label data-tooltip="The directory for usage data and benchmark caches. It must be writable by the gateway process.">State directory<input name="state.directory" value="./state" /></label>
+              <label data-tooltip="The encrypted credential database path, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
               <label data-tooltip="How long quota results remain cached before being refreshed. Use a Go duration such as 1m or 30s.">Quota cache TTL<input name="router.quota.cache_ttl" value="1m" placeholder="1m" /></label>
               <label data-tooltip="How long an inactive routing session remains associated with its model. Use a Go duration such as 30m.">Session inactivity timeout<input name="router.sessions.inactivity_timeout" placeholder="30m" /></label>
               <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
@@ -103,6 +121,6 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=4"></script>
+    <script type="module" src="/web/app.js?v=5"></script>
   </body>
 </html>

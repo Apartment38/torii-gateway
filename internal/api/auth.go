@@ -90,14 +90,22 @@ func AuthenticateMiddleware(authenticator ClientAuthenticator, next http.Handler
 		}
 		identity, err := authenticator.Authenticate(r)
 		if err != nil || identity == nil {
-			writeUnauthorized(w)
+			if challenge, ok := authenticator.(interface{ Challenge() string }); ok {
+				writeUnauthorized(w, challenge.Challenge())
+			} else {
+				writeUnauthorized(w)
+			}
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), clientIdentityContextKey{}, identity)))
 	})
 }
 
-func writeUnauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", "Bearer")
+func writeUnauthorized(w http.ResponseWriter, challenges ...string) {
+	challenge := "Bearer"
+	if len(challenges) > 0 {
+		challenge = challenges[0]
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
 	writeError(w, fault.New(fault.AuthenticationFailure, ""))
 }

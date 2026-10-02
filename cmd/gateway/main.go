@@ -53,6 +53,12 @@ func run(ctx context.Context, args []string) error {
 }
 
 func runWithIO(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) > 0 && args[0] == "admin" {
+		return runAdmin(ctx, args[1:], output)
+	}
+	if len(args) > 0 && args[0] == "credentials" {
+		return runCredentials(ctx, args[1:], output)
+	}
 	if len(args) > 0 && args[0] == "benchmarks" {
 		return runBenchmarkCommand(ctx, args[1:], output)
 	}
@@ -111,8 +117,13 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
+		db, err := openCredentials(cfg, *configPath)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
 		for _, providerConfig := range cfg.Providers {
-			upstream, buildErr := buildProviderWithState(providerConfig, cfg.State.Directory)
+			upstream, buildErr := buildProviderWithState(providerConfig, cfg.State.Directory, db)
 			if buildErr != nil {
 				return fmt.Errorf("initialize provider %q: %w", providerConfig.ID, buildErr)
 			}
@@ -133,7 +144,7 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		return runAuth(args[1:], output)
 	}
 	if len(args) == 0 || args[0] != "serve" {
-		return errors.New("usage: gateway <serve|auth> [options]")
+		return errors.New("usage: gateway <serve|admin|credentials|auth|models|benchmarks|healthcheck> [options]")
 	}
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	configPath := flags.String("config", "/config/config.yaml", "path to the YAML configuration")
@@ -152,7 +163,15 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	runtime := &handlerRuntime{configPath: *configPath, background: ctx}
+	db, err := openCredentials(cfg, *configPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	runtime := &handlerRuntime{configPath: *configPath, background: ctx, credentials: db}
+	if err := runtime.initializeAdminPrompt(output); err != nil {
+		return err
+	}
 	handler, err := buildHandlerWithRuntime(cfg, *configPath, runtime)
 	if err != nil {
 		return err
@@ -270,8 +289,12 @@ func runAuth(args []string, output io.Writer) error {
 	if *browser && providerConfig.Type != "openai-codex" {
 		return errors.New("--browser is supported only for openai-codex")
 	}
-	store, err := state.NewFlatFileCredentialStore(cfg.State.Directory)
+	store, err := openCredentials(cfg, *configPath)
 	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := authenticateLocalAdmin(store, output); err != nil {
 		return err
 	}
 	switch action {
@@ -420,6 +443,9 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
+	setupDigest   [32]byte
+	setupExpires  time.Time
+	credentials   *state.Database
 	background    context.Context
 	swapMu        sync.Mutex
 	mu            sync.RWMutex
@@ -540,11 +566,19 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			return nil, err
 		}
 		authenticator = configured
+		if cfg.Credentials != nil {
+			authenticator = api.CredentialBearerAuthenticator{Resolve: cfg.Server.Authentication.APIKey.Resolve}
+		}
+	}
+	var managementAuth api.ClientAuthenticator = authenticator
+	if cfg.Credentials != nil {
+		authenticator = api.CredentialBearerAuthenticator{Resolve: cfg.Credentials.GatewayAPIKey}
+		managementAuth = api.NewBasicAdminAuthenticator(cfg.Credentials.VerifyAdmin)
 	}
 
 	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
 	for _, providerConfig := range cfg.Providers {
-		upstream, err := buildProviderWithState(providerConfig, cfg.State.Directory)
+		upstream, err := buildProviderWithState(providerConfig, cfg.State.Directory, cfg.Credentials)
 		if err != nil {
 			return nil, fmt.Errorf("initialize provider %q: %w", providerConfig.ID, err)
 		}
@@ -584,7 +618,12 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			if resolveErr != nil {
 				return nil, fmt.Errorf("resolve Jev API key: %w", resolveErr)
 			}
-			configuredClassifier, err = classifier.NewJev(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, nil)
+			client := &http.Client{}
+			if cfg.Credentials != nil {
+				apiKey = "database-managed"
+				client.Transport = &secretTransport{base: http.DefaultTransport, headers: map[string]config.SecretRef{"Authorization": *cfg.Router.Classifier.APIKey}, bearer: true}
+			}
+			configuredClassifier, err = classifier.NewJev(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, client)
 			if err != nil {
 				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
 			}
@@ -696,19 +735,33 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	apiHandler := api.AuthenticateMiddleware(authenticator, openAI)
 	mux.Handle("/v1/", apiHandler)
 	if runtime != nil && configPath != "" {
-		mux.HandleFunc("GET /gateway/v1/config", runtime.getConfig)
-		mux.HandleFunc("PUT /gateway/v1/config", runtime.putConfig)
-		mux.HandleFunc("POST /gateway/v1/config", runtime.putConfig)
-		mux.HandleFunc("POST /gateway/v1/providers/test", runtime.testProvider)
-		mux.HandleFunc("POST /gateway/v1/providers/login", runtime.startProviderLogin)
-		mux.HandleFunc("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
+		protect := func(pattern string, handler http.HandlerFunc) {
+			mux.Handle(pattern, managementBoundary(managementAuth, handler))
+		}
+		if runtime.credentials != nil {
+			mux.HandleFunc("GET /gateway/v1/setup", runtime.setupStatus)
+			mux.HandleFunc("POST /gateway/v1/setup", runtime.setupAdmin)
+			protect("POST /gateway/v1/admin/api-key", runtime.rotateAPIKey)
+		}
+		protect("GET /gateway/v1/config", runtime.getConfig)
+		protect("PUT /gateway/v1/config", runtime.putConfig)
+		protect("POST /gateway/v1/config", runtime.putConfig)
+		protect("POST /gateway/v1/providers/test", runtime.testProvider)
+		protect("POST /gateway/v1/providers/login", runtime.startProviderLogin)
+		protect("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
+		protect("/gateway/v1/credentials", runtime.credentialAPI)
+		protect("/gateway/v1/credentials/", runtime.credentialAPI)
 		mux.HandleFunc("GET /gateway/v1/providers/login/session", runtime.providerLoginSession)
 		mux.HandleFunc("POST /gateway/v1/providers/login/import", runtime.importProviderLogin)
-		mux.HandleFunc("GET /gateway/v1/providers/login/helper/{asset}", runtime.downloadLoginHelper)
+		protect("GET /gateway/v1/providers/login/helper/{asset}", runtime.downloadLoginHelper)
 		mux.HandleFunc("GET /gateway/v1/providers/login/callback", runtime.providerLoginCallback)
 		mux.HandleFunc("GET /auth/callback", runtime.providerLoginCallback)
 	}
-	mux.Handle("/gateway/v1/", apiHandler)
+	benchmarkAuth := authenticator
+	if cfg.Credentials != nil {
+		benchmarkAuth = benchmarkAuthenticator{basic: managementAuth, bearer: authenticator}
+	}
+	mux.Handle("/gateway/v1/", managementBoundary(benchmarkAuth, openAI))
 	mux.Handle("/", web.Handler())
 	return &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}, nil
 }
@@ -720,16 +773,17 @@ func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "gateway is starting", http.StatusServiceUnavailable)
 		return
 	}
-	cfg, err := config.Load(r.configPath)
+	cfg, err := r.loadConfig()
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if cfg.Server.Authentication != nil {
-		if secret, resolveErr := cfg.Server.Authentication.APIKey.Resolve(); resolveErr == nil {
-			cfg.Server.Authentication.APIKey = config.SecretRef{Value: secret}
+	_ = cfg.VisitSecrets(func(_, _, _ string, ref *config.SecretRef) error {
+		if ref.Credential == "" {
+			*ref = config.SecretRef{Credential: "migration-required"}
 		}
-	}
+		return nil
+	})
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, err)
@@ -769,6 +823,29 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("validate configuration: %w", err))
 		return
 	}
+	if r.credentials != nil {
+		current, err := r.loadConfig()
+		if err != nil {
+			writeConfigError(w, 500, errors.New("cannot load active configuration"))
+			return
+		}
+		if current.Server.Authentication != nil && next.Server.Authentication == nil {
+			writeConfigError(w, 400, errors.New("management authentication cannot be removed through the console"))
+			return
+		}
+		if next.Server.Authentication != nil {
+			writeConfigError(w, 400, errors.New("gateway API keys are managed through admin api-key, not configuration"))
+			return
+		}
+		if current.State.DatabasePath != next.State.DatabasePath {
+			writeConfigError(w, 400, errors.New("database path changes require an offline configuration edit and restart"))
+			return
+		}
+		if err := config.StoreSubmittedCredentials(&next, r.credentials); err != nil {
+			writeConfigError(w, 400, err)
+			return
+		}
+	}
 	newHandler, err := buildHandlerWithRuntime(&next, r.configPath, r)
 	if err != nil {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("initialize configuration: %w", err))
@@ -797,7 +874,7 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 		writeConfigError(w, http.StatusBadRequest, errors.New("provider.id is required"))
 		return
 	}
-	current, err := config.Load(r.configPath)
+	current, err := r.loadConfig()
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
 		return
@@ -806,7 +883,15 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 		discover := true
 		request.Provider.DiscoverModels = &discover
 	}
-	upstream, err := buildProviderWithState(request.Provider, current.State.Directory)
+	if r.credentials != nil {
+		draft := config.Config{Providers: []config.ProviderConfig{request.Provider}}
+		if err := config.StoreSubmittedCredentials(&draft, r.credentials); err != nil {
+			writeConfigError(w, 400, err)
+			return
+		}
+		request.Provider = draft.Providers[0]
+	}
+	upstream, err := buildProviderWithState(request.Provider, current.State.Directory, r.credentials)
 	if err != nil {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("initialize provider: %w", err))
 		return
@@ -859,7 +944,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 		writeConfigError(w, http.StatusBadRequest, errors.New("provider is required"))
 		return
 	}
-	current, err := config.Load(r.configPath)
+	current, err := r.loadConfig()
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
 		return
@@ -895,15 +980,7 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 			writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", hostErr))
 			return
 		}
-		clientID, idToken := "", ""
-		if store, storeErr := state.NewFlatFileCredentialStore(current.State.Directory); storeErr == nil {
-			if credential, loadErr := store.Load(providerConfig.ID); loadErr == nil {
-				clientID, idToken = credential.ClientID, credential.IDToken
-			}
-		}
-		if clientID == "" {
-			clientID = "dynamic_agent_client"
-		}
+		clientID, idToken := "dynamic_agent_client", ""
 		authorization, startErr := provider.StartPKCEForHost("https://auth.openai.com", providerLoginRedirectURL(req), clientID, hostID, idToken)
 		if startErr != nil {
 			writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("start Codex OAuth: %w", startErr))
@@ -948,15 +1025,7 @@ func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", err))
 		return
 	}
-	clientID, idToken := "", ""
-	if store, storeErr := state.NewFlatFileCredentialStore(stateDir); storeErr == nil {
-		if credential, loadErr := store.Load(providerConfig.ID); loadErr == nil {
-			clientID, idToken = credential.ClientID, credential.IDToken
-		}
-	}
-	if clientID == "" {
-		clientID = "dynamic_agent_client"
-	}
+	clientID, idToken := "dynamic_agent_client", ""
 	token, tokenHash, err := newLoginPairingToken()
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("create Codex login session: %w", err))
@@ -988,7 +1057,8 @@ func (r *handlerRuntime) providerLoginSession(w http.ResponseWriter, req *http.R
 		writeConfigError(w, http.StatusUnauthorized, errors.New("Codex login session is invalid or expired"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"provider_id": session.Provider.ID, "issuer": "https://auth.openai.com", "client_id": session.ClientID, "host_id": session.HostID, "id_token_hint": session.IDToken})
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]string{"provider_id": session.Provider.ID, "issuer": "https://auth.openai.com", "client_id": session.ClientID, "host_id": session.HostID})
 }
 
 func (r *handlerRuntime) downloadLoginHelper(w http.ResponseWriter, req *http.Request) {
@@ -1057,7 +1127,7 @@ func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Re
 		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not match this login session"))
 		return
 	}
-	store, err := state.NewFlatFileCredentialStore(session.StateDir)
+	store, err := r.oauthStore(session.StateDir)
 	if err == nil {
 		err = store.Save(session.Provider.ID, &state.Credential{AccessToken: imported.AccessToken, RefreshToken: imported.RefreshToken, TokenType: imported.TokenType, ExpiresAt: imported.ExpiresAt, AccountID: imported.AccountID, Endpoint: session.Provider.BaseURL, ClientID: imported.ClientID, IDToken: imported.IDToken, Issuer: imported.Issuer, Subject: imported.Subject, Email: imported.Email, HostID: imported.HostID, Scopes: imported.Scopes})
 	}
@@ -1193,7 +1263,7 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 		}
 	}
 	if err == nil {
-		store, storeErr := state.NewFlatFileCredentialStore(flow.StateDir)
+		store, storeErr := r.oauthStore(flow.StateDir)
 		if storeErr != nil {
 			err = storeErr
 		} else {
@@ -1211,7 +1281,7 @@ func (r *handlerRuntime) providerLoginCallback(w http.ResponseWriter, req *http.
 }
 
 func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderConfig, stateDirectory string) {
-	store, err := state.NewFlatFileCredentialStore(stateDirectory)
+	store, err := r.oauthStore(stateDirectory)
 	if err != nil {
 		r.setProviderLogin(providerConfig.ID, providerLogin{Status: "failure", Message: err.Error()})
 		return
@@ -1299,7 +1369,11 @@ func persistConfig(path string, cfg *config.Config) error {
 func writeConfigError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	message := err.Error()
+	if strings.Contains(strings.ToLower(message), "decode") || strings.Contains(strings.ToLower(message), "yaml") || strings.Contains(strings.ToLower(message), "parse") {
+		message = "invalid request format; check field names and types"
+	}
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 type providerQuotaFetcher struct{ providers map[string]quota.Fetcher }
@@ -1356,7 +1430,34 @@ func buildProvider(cfg config.ProviderConfig) (provider.OpenAIProvider, error) {
 	return buildProviderWithState(cfg, "")
 }
 
-func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (provider.OpenAIProvider, error) {
+func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string, databases ...*state.Database) (provider.OpenAIProvider, error) {
+	var db *state.Database
+	if len(databases) > 0 {
+		db = databases[0]
+	}
+	var secretHeaders map[string]config.SecretRef
+	bearerAuth := cfg.BearerToken != nil
+	if db != nil {
+		secretHeaders = map[string]config.SecretRef{}
+		if cfg.BearerToken != nil {
+			ref := *cfg.BearerToken
+			ref.Bind(db)
+			name := "Authorization"
+			if cfg.Type == "anthropic" {
+				name = "x-api-key"
+			}
+			secretHeaders[name] = ref
+			cfg.BearerToken = &config.SecretRef{Value: "database-managed"}
+		}
+		for name, ref := range cfg.Headers {
+			if strings.EqualFold(name, "Authorization") {
+				bearerAuth = false
+			}
+			ref.Bind(db)
+			secretHeaders[name] = ref
+		}
+		cfg.Headers = nil
+	}
 	if cfg.Type == "ollama" {
 		return provider.NewOllama(cfg.ID, cfg.BaseURL, &http.Client{})
 	}
@@ -1364,7 +1465,11 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		if stateDirectory == "" {
 			return nil, errors.New("state directory is required for nous")
 		}
-		credentialStore, err := state.NewFlatFileCredentialStore(stateDirectory)
+		var credentialStore state.CredentialStore = db
+		var err error
+		if db == nil {
+			credentialStore, err = state.NewFlatFileCredentialStore(stateDirectory)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1382,7 +1487,11 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		if cfg.DiscoverModels != nil {
 			discover = *cfg.DiscoverModels
 		}
-		return provider.NewNous(cfg.ID, cfg.BaseURL, cfg.PortalURL, cfg.ClientID, cfg.Models, discover, loader, saver, &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		if db != nil {
+			client.Transport = &secretTransport{base: http.DefaultTransport}
+		}
+		return provider.NewNous(cfg.ID, cfg.BaseURL, cfg.PortalURL, cfg.ClientID, cfg.Models, discover, loader, saver, client)
 	}
 	if cfg.Type == "anthropic" {
 		key, err := cfg.BearerToken.Resolve()
@@ -1394,7 +1503,11 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 			discover = *cfg.DiscoverModels
 		}
 		requestTimeout, _ := time.ParseDuration(cfg.RequestTimeout)
-		return provider.NewAnthropic(cfg.ID, cfg.BaseURL, key, cfg.Models, discover, &http.Client{Timeout: requestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
+		client := &http.Client{Timeout: requestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		if db != nil {
+			client.Transport = &secretTransport{base: http.DefaultTransport, headers: secretHeaders}
+		}
+		return provider.NewAnthropic(cfg.ID, cfg.BaseURL, key, cfg.Models, discover, client)
 	}
 	headers := make(http.Header, len(cfg.Headers)+1)
 	if cfg.BearerToken != nil {
@@ -1432,7 +1545,11 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		if stateDirectory == "" {
 			return nil, errors.New("state directory is required for openai-codex")
 		}
-		credentialStore, err := state.NewFlatFileCredentialStore(stateDirectory)
+		var credentialStore state.CredentialStore = db
+		var err error
+		if db == nil {
+			credentialStore, err = state.NewFlatFileCredentialStore(stateDirectory)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1443,7 +1560,11 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 			}
 			return provider.CodexCredential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, Endpoint: credential.Endpoint, ExpiresAt: credential.ExpiresAt, AccountID: credential.AccountID, ClientID: credential.ClientID, IDToken: credential.IDToken, Issuer: credential.Issuer, Subject: credential.Subject, Email: credential.Email, HostID: credential.HostID, Scopes: credential.Scopes}, nil
 		}
-		codex, err := provider.NewCodex(cfg.ID, cfg.BaseURL, cfg.Models, loader, &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		if db != nil {
+			client.Transport = &secretTransport{base: http.DefaultTransport}
+		}
+		codex, err := provider.NewCodex(cfg.ID, cfg.BaseURL, cfg.Models, loader, client)
 		if err != nil {
 			return nil, err
 		}
@@ -1476,6 +1597,9 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		httpTransport.TLSClientConfig = tlsConfig
 	}
 	client := &http.Client{Transport: httpTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if db != nil {
+		client.Transport = &secretTransport{base: httpTransport, headers: secretHeaders, bearer: bearerAuth, management: cfg.ManagementToken}
+	}
 	discover := true
 	if cfg.DiscoverModels != nil {
 		discover = *cfg.DiscoverModels
@@ -1497,7 +1621,11 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 	}
 	quotaHeaders := make(http.Header)
 	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
-		managementToken, err := cfg.ManagementToken.Resolve()
+		managementToken := "database-managed"
+		var err error
+		if db == nil {
+			managementToken, err = cfg.ManagementToken.Resolve()
+		}
 		if err != nil {
 			return nil, fmt.Errorf("resolve OpenRouter management token: %w", err)
 		}

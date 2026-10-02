@@ -68,19 +68,25 @@ mkdir -p bin
 go build -o ./bin/gateway ./cmd/gateway
 ```
 
-Copy the example configuration, choose a strong client-facing
-API key, and start the server:
+Copy the example configuration, generate and securely back up a database master
+key, and start the server:
 
 ```sh
 cp config.example.yaml config.yaml
-export TORII_API_KEY="replace-with-a-long-random-secret"
+export TORII_DB_KEY="$(openssl rand -hex 32)" # Back this up separately; do not regenerate on restart.
+export TORII_DB_PATH="./state/torii.db"
 ./bin/gateway serve --config ./config.yaml
 ```
 
-The `--config` flag defaults to `/config/config.yaml`. Torii Gateway validates
-the complete configuration and resolves its API-key secret before opening the
-listener, so configuration or secret errors cause startup to fail rather than
-leaving a partially configured service running.
+The `--config` flag defaults to `/config/config.yaml`. On first launch, an
+interactive terminal prompts for your chosen administrator username and password
+(at least 12 characters). It generates an inference API key and displays it only
+once: save it securely. Without an interactive terminal, use the web console
+and the temporary setup code printed in the container logs. Existing installs
+also require administrator setup on their next restart; imported API keys are
+preserved, not displayed again. No API-key environment variable is required.
+For local builds you can set `state.database_path: ./state/torii.db` in YAML
+instead of the optional `TORII_DB_PATH` override above.
 
 ## Run with Podman Compose
 
@@ -88,14 +94,15 @@ The repository includes a Podman-compatible [`compose.yaml`](compose.yaml).
 The container creates a minimal writable configuration automatically on first
 start, so no initial configuration file is required. To customize it before
 starting, create `config/config.yaml`, change `server.listen` to
-`0.0.0.0:8080`, and create a project-root `.env` file for the API key:
+`0.0.0.0:8080`, and create a private project-root `.env` file:
 
 ```sh
 # Optional: create config/config.yaml from the full example before starting.
 mkdir -p config
 cp config.example.yaml config/config.yaml
 cat > .env <<'EOF'
-TORII_API_KEY=replace-with-a-long-random-secret
+TORII_DB_KEY=replace-with-64-hex-characters-from-openssl-rand-hex-32
+TORII_PORT=8080
 EOF
 # If you created the file, edit config/config.yaml and set provider URLs
 # reachable from the container.
@@ -107,23 +114,29 @@ The console is available at <http://127.0.0.1:8080/> and the API at
 default, stores persistent gateway state in the named
 `torii_gateway_state` volume, and runs as the image's non-root user. Set
 `TORII_PORT` in `.env` to publish a different host port or `TORII_IMAGE` to use
-a prebuilt image. Compose interpolates these values and passes `TORII_API_KEY`
-into the container for the `server.authentication.api_key.env` reference:
+a prebuilt image. Only the master key and published port are needed in `.env`.
+If an old `.env` already contains `TORII_API_KEY`, Compose passes it through for
+one-time import; remove it after migration. SQLite credentials
+persist in the additional `torii_gateway_database` volume at `/data`. Keep the
+same master key on every restart:
 
 ```sh
-# Edit .env if you want a different port, image, or API key.
+# Inspect the temporary setup code, then create your admin in the web console.
 podman compose logs -f torii-gateway
 podman compose down
 ```
 
-Keep `.env` private; it is ignored by Git. If authentication is omitted from
-`config/config.yaml`, the API key environment variable is not required.
-Provider API keys can be pasted directly on the console's Providers page; click
-**Test connection**, then **Save & reload** to persist the key without changing
-the container environment. Alternatively, set `JEV_API_KEY` in `.env` and select
-that variable in the provider's **Advanced provider options → API key environment**;
-Compose passes it into the container. Other custom provider key variables must
-be added to the Compose service's `environment` section explicitly.
+Keep `.env` private; it is ignored by Git and the image build. Prefer a mounted
+master-key secret using `compose.secrets.yaml`; see [Encrypted credential storage](docs/credential-storage.md)
+for Docker/Podman commands, non-root permissions, bootstrap and migration.
+The master key is required; an API key is not required at launch.
+Sign in to the console with your administrator username/password. Provider keys entered there
+are encrypted in SQLite; saved values are never returned to the browser.
+Legacy env/file inputs are imported once and no longer track external changes.
+Use **Server → Generate new API key** or `gateway admin api-key --config PATH`
+to generate a replacement. It is shown once and immediately invalidates the old key.
+Docker users must apply `compose.docker.yaml` because Docker does not support
+Podman's `:U` option; the linked guide explains directory ownership.
 
 The compose file mounts only the host `config/` directory at `/config` as a
 writable Podman bind mount with `rw,Z,U`; the container reads
@@ -144,8 +157,8 @@ podman compose down
 podman compose up --build -d
 ```
 
-The console is divided into Overview, Server, Providers, Routing, and State &
-Quota pages. **Save & reload** sends the validated configuration to
+The console includes Overview, Server, Providers, Routing, Benchmarks, Credentials,
+and State & Quota pages. **Save & reload** sends the validated configuration to
 `PUT /gateway/v1/config`; the gateway atomically replaces the host YAML file
 and swaps in the rebuilt provider/routing handler. A failed validation or
 provider initialization leaves the current configuration active. The console
@@ -309,9 +322,6 @@ starting point:
 ```yaml
 server:
   listen: 127.0.0.1:8080
-  authentication:
-    api_key:
-      env: TORII_API_KEY
 
 state:
   directory: ./state
@@ -327,41 +337,23 @@ providers:
 | Field | Required | Description |
 | --- | --- | --- |
 | `server.listen` | yes | TCP `host:port` on which the gateway listens. Use `127.0.0.1:8080` for local-only access or `0.0.0.0:8080` in a container. |
-| `server.authentication.api_key` | no | Optional secret reference used to authenticate API clients. Select exactly one of `value`, `env`, or `file`; omit the section for local no-auth mode. |
+| `server.authentication.api_key` | migration only | Legacy `value`, `env`, `file`, or database-reference input is imported once, then this section is removed. Gateway authentication is managed entirely in SQLite. |
 
-The API key must be non-empty and cannot contain whitespace. The console can
-store it as a masked `value`, or you can load it from a mounted secret file or
-environment variable. To load it from a mounted secret file instead of the
-environment, use:
-
-```yaml
-server:
-  listen: 0.0.0.0:8080
-  authentication:
-    api_key:
-      file: /run/secrets/torii-api-key
-```
-
-For a console-managed local configuration, an inline value is written as:
-
-```yaml
-server:
-  authentication:
-    api_key:
-      value: replace-with-a-long-random-secret
-```
-
-Environment-backed secret values are used exactly as supplied. Surrounding
-whitespace is removed from file-backed values, which makes files ending in a
-newline safe to use. Prefer environment or file references for shared or
-production deployments.
+Administrator login uses HTTP Basic authentication; inference uses the generated
+or imported bearer API key. Anonymous inference is no longer enabled by omitting
+`server.authentication`. Before administrator setup, new installations deny
+inference because no key exists. Existing imported keys continue working.
+The master encryption key is separate and must never appear in YAML.
+See [credential management and migration](docs/credential-storage.md).
 
 ### State
 
 `state.directory` is required and reserves the location for gateway state.
 Use a writable, persistent path such as `/state` for deployments. Version 1
-uses it for endpoint-bound credentials and aggregate usage; session affinity is
-intentionally in memory.
+uses it for aggregate usage and benchmark caches; session affinity is in memory.
+Credentials are stored in encrypted SQLite at `state.database_path`, default
+`/data/torii.db`, overridden by `TORII_DB_PATH`. The database and master key must
+both survive container updates.
 
 ### Providers
 
@@ -412,13 +404,12 @@ providers:
 
 This exposes `private/assistant` while sending `production-model` upstream.
 Provider credentials are isolated in a dedicated HTTP client and are not
-forwarded across redirects. The console accepts a direct, masked API key and
-saves it as `bearer_token.value` in `config.yaml`; **Show** reveals the field.
-Keys are stored as plaintext, not encrypted, in the owner-only configuration
-file (mode `0600`). Existing environment and file references remain supported
-under **Advanced provider options** and are preserved when loading and saving.
-The console currently has no authentication: restrict it to trusted users and
-use HTTPS or a trusted local connection when entering keys.
+forwarded across redirects. The authenticated console accepts a new, masked
+API key and encrypts it in SQLite; YAML receives only a credential reference.
+**Show** reveals only a newly entered value, never an existing stored key.
+Legacy environment/file inputs are imported once, not tracked continually.
+Use HTTPS for remote console access. See [credential storage](docs/credential-storage.md)
+for migration, backup and recovery instructions.
 
 The normal OpenAI API can be enabled with its origin-locked profile:
 
@@ -457,7 +448,7 @@ Use `gateway models --config ./config.yaml` to inspect the catalog.
 
 Add **TypeSafe AI · Jev** (`type: jev`) on the Providers page for the hosted
 TypeSafe service. Its default API URL is `https://api.typesafe.ai/v1`; paste your
-key into **API key**, or optionally reference `JEV_API_KEY` under Advanced.
+key into **API key**, or use a stored credential reference under Advanced.
 Add **Jev compatible · Laya / custom**
 (`type: jev_compatible`) for a self-hosted decision server; supply your own
 provider ID and API URL, with an optional bearer key. These providers use the

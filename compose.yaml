@@ -8,8 +8,9 @@ services:
     working_dir: /state
     command: ["serve", "--config", "/config/config.yaml"]
     environment:
+      TORII_DB_KEY: ${TORII_DB_KEY:-}
+      # Optional one-time migration for existing .env installs; not needed for setup.
       TORII_API_KEY: ${TORII_API_KEY:-}
-      JEV_API_KEY: ${JEV_API_KEY:-}
       TORII_CONFIG_BOOTSTRAP: "true"
     extra_hosts:
       - "host.containers.internal:host-gateway"
@@ -18,6 +19,7 @@ services:
     volumes:
       - "./config:/config:rw,Z,U"
       - "torii_gateway_state:/state:Z,U"
+      - "torii_gateway_database:/data:Z"
     healthcheck:
       test: ["CMD", "/gateway", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
       interval: 30s
@@ -27,3 +29,4 @@ services:
 
 volumes:
   torii_gateway_state:
+  torii_gateway_database:

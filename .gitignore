@@ -37,3 +37,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+.env.*
+secrets/
+*.db
+*.db-wal
+*.db-shm

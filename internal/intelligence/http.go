@@ -16,9 +16,10 @@ import (
 )
 
 type FetchOptions struct {
-	Client  *http.Client
-	Timeout time.Duration
-	Retries int
+	ResolveKey func() (string, error)
+	Client     *http.Client
+	Timeout    time.Duration
+	Retries    int
 }
 
 type SourceError struct {
@@ -34,10 +35,11 @@ func (e *SourceError) Error() string {
 }
 
 type remote struct {
-	cfg     SourceSettings
-	key     string
-	client  *http.Client
-	retries int
+	resolveKey func() (string, error)
+	cfg        SourceSettings
+	key        string
+	client     *http.Client
+	retries    int
 }
 
 func (r *remote) ID() string { return r.cfg.ID }
@@ -107,7 +109,7 @@ func newRemote(cfg SourceSettings, key, defaultURL string, options FetchOptions)
 	}
 	// Never forward credentials to redirects, including cross-origin downloads.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &remote{cfg: cfg, key: key, client: client, retries: options.Retries}, nil
+	return &remote{cfg: cfg, key: key, resolveKey: options.ResolveKey, client: client, retries: options.Retries}, nil
 }
 
 func ValidateURL(raw string) error {
@@ -133,8 +135,15 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "Torii-Gateway/benchmark-intelligence")
-		if r.key != "" {
-			value := r.key
+		key := r.key
+		if r.resolveKey != nil {
+			key, err = r.resolveKey()
+			if err != nil || strings.ContainsAny(key, "\r\n") {
+				return nil, &SourceError{Stage: "source credentials"}
+			}
+		}
+		if key != "" {
+			value := key
 			if authHeader == "Authorization" {
 				value = "Bearer " + value
 			}

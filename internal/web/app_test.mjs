@@ -7,6 +7,9 @@ import vm from "node:vm";
 // No browser framework, dependency download, or real OAuth request is needed.
 const script = readFileSync(new URL("./static/app.js", import.meta.url), "utf8");
 class Element {
+  reset() {}
+  showModal() { this.open=true; }
+  close() { this.open=false; }
   value = "";
   type = "text";
   textContent = "";
@@ -87,19 +90,21 @@ function consoleFixture(handler) {
   const calls = [];
   let fetchHandler = handler;
   let startupLoad = true;
+  const storageWrites=[];
   const context = vm.createContext({
     document: { querySelector: element, querySelectorAll: () => [], documentElement: new Element(), addEventListener() {} },
     window: { addEventListener() {}, setTimeout: callback => queueMicrotask(callback), open() {} },
     location: { hash: "#providers" },
-    localStorage: { getItem: () => null, setItem() {} },
+    localStorage: { getItem: () => null, setItem(...args) {storageWrites.push(args);} },
+    sessionStorage: {setItem(...args){storageWrites.push(args);}},
     navigator: { platform: "Linux", userAgent: "linux" },
     matchMedia: () => ({ matches: false }),
     HTMLInputElement: Element,
     FormData: class { forEach() {} },
-    URL, Error,
+    URL, Error, TextEncoder, btoa, confirm:()=>true,
     fetch: async (url, options) => {
       // Keep the script's startup load isolated; tests explicitly load config.
-      if (url === "/gateway/v1/config" && startupLoad) {
+      if (url === "/gateway/v1/setup" && startupLoad) {
         startupLoad = false;
         return new Promise(() => {});
       }
@@ -109,7 +114,7 @@ function consoleFixture(handler) {
   });
   vm.runInContext(script, context);
   return {
-    list, calls, context,
+    list, calls, context, storageWrites,
     run: source => vm.runInContext(source, context),
     setProviders: drafts => { context.drafts = drafts; vm.runInContext("providers = drafts; renderProviders();", context); },
     status: index => list.results.get(String(index)),
@@ -430,16 +435,16 @@ test("entering a direct key replaces references and connection tests send an inl
   input.value = "test-direct-provider-key";
   input.listeners.input({ target:input });
   assert.equal(app.run("providers[0].api_key_env"), "");
-  assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_key_env"]').value, "");
+  assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_key_env"]'), undefined);
   await app.run("testProvider(0)");
   assert.match(app.status(0).textContent, /Working · 1 model discovered/);
   const config = JSON.parse(app.run("JSON.stringify(readConfig())"));
   assert.deepEqual(config.providers[0].bearer_token, { value:"test-direct-provider-key" });
 });
 
-test("inline, environment, and file secrets survive reload and can be replaced or removed", () => {
+test("stored credential references survive reload without exposing keys", () => {
   const app = consoleFixture(() => response(models(1)));
-  for (const secret of [{ value:"test-reloaded-key" }, { env:"PROVIDER_KEY" }, { file:"/run/secrets/provider" }]) {
+  for (const secret of [{ credential:"stored-provider-key" }]) {
     app.context.config = { providers:[{ id:"custom", type:"openai_compatible", base_url:"https://custom.example", bearer_token:secret }] };
     app.run("applyConfig(config)");
     assert.deepEqual(JSON.parse(app.run("JSON.stringify(readProviderConfig(providers[0]).bearer_token)")), secret);
@@ -448,14 +453,8 @@ test("inline, environment, and file secrets survive reload and can be replaced o
   input.value = "replacement-key";
   input.listeners.input({ target:input });
   assert.equal(app.run("providers[0].api_key_file"), "");
-  const env = app.list.querySelector('[data-provider="0"][data-key="api_key_env"]');
-  env.value = "NEW_KEY_ENV";
-  env.listeners.input({ target:env });
-  assert.equal(input.value, "");
-  assert.equal(app.run("readProviderConfig(providers[0]).bearer_token.env"), "NEW_KEY_ENV");
-  env.value = "";
-  env.listeners.input({ target:env });
-  assert.equal(app.run("readProviderConfig(providers[0]).bearer_token"), undefined);
+  assert.equal(app.run("readProviderConfig(providers[0]).bearer_token.value"), "replacement-key");
+  assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_key_env"]'),undefined);
   app.setProviders([draft("openai-codex"), draft("nous"), draft("ollama")]);
   assert.equal(app.list.inputs.some(input => input.dataset.key === "api_key"), false);
 });
@@ -471,7 +470,7 @@ test("connection and save errors redact directly entered provider keys", async (
   assert.equal(app.run('document.querySelector("#toast").textContent').includes(key), false);
 });
 
-test("saving and reloading restores direct provider keys in a masked field", async () => {
+test("saving clears newly entered keys and reloads only stored references", async () => {
   let saved;
   const app = consoleFixture((url, options) => {
     if (url === "/gateway/v1/providers/test") return response(models(1));
@@ -479,13 +478,14 @@ test("saving and reloading restores direct provider keys in a masked field", asy
       saved = JSON.parse(options.body);
       return response({ ok:true });
     }
-    return response(saved);
+    return response({ ...saved,providers:saved.providers.map(p=>({...p,bearer_token:{credential:"stored-key"}})) });
   });
   app.setProviders([{ ...draft("openai"), api_key:"test-save-reload-key" }]);
   await app.run("saveConfig()");
   assert.deepEqual(saved.providers[0].bearer_token, { value:"test-save-reload-key" });
   const input = app.list.querySelector("#provider-api-key-0");
-  assert.equal(input.value, "test-save-reload-key");
+  assert.equal(input.value, "");
+  assert.equal(app.run("providers[0].bearer_token.credential"),"stored-key");
   assert.equal(input.type, "password");
 });
 
@@ -501,16 +501,53 @@ test("benchmark configuration survives console saves and invalid JSON is rejecte
   assert.equal(app.calls.length, 0);
 });
 
-test("benchmark refresh uses saved gateway authentication and displays source status", async () => {
+test("benchmark refresh uses memory-only login rather than configuration credentials", async () => {
   const app = consoleFixture((url, options) => {
     assert.equal(url, "/gateway/v1/intelligence/refresh");
     assert.equal(options.method, "POST");
-    assert.equal(options.headers.Authorization, "Bearer test-gateway-key");
+    assert.equal(options.headers.Authorization, "Basic test-admin-login");
     return response({ updated:true, sources:{ aa:{ last_success:"2026-10-01", stale:false } } });
   });
-  app.context.config = { providers:[], server:{ authentication:{ api_key:{ value:"test-gateway-key" } } } };
+  app.run('adminAuthorization="Basic test-admin-login"');
+  app.context.config = { providers:[], server:{ authentication:{ api_key:{ credential:"stored-gateway-key" } } } };
   app.run("applyConfig(config)");
   await app.run("inspectBenchmarks(true)");
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'), /last_success/);
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'), false);
+});
+
+test("console sign-in keeps Basic login only in memory and logout clears it",async()=>{
+  const app=consoleFixture(url=>url==="/gateway/v1/config"?response({server:{authentication:{api_key:{credential:"gateway-ref"}}},providers:[]}):response({credentials:[]}));
+  app.run('document.querySelector("#login-username").value="admin";document.querySelector("#login-password").value="memory-login-sentinel"');
+  await app.run('document.querySelector("#login-form").listeners.submit({preventDefault(){}})');
+  assert.equal(app.run('adminAuthorization'),"Basic "+btoa("admin:memory-login-sentinel"));assert.equal(app.run('document.querySelector("#login-password").value'),"");assert.deepEqual(app.storageWrites,[]);
+  app.run('document.querySelector("#console-logout").listeners.click()');assert.equal(app.run('adminAuthorization'),"");
+});
+test("unauthorized management clears login and reopens the sign-in dialog",async()=>{
+  const app=consoleFixture(()=>({...response({},false),status:401}));app.run('adminAuthorization="Basic expired-login"');await app.run('loadCredentialMetadata()');assert.equal(app.run('adminAuthorization'),"");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
+});
+test("legacy classifier conversion preserves encrypted credential references",()=>{
+  const app=consoleFixture(()=>response({}));app.context.config={providers:[],router:{classifier:{type:"jev",base_url:"https://api.typesafe.ai",model:"jev-latest",api_key:{credential:"classifier-ref"}}}};app.run("applyConfig(config)");assert.equal(app.run('readProviderConfig(providers[0]).bearer_token.credential'),"classifier-ref");
+});
+
+test("setup status selects initial administrator setup or existing-account login",async()=>{
+  const app=consoleFixture(()=>response({setup_required:true}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#setup-dialog").open'),true);
+  app.setFetch(()=>response({setup_required:false}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
+});
+test("administrator setup clears password fields and reveals only its newly generated key",async()=>{
+  const app=consoleFixture((url,options)=>{
+    if(url==="/gateway/v1/setup"){const input=JSON.parse(options.body);assert.equal(input.username,"my-admin");assert.equal(input.password,"long-enough-password");assert.equal(input.setup_code,"terminal-code");return response({api_key:"new-once-key",warning:"Displayed only once"});}
+    if(url==="/gateway/v1/config"){assert.equal(options.headers.Authorization,"Basic "+btoa("my-admin:long-enough-password"));return response({providers:[]});}
+    return response({credentials:[]});
+  });
+  app.run('document.querySelector("#setup-username").value="my-admin";document.querySelector("#setup-password").value="long-enough-password";document.querySelector("#setup-confirm").value="long-enough-password";document.querySelector("#setup-code").value="terminal-code"');
+  await app.run('document.querySelector("#setup-form").listeners.submit({preventDefault(){}})');
+  for(const id of ["#setup-password","#setup-confirm","#setup-code"])assert.equal(app.run(`document.querySelector("${id}").value`),"");
+  assert.equal(app.run('document.querySelector("#new-api-key").value'),"new-once-key");assert.deepEqual(app.storageWrites,[]);
+  app.run('document.querySelector("#close-new-key").listeners.click()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"");
+});
+test("API key generation requires in-memory administrator login and clears its once-only display",async()=>{
+  const app=consoleFixture((url,options)=>{assert.equal(url,"/gateway/v1/admin/api-key");assert.equal(options.method,"POST");assert.equal(options.headers.Authorization,"Basic admin-login");return response({api_key:"rotated-once-key"});});
+  app.run('adminAuthorization="Basic admin-login"');await app.run('document.querySelector("#generate-api-key").listeners.click()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"rotated-once-key");
+  app.run('document.querySelector("#new-key-dialog").listeners.cancel()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"");assert.deepEqual(app.storageWrites,[]);
 });

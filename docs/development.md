@@ -6,7 +6,8 @@
 - Git
 - Podman or Docker for container testing
 
-No database or external infrastructure is required for v1 development.
+SQLite is embedded (pure Go); no database server or external infrastructure is
+required. Running the gateway requires a separately backed-up database master key.
 
 ## Clone
 
@@ -54,6 +55,20 @@ Run the gateway authentication tests while working on client authentication:
 
     go test ./internal/api
 
+Run browser-console tests and verify the generated script (Node.js 22.13+):
+
+    node --test internal/web/app_test.mjs
+    node scripts/build-console.mjs --check
+
+To validate non-root credential storage and administrator setup in Podman:
+
+    podman build --format docker -t localhost/torii-credential-validation:local .
+    bash scripts/test-credential-container.sh
+
+This uses disposable containers, volumes and mounted secrets, cleans them up,
+and never touches an existing gateway deployment. It exercises setup, authenticated
+configuration saves, key regeneration, restart persistence and wrong-key rejection.
+
 ## Format
 
     gofmt -w .
@@ -81,37 +96,30 @@ control or copied from an example:
 
 Do not commit credentials.
 
-Secrets should be supplied through:
-
-- environment variables
-- files
-
-Secret references use exactly one source:
-
-    server:
-      authentication:
-        api_key:
-          env: GATEWAY_API_KEY
-
-or:
-
-    server:
-      authentication:
-        api_key:
-          file: /run/secrets/gateway-api-key
-
-File-backed secret values are trimmed of surrounding whitespace when loaded.
-Environment-backed values are used unchanged.
+Provider credentials are entered through the authenticated console and encrypted
+in SQLite; YAML keeps only `{credential: ID}` references. Legacy inline/env/file
+credentials are imported once. Administrator credentials and the inference key
+are database-managed, not configured in YAML or environment variables.
+See [credential storage](credential-storage.md) for key management and migration.
 
 ## Running Locally
 
 Example:
 
-    export GATEWAY_API_KEY=development-only-key
+Generate a master key once and back it up separately:
 
+    umask 077
+    mkdir -p secrets
+    openssl rand -hex 32 > secrets/torii_db_key
+
+Set `state.database_path: ./state/torii.db` in your local YAML, then run:
+
+    export TORII_DB_KEY_FILE="$PWD/secrets/torii_db_key"
     go run ./cmd/gateway serve --config ./config.yaml
 
-Update this command if the CLI differs.
+Choose an administrator username/password when prompted and save the newly
+generated inference API key immediately; it is displayed only once. Reuse the
+same master key on every restart. Never regenerate it for an existing database.
 
 ## Container Build
 

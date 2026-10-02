@@ -106,6 +106,9 @@ func TestProviderConnectionReportsClassifierCatalog(t *testing.T) {
 }
 
 func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
+	t.Setenv("TORII_API_KEY", "")
+	t.Setenv("TORII_DB_KEY", strings.Repeat("17", 32))
+	t.Setenv("TORII_DB_PATH", filepath.Join(t.TempDir(), "torii.db"))
 	const key = "test-console-provider-key"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "/v1/models" || req.Header.Get("Authorization") != "Bearer "+key {
@@ -121,6 +124,16 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &handlerRuntime{configPath: path}
+	initial, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := openCredentials(initial, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	r.credentials = db
 	updated := fmt.Sprintf(`{"server":{"listen":"127.0.0.1:8080"},"state":{"directory":%q},"providers":[{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}],"router":{"classifier":{"type":"disabled"}}}`, filepath.Dir(path), server.URL, key)
 	put := httptest.NewRecorder()
 	r.putConfig(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(updated)))
@@ -132,8 +145,8 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := cfg.Providers[0].BearerToken
-	if secret == nil || secret.Value != key || secret.Env != "" || secret.File != "" {
-		t.Fatal("saved provider key was not preserved as a single inline secret")
+	if secret == nil || secret.Value != "" || secret.Credential == "" || secret.Env != "" || secret.File != "" {
+		t.Fatal("saved provider key was not replaced by an encrypted credential reference")
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -151,8 +164,8 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 			} `json:"bearer_token"`
 		} `json:"providers"`
 	}
-	if get.Code != http.StatusOK || json.Unmarshal(get.Body.Bytes(), &document) != nil || len(document.Providers) != 1 || document.Providers[0].BearerToken.Value != key {
-		t.Fatal("console config reload did not return the saved provider key")
+	if get.Code != http.StatusOK || json.Unmarshal(get.Body.Bytes(), &document) != nil || len(document.Providers) != 1 || document.Providers[0].BearerToken.Value != "" || strings.Contains(get.Body.String(), key) {
+		t.Fatal("console config reload disclosed the saved provider key")
 	}
 	connection := httptest.NewRecorder()
 	request := fmt.Sprintf(`{"provider":{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}}`, server.URL, key)
@@ -250,7 +263,7 @@ providers:
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	command := exec.CommandContext(ctx, binary, "serve", "--config", configPath)
-	command.Env = append(os.Environ(), "TEST_GATEWAY_API_KEY=process-secret")
+	command.Env = append(os.Environ(), "TEST_GATEWAY_API_KEY=process-secret", "TORII_DB_KEY="+strings.Repeat("18", 32), "TORII_DB_PATH="+filepath.Join(directory, "torii.db"))
 	output := new(strings.Builder)
 	command.Stdout, command.Stderr = output, output
 	if err := command.Start(); err != nil {
@@ -370,6 +383,8 @@ func TestRuntimeConfigEndpointPersistsAndReloads(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	initial := `server:
   listen: 127.0.0.1:8080
+  authentication:
+    api_key: {value: test-management-key}
 state:
   directory: STATE_DIR
 providers:
@@ -395,14 +410,18 @@ providers:
 	runtime.handler = handler
 
 	get := httptest.NewRecorder()
-	handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/gateway/v1/config", nil))
+	getReq := httptest.NewRequest(http.MethodGet, "/gateway/v1/config", nil)
+	getReq.Header.Set("Authorization", "Bearer test-management-key")
+	handler.ServeHTTP(get, getReq)
 	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"listen":"127.0.0.1:8080"`) {
 		t.Fatalf("GET config = %d %s", get.Code, get.Body.String())
 	}
 
-	updated := []byte(`{"server":{"listen":"127.0.0.1:9090"},"state":{"directory":"` + filepath.Dir(configPath) + `"},"providers":[{"id":"local","type":"openai_compatible","base_url":"https://example.test","discover_models":false,"models":["model"]}]}`)
+	updated := []byte(`{"server":{"listen":"127.0.0.1:9090","authentication":{"api_key":{"value":"test-management-key"}}},"state":{"directory":"` + filepath.Dir(configPath) + `"},"providers":[{"id":"local","type":"openai_compatible","base_url":"https://example.test","discover_models":false,"models":["model"]}]}`)
 	put := httptest.NewRecorder()
-	handler.ServeHTTP(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", bytes.NewReader(updated)))
+	putReq := httptest.NewRequest(http.MethodPut, "/gateway/v1/config", bytes.NewReader(updated))
+	putReq.Header.Set("Authorization", "Bearer test-management-key")
+	handler.ServeHTTP(put, putReq)
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
 		t.Fatalf("PUT config = %d %s", put.Code, put.Body.String())
 	}
@@ -420,6 +439,8 @@ func TestRemoteCodexLoginSessionImportsOnce(t *testing.T) {
 	configPath := filepath.Join(directory, "config.yaml")
 	configuration := fmt.Sprintf(`server:
   listen: 127.0.0.1:8080
+  authentication:
+    api_key: {value: test-management-key}
 state:
   directory: %s
 providers:
@@ -446,6 +467,7 @@ providers:
 	start := httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/login", strings.NewReader(`{"provider":{"id":"openai-codex","type":"openai-codex","base_url":"https://chatgpt.com/backend-api/codex","discover_models":false,"models":["gpt-5.5"]}}`))
 	start.Host = "gateway.example.test:8398"
 	start.Header.Set("Content-Type", "application/json")
+	start.Header.Set("Authorization", "Bearer test-management-key")
 	started := httptest.NewRecorder()
 	handler.ServeHTTP(started, start)
 	if started.Code != http.StatusAccepted {
@@ -482,6 +504,7 @@ providers:
 		t.Fatalf("replayed import status = %d, body = %s", replayed.Code, replayed.Body.String())
 	}
 	statusRequest := httptest.NewRequest(http.MethodGet, "/gateway/v1/providers/login?provider=openai-codex", nil)
+	statusRequest.Header.Set("Authorization", "Bearer test-management-key")
 	status := httptest.NewRecorder()
 	handler.ServeHTTP(status, statusRequest)
 	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"status":"success"`) || strings.Contains(status.Body.String(), login.HelperToken) {
@@ -538,6 +561,8 @@ func TestBuildCompatibleProviderResolvesAndIsolatesCredentials(t *testing.T) {
 }
 
 func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
+	t.Setenv("TORII_DB_KEY", strings.Repeat("19", 32))
+	t.Setenv("TORII_DB_PATH", filepath.Join(t.TempDir(), "torii.db"))
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "config.yaml")
 	configuration := fmt.Sprintf("server:\n  listen: 127.0.0.1:0\nstate:\n  directory: %s\nproviders:\n  - id: openai\n    type: openai_compatible\n    base_url: https://api.example.test\n    discover_models: false\n    models: [model]\n", directory)
@@ -546,7 +571,20 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 	}
 	t.Setenv("CLI_ACCESS_TOKEN", "access-secret-never-print")
 	t.Setenv("CLI_REFRESH_TOKEN", "refresh-secret-never-print")
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := openCredentials(cfg, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.CreateAdmin("cli-admin", "cli-admin-password"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
 	var output strings.Builder
+	passwordStdin(t, "cli-admin-password")
 	if err := runWithIO(context.Background(), []string{"auth", "login", "openai", "--config", configPath, "--access-token-env", "CLI_ACCESS_TOKEN", "--refresh-token-env", "CLI_REFRESH_TOKEN", "--expires-at", "2099-01-01T00:00:00Z"}, &output); err != nil {
 		t.Fatal(err)
 	}
@@ -554,6 +592,7 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 		t.Fatalf("login output=%q", output.String())
 	}
 	output.Reset()
+	passwordStdin(t, "cli-admin-password")
 	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--config", configPath}, &output); err != nil {
 		t.Fatal(err)
 	}
@@ -561,10 +600,12 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 		t.Fatalf("status output=%q", output.String())
 	}
 	output.Reset()
+	passwordStdin(t, "cli-admin-password")
 	if err := runWithIO(context.Background(), []string{"auth", "logout", "openai", "--config", configPath}, &output); err != nil {
 		t.Fatal(err)
 	}
 	output.Reset()
+	passwordStdin(t, "cli-admin-password")
 	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--config", configPath}, &output); err != nil {
 		t.Fatal(err)
 	}

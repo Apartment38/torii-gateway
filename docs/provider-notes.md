@@ -209,7 +209,7 @@ This provider must remain separate from OpenAI Codex subscription auth.
 ### Status
 
 Implemented as an endpoint-bound provider using the configured ChatGPT Codex
-backend and the existing flat-file credential store. The current transport
+backend and the encrypted SQLite credential store. The current transport
 discovers the authenticated subscription model catalog from the Codex backend,
 supports Chat/Responses request translation, response translation for
 non-streaming Chat Completions, SSE event adaptation, and refreshes credentials

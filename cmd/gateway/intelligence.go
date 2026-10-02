@@ -78,6 +78,7 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 			continue
 		}
 		key := ""
+		var resolveKey func() (string, error)
 		if settings.APIKey != nil {
 			value, err := settings.APIKey.Resolve()
 			if err != nil {
@@ -85,8 +86,12 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 				continue
 			}
 			key = value
+			if cfg.Credentials != nil {
+				key = "database-managed"
+				resolveKey = settings.APIKey.Resolve
+			}
 		}
-		source, err := registry.New(settings.SourceSettings, key, intelligence.FetchOptions{Timeout: timeout, Retries: retries})
+		source, err := registry.New(settings.SourceSettings, key, intelligence.FetchOptions{Timeout: timeout, Retries: retries, ResolveKey: resolveKey})
 		if err != nil {
 			sources = append(sources, unavailableBenchmarkSource{id: settings.ID})
 			continue
@@ -115,6 +120,11 @@ func runBenchmarkCommand(ctx context.Context, args []string, output io.Writer) e
 	if err != nil {
 		return err
 	}
+	db, err := openCredentials(cfg, *path)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 	if *origin == "" {
 		host, port, _ := net.SplitHostPort(cfg.Server.Listen)
 		if host == "" || host == "0.0.0.0" || host == "::" {
@@ -129,13 +139,11 @@ func runBenchmarkCommand(ctx context.Context, args []string, output io.Writer) e
 	if err != nil {
 		return err
 	}
-	if cfg.Server.Authentication != nil {
-		key, err := cfg.Server.Authentication.APIKey.Resolve()
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Authorization", "Bearer "+key)
+	key, err := db.GatewayAPIKey()
+	if err != nil {
+		return errors.New("create an administrator to initialize the gateway API key")
 	}
+	req.Header.Set("Authorization", "Bearer "+key)
 	client := http.Client{Timeout: cfg.Intelligence.Options().SourceTimeout + time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {

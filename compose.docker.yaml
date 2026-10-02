@@ -1,0 +1,8 @@
+# Docker does not support Podman's :U ownership option. Prepare ./config with
+# UID/GID 65532 ownership, then use this override with the base compose file.
+services:
+  torii-gateway:
+    volumes:
+      - "./config:/config:rw,Z"
+      - "torii_gateway_state:/state:Z"
+      - "torii_gateway_database:/data:Z"

@@ -1,16 +1,16 @@
 # Torii Gateway version 1 configuration.
-# Copy this file to config.yaml and set TORII_API_KEY before starting.
+# Copy this file to config.yaml and provide the master database key before starting.
+# First launch prompts for an administrator and generates an inference API key.
+# Legacy env/file/value inputs are imported once; thereafter use credential IDs.
 server:
   # Use 0.0.0.0:8080 when the gateway must listen outside the local machine or
   # container. Set this to 0.0.0.0:8080 for container access.
   listen: 127.0.0.1:8080
-  authentication:
-    api_key:
-      env: TORII_API_KEY
 
-# Persistent credentials, usage and benchmark cache are stored here.
+# Usage and benchmark caches stay here; encrypted credentials use database_path.
 state:
   directory: ./state
+  database_path: /data/torii.db
 
 # Opt-in background benchmark ingestion. Sources and routing weights are
 # independent: leave intelligence disabled to retain existing behavior.
@@ -28,8 +28,7 @@ intelligence:
     - id: aa
       type: artificial_analysis
       enabled: false
-      api_key:
-        env: ARTIFICIAL_ANALYSIS_API_KEY
+      # Set when enabling: api_key: {env: ARTIFICIAL_ANALYSIS_API_KEY}
     - id: benchlm
       type: benchlm
       enabled: false # CC BY-NC; commercial use requires a BenchLM licence.

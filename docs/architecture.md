@@ -31,22 +31,22 @@ The project prioritizes:
 The gateway runs as a single Go process.
 
 The `gateway serve --config <path>` command loads and validates configuration,
-resolves the gateway API key, constructs each configured provider, and
+opens encrypted SQLite credentials, imports legacy secrets, prompts for initial
+administrator setup, constructs each configured provider, and
 serves the API on the configured listener. It shuts down gracefully on SIGINT
-or SIGTERM. The health endpoint remains unauthenticated; all other currently
-served routes require bearer authentication. On SIGINT or SIGTERM, the process
+or SIGTERM. Health/static console/setup status remain public; inference uses
+bearer authentication and management uses administrator Basic login. On SIGINT or SIGTERM, the process
 stops accepting new connections and waits up to 10 seconds for active requests
 to finish before exiting. Idle client connections are closed after 60 seconds.
 
 No external database, Redis instance, message queue, sidecar, or worker
 service is required.
 
-OAuth-capable providers use a versioned flat-file credential store below
-`state.directory/auth`. Provider IDs and upstream endpoints are recorded with
-each credential. The store uses a mode-0700 directory, mode-0600 regular files,
-size-bounded strict decoding, same-directory atomic replacement, and filesystem
-syncing; corrupt or weakly protected records fail closed without including token
-values in errors.
+All credential payloads, including OAuth records, use versioned encrypted SQLite
+storage at `/data/torii.db` (configurable). AES-256-GCM encryption uses an external
+master key; WAL, busy timeout and foreign keys are enabled. Legacy YAML and
+`state.directory/auth` records migrate transactionally. See
+[credential storage](credential-storage.md) for key management and recovery.
 
 ## Request Flow
 
@@ -260,14 +260,15 @@ multi-turn compatibility coverage remains part of the release audit.
 
 ## Persistent State
 
-The gateway persists endpoint-bound credentials and aggregate usage beneath
-`state.directory`.
+The gateway persists aggregate usage and benchmark caches beneath
+`state.directory`; encrypted credentials use `state.database_path`.
 
 **Version 1 target:** persistent state lives beneath the configured state
 directory (normally `/state`). Expected state includes:
 
-    /state/auth/
+    /data/torii.db
     /state/usage.json
+    /state/benchmark-intelligence.json
 
 Configuration is not stored in the state directory.
 
@@ -276,12 +277,10 @@ Configuration is not stored in the state directory.
 Configuration is loaded from one YAML document at startup. Unknown fields,
 duplicate provider IDs, malformed listener addresses, invalid provider URLs,
 and unsupported provider types cause loading to fail. The currently
-implemented schema supports the server listener and optional API-key secret
-reference, state directory, configured providers, and routing controls. Secret
-references select exactly one environment variable or file;
-file values are trimmed of surrounding whitespace when resolved. API keys
-containing whitespace are rejected at startup because they cannot be represented
-by the supported Bearer syntax. Unsupported provider families and unknown
+implemented schema supports the server listener, state directory, configured
+providers, and routing controls. Secret references select encrypted database
+IDs; legacy inline/env/file inputs are imported once at startup. Gateway admin
+authentication and the inference key are stored only in SQLite. Unsupported provider families and unknown
 configuration fields remain rejected.
 
 ## Security Invariants

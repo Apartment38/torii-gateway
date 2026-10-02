@@ -97,11 +97,10 @@ HTTP requests time out separately from the complete source import. Sources run
 independently and concurrently. A failed source retains its previous successful
 dataset, with a failure status; successful sources still update.
 
-Keys can use `env`, `file`, or `value`, just like existing provider secrets.
-For a container, env references require explicitly passing the variable through
-Compose; file paths are inside the container. Direct values are plaintext in
-the owner-only configuration file. The console's JSON editor does not mask
-inline benchmark keys; prefer env/file references and protect console access.
+Keys use `{credential: ID}` references from the Credentials page. Legacy `env`,
+`file`, and `value` inputs are imported once into encrypted SQLite. Authenticated
+inline submissions are encrypted before saving, and configuration reads return
+references only. See [Encrypted credential storage](credential-storage.md).
 
 An omitted `routing` section has zero weights and is inspection-only. To use
 task weights, configure the existing semantic classifier: its `task_type`

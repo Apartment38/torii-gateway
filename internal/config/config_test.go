@@ -63,7 +63,7 @@ func TestDecodeRejectsInvalidServerAuthenticationSecret(t *testing.T) {
 state:
 `, 1)
 	_, err := config.Decode(strings.NewReader(input))
-	if err == nil || !strings.Contains(err.Error(), "exactly one of env, file, or value") {
+	if err == nil || !strings.Contains(err.Error(), "exactly one of env, file, value, or credential") {
 		t.Fatalf("Decode() error = %v, want exactly-one-source error", err)
 	}
 }
@@ -71,7 +71,7 @@ state:
 func TestDecodeRejectsUnknownField(t *testing.T) {
 	input := strings.Replace(validConfig, "  listen:", "  unknown: true\n  listen:", 1)
 	_, err := config.Decode(strings.NewReader(input))
-	if err == nil || !strings.Contains(err.Error(), "field unknown not found") {
+	if err == nil || !strings.Contains(err.Error(), "unknown configuration field") {
 		t.Fatalf("Decode() error = %v, want unknown-field error", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestDecodeOpenAICompatibleProvider(t *testing.T) {
 func TestDecodeRejectsUnsafeCompatibleProviderConfiguration(t *testing.T) {
 	base := strings.Replace(validConfig, "type: ollama", "type: openai_compatible", 1)
 	tests := []struct{ name, extra, want string }{
-		{"inline unknown field", "    api_key: secret\n", "field api_key not found"},
+		{"inline unknown field", "    api_key: secret\n", "unknown configuration field"},
 		{"unsafe authorization header", "    headers:\n      Authorization:\n        env: TOKEN\n", "unsafe"},
 		{"no model source", "    discover_models: false\n", "models are required"},
 		{"invalid timeout", "    connect_timeout: forever\n", "positive duration"},

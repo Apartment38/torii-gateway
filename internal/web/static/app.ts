@@ -1,21 +1,25 @@
 type AuthHeaders = Record<string, string>;
 
-// The console is unauthenticated today. Keeping requests behind this seam
-// lets Basic Auth or an Authentik/OIDC provider be added without rewriting UI code.
+// Administrator authentication remains in memory, never browser storage.
 interface AuthProvider {
   headers(): Promise<AuthHeaders>;
 }
 
-class NoAuthProvider implements AuthProvider {
-  async headers(): Promise<AuthHeaders> { return {}; }
+class MemoryBasicProvider implements AuthProvider {
+  async headers(): Promise<AuthHeaders> { return adminAuthorization ? { Authorization:adminAuthorization } : {}; }
 }
 
-const authProvider: AuthProvider = new NoAuthProvider();
+const authProvider: AuthProvider = new MemoryBasicProvider();
+async function gatewayFetch(url:string,options?:RequestInit):Promise<Response>{
+  const response=await fetch(url,options);
+  if(response.status===401){adminAuthorization="";document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
+  return response;
+}
 const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
-let serverAPIKeyReference: Record<string, string> | null = null;
-let managementAPIKey = "";
+let adminAuthorization = "";
+function basicAuthorization(username:string,password:string):string {return "Basic "+btoa(Array.from(new TextEncoder().encode(`${username}:${password}`),byte=>String.fromCharCode(byte)).join(""));}
 const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [ { ...providerDefaults } ];
 interface ProviderStatus {
@@ -132,12 +136,11 @@ function renderProviders(): void {
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
-        ${provider.type === "ollama" ? "" : `<label data-tooltip="Paste the upstream API key directly; it is masked until you choose Show. Save writes it to the gateway configuration file; environment or file references are available under Advanced.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.api_key_env || provider.api_key_file ? "Using an Advanced secret reference" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Show provider API key" aria-pressed="false">Show</button></span></label>`}
+        ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter a new upstream API key to replace the configured credential. Save encrypts it in SQLite; existing keys cannot be revealed.">New API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Show newly entered provider API key" aria-pressed="false">Show new</button></span></label>`}
       </div>
       <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
-        <label data-tooltip="Read the API key from this environment variable instead of storing it directly. Setting this clears the direct key and key-file reference.">API key environment<input data-provider="${index}" data-key="api_key_env" value="${value(provider,"api_key_env")}" placeholder="PROVIDER_API_KEY" /></label>
-        <label data-tooltip="Read the API key from this file inside the gateway host or container. Setting this clears the direct key and environment reference.">API key file<input data-provider="${index}" data-key="api_key_file" value="${value(provider,"api_key_file")}" placeholder="/run/secrets/provider-key" /></label>
-        <label data-tooltip="Optional separate management credential used for provider administration or quota lookup.">Management token environment<input data-provider="${index}" data-key="management_env" value="${value(provider,"management_env")}" placeholder="OPENROUTER_MANAGEMENT_KEY" /></label>
+        <label data-tooltip="Select a credential ID from the Credentials page. Values remain encrypted and cannot be revealed.">Stored API credential<input data-provider="${index}" data-key="credential_id" value="${escapeHTML(String((provider.bearer_token as any)?.credential || provider.credential_id || ""))}" placeholder="Credential ID" /></label>
+        <label data-tooltip="Select a separate management credential from the Credentials page for quota lookup.">Management credential<input data-provider="${index}" data-key="management_id" value="${escapeHTML(String((provider.management_token as any)?.credential || provider.management_id || ""))}" placeholder="Credential ID" /></label>
         <label data-tooltip="The portal URL used for subscription or account management. It is relevant to providers with a separate portal.">Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
         <label data-tooltip="The OAuth client identifier used by a provider portal. Leave empty to use the provider default.">Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
         <label data-tooltip="A static fallback model list used when discovery is disabled or unavailable. Separate model IDs with commas.">Models (comma separated)<input data-provider="${index}" data-key="models" value="${value(provider,"models")}" placeholder="model-a, model-b" /></label>
@@ -193,6 +196,8 @@ function updateProvider(event: Event): void {
     });
   }
   if (key === "management_env") delete providers[index].management_token;
+  if(key==="credential_id"){providers[index].api_key="";providers[index].api_key_env="";providers[index].api_key_file="";providers[index].bearer_token=control.value.trim()?{credential:control.value.trim()} as any:undefined as any;}
+  if(key==="management_id"){providers[index].management_token=control.value.trim()?{credential:control.value.trim()} as any:undefined as any;}
   setProviderStatus(providers[index], { state: "unchecked", message: "Settings changed · check connection again" });
   if (key === "id") {
     const title = providerList.querySelector<HTMLElement>(`[data-provider-title="${index}"]`);
@@ -238,14 +243,11 @@ function applyConfig(config: Record<string, any>): void {
   const classifier = config.router?.classifier || {};
   requestedClassifier = classifier.type === "disabled" ? "disabled" : classifier.type === "jev" && classifier.transport === "provider"
     ? `${classifier.provider}/${classifier.model}` : "";
-  const configuredAPIKey = config.server?.authentication?.api_key;
-  managementAPIKey = configuredAPIKey?.value || "";
   document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value = config.intelligence ? JSON.stringify(config.intelligence, null, 2) : "";
-  serverAPIKeyReference = configuredAPIKey && !configuredAPIKey.value ? { ...configuredAPIKey } : null;
   providers = (config.providers || []).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
-    api_key: provider.bearer_token?.value || "",
+    api_key: "",
     api_key_env: provider.bearer_token?.env || "",
     api_key_file: provider.bearer_token?.file || "",
     management_env: provider.management_token?.env || "",
@@ -262,7 +264,7 @@ function applyConfig(config: Record<string, any>): void {
   if (classifier.type === "jev" && classifier.transport !== "provider") {
     const type = new URL(classifier.base_url).hostname === "api.typesafe.ai" ? "jev" : "jev_compatible";
     const id = type === "jev" ? knownProviderID("jev", -1) : `classifier-${providers.length + 1}`;
-    providers.push({ ...providerDefaults, id, type, api_url:classifier.base_url, api_key:classifier.api_key?.value || "", api_key_env:classifier.api_key?.env || "", api_key_file:classifier.api_key?.file || "", models:classifier.model || "jev-latest", discover:true });
+    providers.push({ ...providerDefaults, id, type, api_url:classifier.base_url, bearer_token:classifier.api_key, api_key:classifier.api_key?.value || "", api_key_env:classifier.api_key?.env || "", api_key_file:classifier.api_key?.file || "", models:classifier.model || "jev-latest", discover:true });
     requestedClassifier = `${id}/${classifier.model || "jev-latest"}`;
   } else if (classifier.type && classifier.type !== "jev" && classifier.type !== "disabled") {
     legacyClassifier = { ...classifier };
@@ -294,8 +296,8 @@ function applyConfig(config: Record<string, any>): void {
 
 async function loadServerConfig(): Promise<void> {
   try {
-    const response = await fetch("/gateway/v1/config", { headers: await authProvider.headers() });
-    if (!response.ok) return;
+    const response = await gatewayFetch("/gateway/v1/config", { headers: await authProvider.headers() });
+    if (!response.ok) { if (response.status === 401 || response.status === 403) {adminAuthorization="";saveState.textContent="Sign in to configure the gateway";document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();} return; }
     applyConfig(await response.json());
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
@@ -306,8 +308,9 @@ async function saveConfig(): Promise<void> {
   let configuration: Record<string, any>;
   try { configuration = readConfig(); }
   catch (error) { toast(error instanceof Error ? error.message : "Invalid benchmark configuration JSON"); return; }
-  const response = await fetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(configuration) });
+  const response = await gatewayFetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(configuration) });
   if (!response.ok) { toast(redactProviderKeys(`Save failed: ${await response.text()}`)); return; }
+  providers.forEach(provider=>{provider.api_key="";});
   saveState.textContent = "Saved and reloaded";
   await loadServerConfig();
   toast("Configuration saved and reloaded");
@@ -341,7 +344,7 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
     // The API URL is the source of truth; do not overwrite it with fields
     // retained from the loaded YAML after converting it for the form.
     if (key === "base_url" || key === "api_path" || key === "discover_models") return;
-    if (["api_key", "api_key_env", "api_key_file", "bearer_token"].includes(key)) return;
+    if (["api_key", "api_key_env", "api_key_file", "bearer_token","credential_id","management_id"].includes(key)) return;
     if (key === "discover") { output.discover_models = Boolean(raw); return; }
     if (String(raw).trim() === "") return;
     const map: Record<string, string> = { management_env: "management_token", tls_ca: "tls.ca_file", tls_server: "tls.server_name" };
@@ -367,14 +370,15 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
     if (provider.api_key) output.bearer_token = { value:provider.api_key };
     else if (provider.api_key_env) output.bearer_token = { env:provider.api_key_env };
     else if (provider.api_key_file) output.bearer_token = { file:provider.api_key_file };
+    else if (provider.credential_id) output.bearer_token={credential:provider.credential_id};
+    else if (provider.bearer_token) output.bearer_token=provider.bearer_token;
   }
+  if (provider.management_id) output.management_token={credential:provider.management_id};
   return output;
 }
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = { server: {}, state: {}, providers: [], router: { classifier: {}, sessions: {}, quota: {}, selection: {} } };
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  const apiKeyInput = form.elements.namedItem("server.authentication.api_key.value") as HTMLInputElement;
-  if (!apiKeyInput.value.trim() && serverAPIKeyReference) config.server.authentication = { api_key: serverAPIKeyReference };
   config.providers = providers.map(readProviderConfig);
   const selected = classifierSelect.value;
   const onFailure = config.router.classifier.on_failure;
@@ -408,8 +412,7 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
   output.textContent = refresh ? "Refreshing sources; cached routing data remains available…" : "Loading source status…";
   try {
     const headers = await authProvider.headers();
-    if (managementAPIKey && !headers.Authorization) headers.Authorization = `Bearer ${managementAPIKey}`;
-    const response = await fetch(`/gateway/v1/intelligence/${refresh ? "refresh" : "sources"}`, { method: refresh ? "POST" : "GET", headers });
+    const response = await gatewayFetch(`/gateway/v1/intelligence/${refresh ? "refresh" : "sources"}`, { method: refresh ? "POST" : "GET", headers });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || body.error || "Benchmark request failed");
     output.textContent = JSON.stringify(body, null, 2);
@@ -426,7 +429,7 @@ async function testProvider(index: number): Promise<void> {
     // Snapshot the draft before awaiting, so a re-render cannot change which
     // provider this request tests. Ignore responses for edited or removed drafts.
     const configuration = readProviderConfig(provider);
-    const response = await fetch("/gateway/v1/providers/test", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
+    const response = await gatewayFetch("/gateway/v1/providers/test", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "connection failed");
     if (body.models !== null && !Array.isArray(body.models)) throw new Error("Invalid model discovery response");
@@ -454,7 +457,7 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
   setProviderStatus(provider, { state: "pending", message: "Starting login…" });
   try {
     const configuration = readProviderConfig(provider);
-    const response = await fetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
+    const response = await gatewayFetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "login could not start");
     if (body.helper_url && body.helper_token) {
@@ -475,6 +478,7 @@ function renderHelperInstructions(result: HTMLDivElement, sessionURL: string, pa
   result.className = "provider-result pending provider-helper";
   const downloadURL = helperDownloadURL();
   result.innerHTML = `<strong>Download and run the one-shot helper on the computer with your browser.</strong><a href="${downloadURL}" download>Download torii-auth for this computer</a><span>${escapeHTML(command)}</span><button class="copy-helper button quiet" type="button">Copy command</button><small>Browsers cannot launch executables automatically. Run the downloaded helper once; it opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
+  result.querySelector<HTMLAnchorElement>("a")?.addEventListener("click",async event=>{if(!downloadURL.startsWith("/"))return;event.preventDefault();try{const response=await fetch(downloadURL,{headers:await authProvider.headers()});if(!response.ok)throw new Error();const url=URL.createObjectURL(await response.blob());const a=document.createElement("a");a.href=url;a.download=downloadURL.split("/").pop()!;a.click();URL.revokeObjectURL(url);}catch{toast("Helper download failed; sign in and retry");}});
   result.querySelector<HTMLButtonElement>(".copy-helper")?.addEventListener("click", async event => {
     const button = event.currentTarget as HTMLButtonElement;
     try {
@@ -499,7 +503,7 @@ async function pollProviderLogin(provider: Record<string, string | boolean>, res
   const providerID = String(provider.id);
   for (let attempt = 0; attempt < 180; attempt += 1) {
     await new Promise(resolve => window.setTimeout(resolve, 2000));
-    const response = await fetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
+    const response = await gatewayFetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
     const body = await response.json();
     if (body.verification_url && body.verification_url !== openedURL) { openedURL = body.verification_url; window.open(openedURL, "_blank", "noopener,noreferrer"); }
     if (body.status === "success") {
@@ -532,8 +536,57 @@ document.querySelector("#theme-toggle")!.addEventListener("click", () => { const
 form.addEventListener("input", markDirty);
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-document.querySelector<HTMLButtonElement>("#reveal-api-key")!.addEventListener("click", event => { const input = document.querySelector<HTMLInputElement>("#server-api-key")!; const button = event.currentTarget as HTMLButtonElement; const visible = input.type === "text"; input.type = visible ? "password" : "text"; button.textContent = visible ? "Show" : "Hide"; });
-document.querySelector<HTMLInputElement>("#server-api-key")!.addEventListener("input", event => { if ((event.target as HTMLInputElement).value) serverAPIKeyReference = null; });
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });
 document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
-renderProviders(); navigate(); void loadServerConfig();
+renderProviders(); navigate(); void checkSetup();
+
+document.querySelector("#console-login")!.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#login-dialog")!.showModal());
+document.querySelector("#console-logout")!.addEventListener("click",()=>{
+  adminAuthorization="";clearNewAPIKey();document.querySelector<HTMLDialogElement>("#new-key-dialog")!.close();providers=[{...providerDefaults}];configurationLoaded=false;form.reset();document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value="";document.querySelector("#credential-list")!.textContent="";renderProviders();saveState.textContent="Signed out";
+});
+document.querySelector("#login-form")!.addEventListener("submit",async event=>{
+  event.preventDefault();const username=document.querySelector<HTMLInputElement>("#login-username")!.value;const input=document.querySelector<HTMLInputElement>("#login-password")!;adminAuthorization=basicAuthorization(username,input.value);input.value="";
+  try{const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json());document.querySelector<HTMLDialogElement>("#login-dialog")!.close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
+  catch{adminAuthorization="";document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
+});
+async function loadCredentialMetadata():Promise<void>{
+  const list=document.querySelector<HTMLElement>("#credential-list")!;
+  try{const response=await gatewayFetch("/gateway/v1/credentials",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const body=await response.json();list.innerHTML=(body.credentials||[]).map((c:any)=>`<div class="card"><strong>${escapeHTML(c.service)} · ${escapeHTML(c.purpose)}</strong><p>${escapeHTML(c.id)} · Configured</p>${c.service==="gateway"&&c.purpose==="authentication"?"<p>Manage your gateway API key on the Server page.</p>":c.purpose==="oauth"?"<p>Use provider login to replace OAuth tokens.</p>":`<input type="password" autocomplete="new-password" data-new-secret="${escapeHTML(c.id)}" placeholder="New replacement value" /><button type="button" class="button secondary" data-replace-secret="${escapeHTML(c.id)}">Replace</button>`}${c.service==="gateway"&&c.purpose==="authentication"?"":`<button type="button" class="button quiet" data-delete-secret="${escapeHTML(c.id)}">Delete</button>`}</div>`).join("");
+    list.querySelectorAll<HTMLButtonElement>("[data-replace-secret]").forEach(button=>button.addEventListener("click",async()=>{const id=button.dataset.replaceSecret!;const input=list.querySelector<HTMLInputElement>(`[data-new-secret="${id}"]`)!;const value=input.value;input.value="";await writeCredential(id,"PUT",value);}));
+    list.querySelectorAll<HTMLButtonElement>("[data-delete-secret]").forEach(button=>button.addEventListener("click",async()=>{if(confirm("Delete this credential? Connections using it will stop working."))await writeCredential(button.dataset.deleteSecret!,"DELETE");}));
+  }catch{list.textContent="Sign in to inspect encrypted credentials.";}
+}
+async function writeCredential(id:string,method:string,value?:string):Promise<void>{
+  const service=document.querySelector<HTMLInputElement>("#credential-service")!.value;const purpose=document.querySelector<HTMLInputElement>("#credential-purpose")!.value;
+  try{const response=await gatewayFetch(`/gateway/v1/credentials${id?`/${encodeURIComponent(id)}`:""}`,{method,headers:{"Content-Type":"application/json",...await authProvider.headers()},body:method==="DELETE"?undefined:JSON.stringify({value,service:id?"existing":service,purpose:id?"existing":purpose})});if(!response.ok)throw new Error();toast("Credential updated");await loadCredentialMetadata();}catch{toast("Credential update failed. Check authentication and required fields.");}
+}
+document.querySelector("#refresh-credentials")!.addEventListener("click",()=>{void loadCredentialMetadata();});
+document.querySelector("#create-credential")!.addEventListener("click",()=>{const input=document.querySelector<HTMLInputElement>("#credential-value")!;const value=input.value;input.value="";void writeCredential("","POST",value);});
+
+async function checkSetup():Promise<void>{
+  try{const response=await fetch("/gateway/v1/setup",{cache:"no-store"});if(!response.ok)throw new Error();const status=await response.json();document.querySelector<HTMLDialogElement>(status.setup_required?"#setup-dialog":"#login-dialog")!.showModal();}
+  catch{saveState.textContent="Unable to check administrator setup; refresh to retry.";}
+}
+function showNewAPIKey(key:string,warning?:string):void{
+  if(!key){toast("Your existing API key was imported and preserved. Generate a replacement on the Server page if needed.");return;}
+  document.querySelector<HTMLTextAreaElement>("#new-api-key")!.value=key;
+  document.querySelector("#new-key-warning")!.textContent=warning||"This API key is displayed only once. Save it securely before closing.";
+  document.querySelector<HTMLDialogElement>("#new-key-dialog")!.showModal();
+}
+document.querySelector("#setup-form")!.addEventListener("submit",async event=>{
+  event.preventDefault();const field=(id:string)=>document.querySelector<HTMLInputElement>(id)!;
+  const username=field("#setup-username").value,password=field("#setup-password").value,code=field("#setup-code").value;
+  if(password!==field("#setup-confirm").value){document.querySelector("#setup-error")!.textContent="Passwords do not match.";return;}
+  field("#setup-password").value="";field("#setup-confirm").value="";field("#setup-code").value="";
+  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");adminAuthorization=basicAuthorization(username,password);document.querySelector<HTMLDialogElement>("#setup-dialog")!.close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
+  catch(error){document.querySelector("#setup-error")!.textContent=error instanceof Error?error.message:"Administrator setup failed.";}
+});
+document.querySelector("#generate-api-key")!.addEventListener("click",async()=>{
+  if(!confirm("Generate a new API key? All clients using the current key will need updating."))return;
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-key",{method:"POST",headers:await authProvider.headers()});if(!response.ok)throw new Error();const result=await response.json();showNewAPIKey(result.api_key,result.warning);}
+  catch{toast("API key generation failed. Sign in as the administrator.");}
+});
+function clearNewAPIKey():void{document.querySelector<HTMLTextAreaElement>("#new-api-key")!.value="";}
+document.querySelector("#new-key-dialog")!.addEventListener("close",clearNewAPIKey);
+document.querySelector("#new-key-dialog")!.addEventListener("cancel",clearNewAPIKey);
+document.querySelector("#close-new-key")!.addEventListener("click",()=>{clearNewAPIKey();document.querySelector<HTMLDialogElement>("#new-key-dialog")!.close();});

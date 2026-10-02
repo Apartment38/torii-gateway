@@ -11,18 +11,26 @@ import (
 // explicitly configured inline value for console-managed local deployments.
 // Exactly one source must be configured.
 type SecretRef struct {
-	Env   string `yaml:"env,omitempty"`
-	File  string `yaml:"file,omitempty"`
-	Value string `yaml:"value,omitempty"`
+	Credential string `yaml:"credential,omitempty"`
+	store      SecretStore
+	Env        string `yaml:"env,omitempty"`
+	File       string `yaml:"file,omitempty"`
+	Value      string `yaml:"value,omitempty"`
 }
+
+type SecretStore interface {
+	Get(string, string) ([]byte, error)
+}
+
+func (r *SecretRef) Bind(store SecretStore) { r.store = store }
 
 // Validate checks that the reference selects exactly one non-blank source.
 func (r SecretRef) Validate() error {
 	hasEnv := r.Env != ""
 	hasFile := r.File != ""
 	hasValue := r.Value != ""
-	if (btoi(hasEnv) + btoi(hasFile) + btoi(hasValue)) != 1 {
-		return errors.New("exactly one of env, file, or value must be configured")
+	if (btoi(hasEnv) + btoi(hasFile) + btoi(hasValue) + btoi(r.Credential != "")) != 1 {
+		return errors.New("exactly one of env, file, value, or credential must be configured")
 	}
 	if hasEnv && strings.TrimSpace(r.Env) == "" {
 		return errors.New("env must not be blank")
@@ -41,6 +49,13 @@ func (r SecretRef) Validate() error {
 func (r SecretRef) Resolve() (string, error) {
 	if err := r.Validate(); err != nil {
 		return "", fmt.Errorf("validate secret reference: %w", err)
+	}
+	if r.Credential != "" {
+		if r.store == nil {
+			return "", errors.New("credential store not initialized")
+		}
+		b, err := r.store.Get(r.Credential, "default")
+		return string(b), err
 	}
 	if r.Env != "" {
 		value, ok := os.LookupEnv(r.Env)

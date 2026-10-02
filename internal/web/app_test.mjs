@@ -89,13 +89,29 @@ class KeyList extends Element {
   get innerHTML() { return this.html; }
   querySelectorAll(selector) { return selector === "[data-delete-key]" ? this.buttons : []; }
 }
+class BenchmarkList extends Element {
+  inputs = [];
+  set innerHTML(html) {
+    this.html = html;
+    this.inputs = [...html.matchAll(/<input\b[^>]*data-benchmark-source="(\d+)"[^>]*data-benchmark-field="api_key_input"[^>]*>/g)].map(match => {
+      const input = new Element();
+      input.dataset = {benchmarkSource:match[1],benchmarkField:"api_key_input"};
+      input.type = "password";
+      return input;
+    });
+  }
+  get innerHTML() { return this.html; }
+  querySelectorAll(selector) { return selector === '[data-benchmark-field="api_key_input"]' ? this.inputs : []; }
+}
 const response = (body, ok = true) => ({ ok, json: async () => body, text: async () => JSON.stringify(body) });
 const models = count => ({ models: Array.from({ length: count }, (_, i) => ({ id: `model-${i}` })) });
 const draft = (type, id = type) => ({ id, type, api_url: type === "openai-codex" ? "https://chatgpt.com/backend-api/codex" : `https://${type}.example/v1` });
 function consoleFixture(handler) {
   const list = new ProviderList();
-  const nodes = new Map([["#providers-list", list], ["#credential-list", new KeyList()]]);
+  const nodes = new Map([["#providers-list", list], ["#credential-list", new KeyList()], ["#benchmark-sources-list", new BenchmarkList()]]);
   const element = name => {
+    const keyField = /\[data-benchmark-source="(\d+)"\]\[data-benchmark-field="api_key_input"\]/.exec(name);
+    if (keyField) return nodes.get("#benchmark-sources-list").inputs.find(input=>input.dataset.benchmarkSource===keyField[1]);
     if (!nodes.has(name)) nodes.set(name, new Element());
     return nodes.get(name);
   };
@@ -114,7 +130,7 @@ function consoleFixture(handler) {
     matchMedia: () => ({ matches: false }),
     HTMLInputElement: Element,
     FormData: class { forEach() {} },
-    URL, Error, TextEncoder, btoa, confirm:()=>true,
+    URL, Error, TextEncoder, TextDecoder, AbortController, structuredClone, btoa, confirm:()=>true,
     fetch: async (url, options) => {
       // Keep the script's startup load isolated; tests explicitly load config.
       if (url === "/gateway/v1/setup" && startupLoad) {
@@ -555,30 +571,36 @@ test("saving clears newly entered keys and reloads only stored references", asyn
   assert.equal(input.type, "password");
 });
 
-test("benchmark configuration survives console saves and invalid JSON is rejected", async () => {
+test("benchmark source forms preserve weights and saved credentials and reject duplicate metric columns", async () => {
   const app = consoleFixture(() => response({}));
   const intelligence = { enabled:true, sources:[{ id:"aa", type:"artificial_analysis", enabled:true, api_key:{ env:"AA_API_KEY" } }], routing:{ task_weights:{ coding:{ coding:3, agentic:1 } } } };
   app.context.config = { providers:[], intelligence };
   app.run("applyConfig(config)");
-  assert.deepEqual(JSON.parse(app.run("JSON.stringify(readConfig().intelligence)")), intelligence);
-  app.run('document.querySelector("#intelligence-config").value = "invalid JSON"');
+  const saved = JSON.parse(app.run("JSON.stringify(readConfig().intelligence)"));
+  assert.deepEqual(saved.routing, intelligence.routing);
+  assert.deepEqual(saved.sources[0].api_key, intelligence.sources[0].api_key);
+  assert.equal(saved.sources.length, 1);
+  app.run('benchmarkSources[0]._metrics = [{column:"coding",category:"coding",max:1},{column:"coding",category:"coding",max:1}]');
   await app.run("saveConfig()");
-  assert.match(app.run('document.querySelector("#toast").textContent'), /valid JSON object/);
+  assert.match(app.run('document.querySelector("#toast").textContent'), /nonempty and unique/);
   assert.equal(app.calls.length, 0);
 });
 
 test("benchmark refresh uses memory-only login rather than configuration credentials", async () => {
   const app = consoleFixture((url, options) => {
+    assert.equal(options.headers.Authorization, "Basic test-admin-login");
+    if (url.endsWith("/sources")) return response({aa:{last_success:"2026-10-01",enabled:true,observation_count:10}});
+    if (url.endsWith("/models")) return response({});
     assert.equal(url, "/gateway/v1/intelligence/refresh");
     assert.equal(options.method, "POST");
-    assert.equal(options.headers.Authorization, "Basic test-admin-login");
+    assert.equal(options.headers.Accept,"text/event-stream");
     return response({ updated:true, sources:{ aa:{ last_success:"2026-10-01", stale:false } } });
   });
   app.run('adminAuthorization="Basic test-admin-login"');
   app.context.config = { providers:[], intelligence:{enabled:true}, server:{ authentication:{ api_key:{ credential:"stored-gateway-key" } } } };
   app.run("applyConfig(config)");
   await app.run("inspectBenchmarks(true)");
-  assert.match(app.run('document.querySelector("#benchmark-status").textContent'), /last_success/);
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'), /refresh finished/);
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'), false);
 });
 
@@ -647,10 +669,119 @@ test("benchmark enable toggle persists without dropping source configuration", a
   assert.equal(config.intelligence.routing.price,1);
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),false);
   await app.run("inspectBenchmarks(true)");
-  assert.equal(app.calls.at(-1).url,"/gateway/v1/intelligence/refresh");
-  app.run('document.querySelector("#intelligence-config").value=JSON.stringify({enabled:false,sources:[]});document.querySelector("#intelligence-config").listeners.input()');
+  assert.ok(app.calls.some(call=>call.url==="/gateway/v1/intelligence/refresh"));
+  app.run('document.querySelector("#intelligence-enabled").checked=false;document.querySelector("#intelligence-enabled").listeners.change()');
   assert.equal(app.run('document.querySelector("#intelligence-enabled").checked'),false);
   assert.equal(app.run('readConfig().intelligence.enabled'),false);
+});
+
+test("benchmark page replaces JSON with five source controls and cached evidence tables", () => {
+  const html = readFileSync(new URL("./static/index.html",import.meta.url),"utf8");
+  assert.doesNotMatch(html,/intelligence-config|Benchmark configuration JSON/i);
+  for (const id of ["benchmark-sources-list","benchmark-table","benchmark-refresh-log","benchmark-progress"]) assert.ok(html.includes(`id="${id}"`));
+  const app = consoleFixture(()=>response({}));
+  app.context.config={providers:[],intelligence:{enabled:true}};
+  app.run("applyConfig(config)");
+  assert.equal(app.run("benchmarkSources.length"),5);
+  assert.equal(app.run('document.querySelector("#benchmark-configuration").hidden'),false);
+  const sourceHTML=app.run('document.querySelector("#benchmark-sources-list").innerHTML');
+  for (const name of ["Artificial Analysis","BenchLM.ai","Hugging Face","LMArena","LiveBench"]) assert.ok(sourceHTML.includes(name));
+  assert.equal(app.run("readConfig().intelligence.sources.length"),0,"unused placeholder sources must not fail configuration validation");
+});
+
+test("benchmark source keys are masked, only newly entered keys are revealable, and logout clears drafts", () => {
+  const app=consoleFixture(()=>response({}));
+  app.context.config={providers:[],intelligence:{enabled:true,sources:[{id:"aa",type:"artificial_analysis",enabled:true,api_key:{credential:"encrypted-aa"}}]}};
+  app.run('applyConfig(config);benchmarkSources[0].api_key_input="source-secret-sentinel";renderBenchmarkSources()');
+  assert.doesNotMatch(app.run('document.querySelector("#benchmark-sources-list").innerHTML'),/source-secret-sentinel/);
+  const input=app.run('document.querySelector("#benchmark-sources-list").inputs[0]');
+  assert.equal(input.value,"source-secret-sentinel");assert.equal(input.type,"password");
+  app.run('benchmarkSourceAction({target:{closest:()=>({dataset:{benchmarkSource:"0",benchmarkAction:"reveal-key"},setAttribute(){}})}})');
+  assert.equal(input.type,"text");
+  assert.equal(app.run('readConfig().intelligence.sources[0].api_key.value'),"source-secret-sentinel");
+  assert.equal(app.run('benchmarkSafeMessage("source-secret-sentinel rejected")'),"[redacted] rejected");
+  app.run('clearSubmittedBenchmarkKeys()');
+  assert.equal(app.run('readConfig().intelligence.sources[0].api_key.credential'),"encrypted-aa");
+  app.run('signOutConsole()');
+  assert.equal(app.run("benchmarkSources.length"),0);assert.equal(app.run("Object.keys(benchmarkModels).length"),0);assert.deepEqual(app.storageWrites,[]);
+});
+
+test("source forms configure datasets, metric scales, and operational units without losing policies", () => {
+  const app=consoleFixture(()=>response({}));
+  app.context.config={providers:[],intelligence:{enabled:true,identities:[{canonical_id:"model",aliases:["Model"]}],aggregation:{overall_weights:{preference:0}},routing:{price:1}}};
+  app.run('applyConfig(config);benchmarkSources[2].enabled=true;benchmarkSources[2].datasets[0].dataset="org/results";benchmarkSources[2].datasets[0]._metrics=[{column:"code_score",category:"coding",min:0,max:100},{column:"__proto__",category:"reasoning",min:0,max:1}]');
+  const config=JSON.parse(app.run("JSON.stringify(readConfig().intelligence)"));
+  assert.deepEqual(config.identities,app.context.config.intelligence.identities);
+  assert.deepEqual(config.aggregation,app.context.config.intelligence.aggregation);
+  assert.equal(config.sources[0].type,"huggingface");assert.equal(config.sources[0].datasets[0].metrics.code_score.max,100);
+  assert.ok(Object.hasOwn(config.sources[0].datasets[0].metrics,"__proto__"));
+  app.run('updateBenchmarkSource({target:{dataset:{benchmarkSource:"2",benchmarkDataset:"0",benchmarkMapping:"0",benchmarkField:"metric"},type:"select",value:"ttft"}})');
+  assert.equal(app.run('readConfig().intelligence.sources[0].datasets[0].metrics.code_score.unit'),"seconds");
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),true);
+  app.run('benchmarkSources[2].datasets[0]._metrics=[]');
+  assert.throws(()=>app.run('readBenchmarkConfiguration()'),/at least one metric mapping/);
+});
+
+test("cached table shows scores, operational data, raw unmatched observations and safe HTML", async () => {
+  const app=consoleFixture(url=>{
+    if(url.endsWith("/sources"))return response({aa:{enabled:true,last_success:"2026-10-02",observation_count:2}});
+    if(url.endsWith("/models"))return response({"provider/model":{provider_ids:["provider/model"],scores:{coding:.92,preference:.81},operations:{ttft:.2,context_length:128000},sources:["aa"],observation_count:2,latest_retrieval:"2026-10-02"}});
+    assert.match(url,/observations\?offset=0&limit=100&q=/);
+    return response({total:1,observations:[{external_model_id:"<unmatched>",source:"aa",benchmark:"code",category:"coding",original_score:85,normalized_score:.85,version:"v1",retrieved_at:"2026-10-02"}]});
+  });
+  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  await app.run('loadBenchmarkData()');
+  let html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
+  assert.match(html,/92\.0/);assert.match(html,/81\.0/);assert.match(html,/128000/);assert.match(html,/—/);
+  app.run('benchmarkTableView="observations"');await app.run('loadBenchmarkData()');
+  html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
+  assert.match(html,/&lt;unmatched&gt;/);assert.match(html,/85\.0/);assert.match(html,/Unmatched \/ ambiguous/);
+});
+
+test("streamed refresh advances actual source progress and updates the table before completion", async () => {
+  let controller, publications=0;
+  const app=consoleFixture((url,options)=>{
+    if(url.endsWith("/refresh")){
+      assert.equal(options.headers.Accept,"text/event-stream");
+      return {ok:true,headers:{get:()=>"text/event-stream"},body:new ReadableStream({start(c){controller=c;}})};
+    }
+    if(url.endsWith("/sources"))return response({aa:{enabled:true,last_success:"2026-10-02",observation_count:publications}});
+    return response(publications ? {"model-a":{scores:{coding:.9},sources:["aa"],observation_count:publications}} : {});
+  });
+  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  const refresh=app.run('inspectBenchmarks(true)');
+  await new Promise(resolve=>setImmediate(resolve));
+  const send=(kind,data)=>{
+    const bytes=new TextEncoder().encode(`event: ${kind}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`);
+    // Split framing and multibyte messages across arbitrary network chunks.
+    for(let offset=0;offset<bytes.length;offset+=7)controller.enqueue(bytes.slice(offset,offset+7));
+  };
+  publications=1;
+  send("progress",{phase:"published",source:"aa",total:2,completed:1,observations:1,message:"Saved source data — matched models"});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/model-a/);
+  assert.equal(app.run('document.querySelector("#benchmark-progress").value'),1);
+  assert.equal(app.run('document.querySelector("#benchmark-progress").max'),2);
+  assert.equal(app.run('benchmarkRefreshRunning'),true);
+  assert.match(app.run('document.querySelector("#benchmark-refresh-log").textContent'),/matched models/);
+  send("progress",{phase:"failed",source:"slow",total:2,completed:2,failed:1,message:"Previous cached data retained"});
+  send("result",{partial_failure:true,sources:{aa:{enabled:true,observation_count:1,last_success:"2026-10-02"}}});controller.close();await refresh;
+  assert.equal(app.run('document.querySelector("#benchmark-progress").value'),2);
+  assert.equal(app.run('benchmarkRefreshRunning'),false);
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/source failures/);
+});
+
+test("interrupted refresh reports incomplete progress and ignores late data after logout", async () => {
+  let controller;
+  const app=consoleFixture(()=>({ok:true,headers:{get:()=>"text/event-stream"},body:new ReadableStream({start(c){controller=c;}})}));
+  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  let refresh=app.run('inspectBenchmarks(true)');await new Promise(resolve=>setImmediate(resolve));controller.close();await refresh;
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/ended before completion/);
+  refresh=app.run('inspectBenchmarks(true)');await new Promise(resolve=>setImmediate(resolve));
+  app.run('signOutConsole()');
+  controller.enqueue(new TextEncoder().encode('event: result\ndata: {"sources":{"late":{"enabled":true}}}\n\n'));controller.close();await refresh;
+  assert.equal(app.run('Object.keys(benchmarkSourceStatus).length'),0);
+  assert.equal(app.run('document.querySelector("#benchmark-refresh-panel").hidden'),true);
 });
 
 test("client key creation prompts for a name and reveals only the new generated key once", async () => {

@@ -38,8 +38,7 @@ function signOutConsole(): void {
   providers = [];
   configurationLoaded = false;
   form.reset();
-  document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value = "";
-  document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked = false;
+  clearBenchmarkConsole();
   benchmarksEnabledSaved = false;
   document.querySelector("#credential-list")!.textContent = "";
   document.querySelector("#benchmark-status")!.textContent = "";
@@ -113,7 +112,7 @@ function redactProviderKeys(message: string): string {
     const key = String(provider.api_key || "");
     if (key) message = message.split(key).join("[redacted]");
   });
-  return message;
+  return benchmarkSafeMessage(message);
 }
 
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
@@ -284,10 +283,7 @@ function applyConfig(config: Record<string, any>): void {
   const classifier = config.router?.classifier || {};
   requestedClassifier = classifier.type === "disabled" ? "disabled" : classifier.type === "jev" && classifier.transport === "provider"
     ? `${classifier.provider}/${classifier.model}` : "";
-  document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value = config.intelligence ? JSON.stringify(config.intelligence, null, 2) : "";
-  benchmarksEnabledSaved = config.intelligence?.enabled === true;
-  document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked = benchmarksEnabledSaved;
-  updateBenchmarkControls();
+  applyBenchmarkConfig(config.intelligence || {});
   providers = (config.providers || []).filter((provider: Record<string, any>) => !isSetupPlaceholder(provider)).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
@@ -335,6 +331,7 @@ function applyConfig(config: Record<string, any>): void {
   const quality = config.router?.selection?.minimum_quality;
   if (quality) (form.elements.namedItem("router.selection.minimum_quality") as HTMLInputElement).value = JSON.stringify(quality);
   updateClassifierOptions();
+  if (location.hash === "#intelligence" && benchmarksEnabledSaved) void loadBenchmarkData();
 }
 
 async function loadServerConfig(): Promise<void> {
@@ -358,6 +355,7 @@ async function saveConfig(): Promise<void> {
   const response = await gatewayFetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(configuration) });
   if (!response.ok) { toast(redactProviderKeys(`Save failed: ${await response.text()}`)); return; }
   providers.forEach(provider=>{provider.api_key="";});
+  clearSubmittedBenchmarkKeys();
   saveState.textContent = "Saved and reloaded";
   await loadServerConfig();
   toast("Configuration saved and reloaded");
@@ -373,6 +371,7 @@ function navigate(): void {
   });
   document.querySelectorAll<HTMLAnchorElement>(".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
   if (current === "routing") updateClassifierOptions();
+  if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
 }
 
 function setNested(target: Record<string, any>, path: string, raw: unknown): void {
@@ -441,45 +440,21 @@ function readConfig(): Record<string, any> {
   }
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
-  const intelligenceJSON = document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value.trim();
-  if (intelligenceJSON) {
-    try {
-      const intelligence = JSON.parse(intelligenceJSON);
-      if (!intelligence || Array.isArray(intelligence) || typeof intelligence !== "object") throw new Error();
-      config.intelligence = intelligence;
-    } catch { throw new Error("Benchmark configuration must be a valid JSON object"); }
-  }
-  config.intelligence = { ...(config.intelligence || {}), enabled:document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked };
+  config.intelligence = readBenchmarkConfiguration();
   return config;
 }
 
 function updateBenchmarkControls(): void {
   const enabled = document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked;
-  document.querySelector<HTMLButtonElement>("#refresh-benchmarks")!.disabled = !benchmarksEnabledSaved || !enabled;
-  document.querySelector("#benchmark-enable-notice")!.textContent = enabled !== benchmarksEnabledSaved
+  document.querySelector<HTMLButtonElement>("#refresh-benchmarks")!.disabled = !benchmarksEnabledSaved || !enabled || benchmarkDirty || benchmarkRefreshRunning;
+  document.querySelector<HTMLDivElement>("#benchmark-configuration")!.hidden = !enabled;
+  document.querySelector<HTMLDivElement>("#benchmark-data")!.hidden = !benchmarksEnabledSaved;
+  document.querySelector("#benchmark-enable-notice")!.textContent = enabled !== benchmarksEnabledSaved || benchmarkDirty
     ? "Click Save & reload to apply your benchmark intelligence setting before refreshing."
-    : enabled ? "Benchmark intelligence is enabled. Configure sources below, then Save & reload to apply changes. Refresh uses the saved sources."
+    : enabled ? "Benchmark intelligence is enabled. Choose sources below, then Save & reload to apply changes. Refresh uses saved settings."
     : "Benchmark intelligence is disabled. Enable it and click Save & reload before refreshing.";
 }
 
-async function inspectBenchmarks(refresh: boolean): Promise<void> {
-  const output = document.querySelector<HTMLElement>("#benchmark-status")!;
-  if (refresh && (!benchmarksEnabledSaved || !document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked)) {
-    output.textContent = "Enable benchmark intelligence and click Save & reload before refreshing.";
-    return;
-  }
-  const button = document.querySelector<HTMLButtonElement>(refresh ? "#refresh-benchmarks" : "#inspect-benchmarks")!;
-  button.disabled = true;
-  output.textContent = refresh ? "Refreshing sources; cached routing data remains available…" : "Loading source status…";
-  try {
-    const headers = await authProvider.headers();
-    const response = await gatewayFetch(`/gateway/v1/intelligence/${refresh ? "refresh" : "sources"}`, { method: refresh ? "POST" : "GET", headers });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error?.message || body.error || "Benchmark request failed");
-    output.textContent = JSON.stringify(body, null, 2);
-  } catch (error) { output.textContent = error instanceof Error ? error.message : "Benchmark request failed"; }
-  finally { if(refresh)updateBenchmarkControls();else button.disabled = false; }
-}
 async function testProvider(index: number): Promise<void> {
   const provider = providers[index];
   if (!provider) return;
@@ -599,7 +574,7 @@ window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });
 document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
-renderProviders(); updateConsoleIdentity(); updateBenchmarkControls(); navigate(); void checkSetup();
+initializeBenchmarks(); renderProviders(); updateConsoleIdentity(); updateBenchmarkControls(); navigate(); void checkSetup();
 
 document.querySelector("#console-login")!.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#login-dialog")!.showModal());
 document.querySelector("#console-logout")!.addEventListener("click",signOutConsole);
@@ -633,12 +608,7 @@ document.querySelector("#create-key-form")!.addEventListener("submit",async even
   finally{button.disabled=false;}
 });
 document.querySelector("#intelligence-enabled")!.addEventListener("change",()=>{
-  const editor=document.querySelector<HTMLTextAreaElement>("#intelligence-config")!;
-  try{const config=JSON.parse(editor.value||"{}");if(config && !Array.isArray(config) && typeof config==="object"){config.enabled=document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked;editor.value=JSON.stringify(config,null,2);}}catch{/* Preserve invalid drafts for correction. */}
-  updateBenchmarkControls();markDirty();
-});
-document.querySelector("#intelligence-config")!.addEventListener("input",()=>{
-  try{const config=JSON.parse(document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value||"{}");document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked=config.enabled===true;updateBenchmarkControls();}catch{/* Save reports invalid JSON without discarding the draft. */}
+  benchmarkDirty = true; updateBenchmarkControls();markDirty();
 });
 
 async function checkSetup():Promise<void>{

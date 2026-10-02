@@ -105,6 +105,8 @@ type Model struct {
 	Scores           map[string]float64 `json:"scores"`
 	Operations       map[string]float64 `json:"operations"`
 	Observations     []Observation      `json:"observations"`
+	ObservationCount int                `json:"observation_count"`
+	Sources          []string           `json:"sources"`
 	LatestEvaluation time.Time          `json:"latest_evaluation"`
 	LatestRetrieval  time.Time          `json:"latest_retrieval"`
 	Stale            bool               `json:"stale"`
@@ -120,16 +122,29 @@ type Unmatched struct {
 }
 
 type SourceState struct {
-	ID           string         `json:"id"`
-	Type         string         `json:"type"`
-	Enabled      bool           `json:"enabled"`
-	LastAttempt  time.Time      `json:"last_attempt,omitempty"`
-	LastSuccess  time.Time      `json:"last_success,omitempty"`
-	Error        string         `json:"error,omitempty"`
-	Stale        bool           `json:"stale"`
-	AgeSeconds   float64        `json:"age_seconds"`
-	Observations []Observation  `json:"observations"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
+	ID               string         `json:"id"`
+	Type             string         `json:"type"`
+	Enabled          bool           `json:"enabled"`
+	LastAttempt      time.Time      `json:"last_attempt,omitempty"`
+	LastSuccess      time.Time      `json:"last_success,omitempty"`
+	Error            string         `json:"error,omitempty"`
+	Stale            bool           `json:"stale"`
+	AgeSeconds       float64        `json:"age_seconds"`
+	Observations     []Observation  `json:"observations"`
+	ObservationCount int            `json:"observation_count"`
+	Metadata         map[string]any `json:"metadata,omitempty"`
+}
+
+// RefreshEvent describes real source-level work, not an estimated byte count.
+// Messages are generated locally and never contain upstream URLs or credentials.
+type RefreshEvent struct {
+	Phase        string `json:"phase"`
+	Source       string `json:"source,omitempty"`
+	Completed    int    `json:"completed"`
+	Total        int    `json:"total"`
+	Failed       int    `json:"failed"`
+	Observations int    `json:"observations,omitempty"`
+	Message      string `json:"message"`
 }
 
 type Snapshot struct {

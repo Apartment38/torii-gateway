@@ -60,6 +60,11 @@ Run browser-console tests and verify the generated script (Node.js 22.13+):
     node --test internal/web/app_test.mjs
     node scripts/build-console.mjs --check
 
+The dependency-free build combines `internal/web/static/benchmarks.ts` and
+`app.ts` into the committed `app.js`. Run `node scripts/build-console.mjs` after
+editing either TypeScript source. Console tests use a mocked DOM and gateway;
+benchmark tests exercise fragmented streaming updates without live services.
+
 To validate non-root credentials, benchmark persistence and administrator setup in Podman:
 
     podman build --format docker -t localhost/torii-credential-validation:local .
@@ -68,9 +73,10 @@ To validate non-root credentials, benchmark persistence and administrator setup 
 This uses disposable containers, volumes and mounted secrets, cleans them up,
 and never touches an existing gateway deployment. It exercises setup, authenticated
 configuration saves, key regeneration, restart persistence and wrong-key rejection.
-The script also requires the host SQLite CLI (`sqlite3`). It imports legacy usage,
-Codex identity and benchmark fixtures with benchmark sources disabled (no live
-calls), then recreates without `/state` and verifies SQLite remains authoritative.
+It also verifies shipped benchmark controls, authenticated table access and
+streaming refresh. The script requires the host SQLite CLI (`sqlite3`) and uses
+only synthetic keys, usage and disabled benchmark fixtures (no live source
+calls). SQLite remains authoritative across container recreation and restore.
 
 ## Format
 

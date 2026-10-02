@@ -57,6 +57,124 @@ func manager(t *testing.T, sources []Source, opts Options) (*Manager, *Store) {
 	return m, store
 }
 
+func TestRefreshPublishesAndPersistsCompletedSourceBeforeSlowSourceFinishes(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	sources := []Source{
+		fakeSource{id: "fast", fetch: func(context.Context) (Result, error) {
+			return Result{Observations: []Observation{observation("fast", "code", Coding, "model-a", .9, time.Now())}}, nil
+		}},
+		fakeSource{id: "slow", fetch: func(ctx context.Context) (Result, error) {
+			select {
+			case <-release:
+				return Result{}, errors.New("upstream secret must not leak")
+			case <-ctx.Done():
+				return Result{}, ctx.Err()
+			}
+		}},
+	}
+	m, store := manager(t, sources, options())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	published := make(chan RefreshEvent, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- m.RefreshWithProgress(ctx, func(event RefreshEvent) {
+			if event.Phase == "published" {
+				// Callback can read cached routing state without deadlocking.
+				model, ok := m.Lookup("local/model-a")
+				if !ok || model.ObservationCount != 1 || len(model.Sources) != 1 {
+					t.Error("source not visible at publication")
+				}
+				published <- event
+			}
+		})
+	}()
+	select {
+	case event := <-published:
+		if event.Completed != 1 || event.Total != 2 || event.Failed != 0 || event.Observations != 1 {
+			t.Fatalf("progress=%+v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("fast source was blocked by slow source")
+	}
+	snapshot, err := store.Load(context.Background())
+	if err != nil || len(snapshot.Sources["fast"].Observations) != 1 {
+		t.Fatalf("published source not durable: %v", err)
+	}
+	if m.Snapshot().Sources["fast"].ObservationCount != 1 {
+		t.Fatal("status count missing")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancel=%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("refresh did not cancel")
+	}
+	snapshot, err = store.Load(context.Background())
+	if err != nil || len(snapshot.Sources["fast"].Observations) != 1 {
+		t.Fatal("cancellation destroyed completed source")
+	}
+}
+
+func TestRefreshProgressIncludesPartialFailuresWithoutLeakingAdapterErrors(t *testing.T) {
+	good := fakeSource{id: "good", fetch: func(context.Context) (Result, error) {
+		return Result{Observations: []Observation{observation("good", "code", Coding, "model-a", .8, time.Now())}}, nil
+	}}
+	bad := fakeSource{id: "bad", fetch: func(context.Context) (Result, error) { return Result{}, errors.New("credential-secret-sentinel") }}
+	m, _ := manager(t, []Source{good, bad}, options())
+	var events []RefreshEvent
+	err := m.RefreshWithProgress(context.Background(), func(event RefreshEvent) { events = append(events, event) })
+	if err == nil {
+		t.Fatal("partial failure unreported")
+	}
+	last := events[len(events)-1]
+	if last.Phase != "complete" || last.Completed != 2 || last.Failed != 1 || last.Total != 2 {
+		t.Fatalf("final=%+v", last)
+	}
+	data, _ := json.Marshal(events)
+	if bytes.Contains(data, []byte("credential-secret-sentinel")) || bytes.Contains([]byte(err.Error()), []byte("credential-secret-sentinel")) {
+		t.Fatal("adapter secret exposed")
+	}
+	if len(m.Snapshot().Sources["good"].Observations) != 1 {
+		t.Fatal("partial failure lost successful data")
+	}
+}
+
+type selectivelyFailingStore struct{ SnapshotStore }
+
+func (s selectivelyFailingStore) Save(ctx context.Context, snapshot Snapshot) error {
+	if snapshot.Sources["bad-save"].LastSuccess.After(time.Time{}) {
+		return errors.New("storage-secret-sentinel")
+	}
+	return s.SnapshotStore.Save(ctx, snapshot)
+}
+func TestPerSourcePersistenceFailureDoesNotBlockOtherPublications(t *testing.T) {
+	source := func(id, model string) Source {
+		return fakeSource{id: id, fetch: func(context.Context) (Result, error) {
+			return Result{Observations: []Observation{observation(id, "code", Coding, model, .8, time.Now())}}, nil
+		}}
+	}
+	m, store := manager(t, []Source{source("bad-save", "model-a"), source("good", "model-b")}, options())
+	m.store = selectivelyFailingStore{store}
+	var published []string
+	err := m.RefreshWithProgress(context.Background(), func(event RefreshEvent) {
+		if event.Phase == "published" {
+			published = append(published, event.Source)
+		}
+	})
+	if err == nil || len(published) != 1 || published[0] != "good" {
+		t.Fatalf("published=%v err=%v", published, err)
+	}
+	snapshot, err := store.Load(context.Background())
+	if err != nil || len(snapshot.Sources["good"].Observations) != 1 || len(m.Snapshot().Sources["bad-save"].Observations) != 0 {
+		t.Fatal("failed persistence published or blocked good source")
+	}
+}
+
 func TestIdentityMatchesScopedAliasesAndNeverMergesAmbiguousModels(t *testing.T) {
 	models := append(modelCatalog(), catalog.Descriptor{PublicID: "remote/model-a", ProviderID: "remote", UpstreamID: "model-a"})
 	m := NewMatcher(models, nil)

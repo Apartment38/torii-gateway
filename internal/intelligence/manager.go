@@ -134,6 +134,19 @@ func (m *Manager) UpdateModels(models []catalog.Descriptor) {
 // Refresh updates sources concurrently; network work never holds the read lock.
 // Each failure retains that source's last successful dataset.
 func (m *Manager) Refresh(ctx context.Context) error {
+	return m.RefreshWithProgress(ctx, nil)
+}
+
+// RefreshWithProgress publishes each completed source independently, after
+// durable storage succeeds. A slow or failed source cannot hide good updates.
+// Progress callbacks run sequentially, outside the snapshot/routing read lock.
+func (m *Manager) RefreshWithProgress(ctx context.Context, progress func(RefreshEvent)) error {
+	emit := func(event RefreshEvent) {
+		if progress != nil {
+			progress(event)
+		}
+	}
+	emit(RefreshEvent{Phase: "queued", Total: len(m.sources), Message: "Waiting for the benchmark refresh worker"})
 	m.refreshMu.Lock()
 	defer m.refreshMu.Unlock()
 	ctx, cancelRefresh := context.WithCancel(ctx)
@@ -144,13 +157,20 @@ func (m *Manager) Refresh(ctx context.Context) error {
 		return context.Canceled
 	}
 	type update struct {
-		id     string
-		result Result
-		err    error
+		id      string
+		result  Result
+		err     error
+		started bool
 	}
-	updates := make(chan update, len(m.sources))
+	completed, failed := 0, 0
+	notify := func(phase, id, message string, observations int) {
+		emit(RefreshEvent{Phase: phase, Source: id, Completed: completed, Total: len(m.sources), Failed: failed, Observations: observations, Message: message})
+	}
+	notify("started", "", "Starting enabled benchmark sources", 0)
+	updates := make(chan update, 2*len(m.sources))
 	for _, source := range m.sources {
 		go func(source Source) {
+			updates <- update{id: source.ID(), started: true}
 			m.options.Logger.Info("benchmark_refresh_started", "source", source.ID())
 			ctx, cancel := context.WithTimeout(ctx, m.options.SourceTimeout)
 			defer cancel()
@@ -161,17 +181,22 @@ func (m *Manager) Refresh(ctx context.Context) error {
 			updates <- update{id: source.ID(), result: result, err: err}
 		}(source)
 	}
-	var all []update
-	for range m.sources {
-		all = append(all, <-updates)
-	}
-	sort.Slice(all, func(i, j int) bool { return all[i].id < all[j].id })
-	m.mu.RLock()
-	next := cloneJSON(m.snapshot)
-	m.mu.RUnlock()
 	var failures []error
-	now := m.now().UTC()
-	for _, update := range all {
+	for completed < len(m.sources) {
+		var update update
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case update = <-updates:
+		}
+		if update.started {
+			notify("fetching", update.id, "Fetching and parsing published benchmark data", 0)
+			continue
+		}
+		m.mu.RLock()
+		next := cloneJSON(m.snapshot)
+		m.mu.RUnlock()
+		now := m.now().UTC()
 		state := next.Sources[update.id]
 		state.LastAttempt = now
 		if update.err != nil {
@@ -181,7 +206,6 @@ func (m *Manager) Refresh(ctx context.Context) error {
 			if errors.As(update.err, &sourceError) {
 				state.Error = sourceError.Error() + "; previous data retained"
 			}
-			failures = append(failures, errors.New(update.id+": refresh failed"))
 			m.options.Logger.Warn("benchmark_refresh_failed", "source", update.id, "error", state.Error)
 		} else {
 			for i := range update.result.Observations {
@@ -195,25 +219,49 @@ func (m *Manager) Refresh(ctx context.Context) error {
 			}
 			state.Observations, state.Metadata = update.result.Observations, update.result.Metadata
 			state.LastSuccess, state.Error = now, ""
-			m.options.Logger.Info("benchmark_refresh_succeeded", "source", update.id, "observations", len(state.Observations))
 		}
 		next.Sources[update.id] = state
+		next.UpdatedAt = now
+		next.Models, next.Unmatched = nil, nil
+		notify("persisting", update.id, "Validating and atomically saving source results", len(state.Observations))
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err := m.store.Save(ctx, next); err != nil {
+			m.options.Logger.Error("benchmark_cache_save_failed", "message", "Could not publish benchmark source", "source", update.id)
+			update.err = errors.New("could not save source; previous cached data retained")
+		} else {
+			m.mu.Lock()
+			m.snapshot = next
+			m.rebuildLocked()
+			m.mu.Unlock()
+		}
+		completed++
+		if update.err != nil {
+			failed++
+			failures = append(failures, errors.New(update.id+": refresh failed"))
+			notify("failed", update.id, "Source update failed; previous cached data retained", len(state.Observations))
+		} else {
+			m.options.Logger.Info("benchmark_refresh_succeeded", "source", update.id, "observations", len(state.Observations))
+			notify("published", update.id, "Saved source data, matched models and updated capability scores", len(state.Observations))
+		}
 	}
-	next.UpdatedAt = now
-	// Persist before publication. A failed write cannot replace the good memory
-	// snapshot or published dataset. No routing read lock is held during I/O.
-	next.Models, next.Unmatched = nil, nil
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if len(m.sources) == 0 {
+		// Persist configured disabled sources as well, without fetching upstream.
+		m.mu.RLock()
+		next := cloneJSON(m.snapshot)
+		m.mu.RUnlock()
+		next.UpdatedAt = m.now().UTC()
+		next.Models, next.Unmatched = nil, nil
+		if err := m.store.Save(ctx, next); err != nil {
+			return errors.New("cannot save benchmark status")
+		}
+		m.mu.Lock()
+		m.snapshot = next
+		m.rebuildLocked()
+		m.mu.Unlock()
 	}
-	if err := m.store.Save(ctx, next); err != nil {
-		m.options.Logger.Error("benchmark_cache_save_failed", "error", err)
-		return err
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.snapshot = next
-	m.rebuildLocked()
+	notify("complete", "", "Benchmark refresh finished", 0)
 	return errors.Join(failures...)
 }
 
@@ -270,6 +318,7 @@ func (m *Manager) rebuildLocked() {
 	sort.Strings(ids)
 	for _, id := range ids {
 		state := m.snapshot.Sources[id]
+		state.ObservationCount = len(state.Observations)
 		state.AgeSeconds = 0
 		if !state.LastSuccess.IsZero() {
 			state.AgeSeconds = math.Max(0, now.Sub(state.LastSuccess).Seconds())
@@ -299,6 +348,15 @@ func (m *Manager) rebuildLocked() {
 	for id, observations := range models {
 		model := Aggregate(observations, m.options.Aggregation, now, m.options.HalfLife, m.options.MaxAge, m.options.StaleAfter)
 		model.ID, model.ProviderIDs = id, matcher.providers[id]
+		model.ObservationCount = len(observations)
+		seen := map[string]bool{}
+		for _, observation := range observations {
+			seen[observation.Source] = true
+		}
+		for source := range seen {
+			model.Sources = append(model.Sources, source)
+		}
+		sort.Strings(model.Sources)
 		m.snapshot.Models[id] = model
 	}
 	m.snapshot.Unmatched = nil

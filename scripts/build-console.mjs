@@ -3,10 +3,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 
-const source = new URL("../internal/web/static/app.ts", import.meta.url);
+const source = ["benchmarks.ts", "app.ts"].map(file => readFileSync(new URL(`../internal/web/static/${file}`, import.meta.url), "utf8")).join("\n");
 const target = new URL("../internal/web/static/app.js", import.meta.url);
-const script = "// Generated from app.ts by scripts/build-console.mjs.\n" +
-  stripTypeScriptTypes(readFileSync(source, "utf8"), { mode: "strip" })
+const script = "// Generated from benchmarks.ts and app.ts by scripts/build-console.mjs.\n" +
+  stripTypeScriptTypes(source, { mode: "strip" })
     .split("\n").map(line => line.trimEnd()).join("\n");
 if (process.argv.includes("--check")) {
   if (readFileSync(target, "utf8") !== script) {

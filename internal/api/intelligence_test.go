@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/api"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
@@ -30,6 +32,154 @@ func (codingClassifier) Classify(context.Context, classifier.ClassificationReque
 	return classifier.Classification{TaskType: classifier.TaskCoding, Complexity: classifier.ComplexityMedium, Confidence: 1}, nil
 }
 func benchmarkPtr[T any](value T) *T { return &value }
+
+type consoleBenchmarkSource struct {
+	id    string
+	fetch func(context.Context) (intelligence.Result, error)
+}
+
+func (s consoleBenchmarkSource) ID() string { return s.id }
+func (s consoleBenchmarkSource) Fetch(ctx context.Context) (intelligence.Result, error) {
+	return s.fetch(ctx)
+}
+func consoleBenchmarkManager(t *testing.T, sources []intelligence.Source) (*api.OpenAIHandler, *intelligence.Manager) {
+	t.Helper()
+	handler, err := api.NewOpenAIHandler(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, err := state.OpenDatabase(filepath.Join(t.TempDir(), "torii.db"), bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	store, err := intelligence.OpenStore(context.Background(), database, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := intelligence.NewManager(store, sources, []catalog.Descriptor{{PublicID: "local/model-a", ProviderID: "local", UpstreamID: "model-a"}}, intelligence.Options{Logger: slog.New(slog.NewJSONHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Close)
+	handler.SetIntelligence(m)
+	// SetIntelligence normally takes identity from the handler's provider catalog.
+	m.UpdateModels([]catalog.Descriptor{{PublicID: "local/model-a", ProviderID: "local", UpstreamID: "model-a"}})
+	return handler, m
+}
+func consoleBenchmarkObservation(model string) intelligence.Observation {
+	return intelligence.Observation{ExternalModelID: model, Benchmark: "code", Category: intelligence.Coding, Score: 90, Normalized: benchmarkPtr(.9), Metadata: map[string]any{"large_upstream_row": "not needed in table"}}
+}
+
+func TestBenchmarkRefreshStreamsPublicationBeforeSlowSourceFinishes(t *testing.T) {
+	release := make(chan struct{})
+	fast := consoleBenchmarkSource{id: "fast", fetch: func(context.Context) (intelligence.Result, error) {
+		return intelligence.Result{Observations: []intelligence.Observation{consoleBenchmarkObservation("model-a")}}, nil
+	}}
+	slow := consoleBenchmarkSource{id: "slow", fetch: func(ctx context.Context) (intelligence.Result, error) {
+		select {
+		case <-release:
+			return intelligence.Result{}, fmt.Errorf("secret-sentinel")
+		case <-ctx.Done():
+			return intelligence.Result{}, ctx.Err()
+		}
+	}}
+	handler, m := consoleBenchmarkManager(t, []intelligence.Source{fast, slow})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/gateway/v1/intelligence/refresh", nil)
+	request.Header.Set("Accept", "text/event-stream")
+	reply, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reply.Body.Close()
+	if reply.StatusCode != 200 || !strings.Contains(reply.Header.Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("response=%d", reply.StatusCode)
+	}
+	scanner := bufio.NewScanner(reply.Body)
+	var content strings.Builder
+	published, result := false, false
+	for scanner.Scan() {
+		line := scanner.Text()
+		content.WriteString(line)
+		if strings.Contains(line, `"phase":"published"`) {
+			published = true
+			if _, ok := m.Lookup("local/model-a"); !ok {
+				t.Fatal("stream event preceded memory publication")
+			}
+			close(release)
+		}
+		if line == "event: result" {
+			result = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !published || !result || !strings.Contains(content.String(), `"partial_failure":true`) {
+		t.Fatalf("events=%s", content.String())
+	}
+	if strings.Contains(content.String(), "secret-sentinel") {
+		t.Fatal("upstream error leaked into stream")
+	}
+}
+
+func TestBenchmarkObservationTablePaginationPreservesUnmatchedAndProvenance(t *testing.T) {
+	source := consoleBenchmarkSource{id: "aa", fetch: func(context.Context) (intelligence.Result, error) {
+		return intelligence.Result{Observations: []intelligence.Observation{consoleBenchmarkObservation("model-a"), consoleBenchmarkObservation("unknown")}}, nil
+	}}
+	handler, m := consoleBenchmarkManager(t, []intelligence.Source{source})
+	if err := m.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+	w := get("/gateway/v1/intelligence/observations?offset=1&limit=1")
+	var body struct {
+		Total        int
+		Observations []intelligence.Observation
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || body.Total != 2 || len(body.Observations) != 1 || body.Observations[0].ExternalModelID != "unknown" || body.Observations[0].ModelID != "" {
+		t.Fatalf("table=%s", w.Body.String())
+	}
+	if body.Observations[0].Metadata != nil || body.Observations[0].Score != 90 || body.Observations[0].RetrievedAt.IsZero() {
+		t.Fatal("table provenance or metadata filtering incorrect")
+	}
+	w = get("/gateway/v1/intelligence/observations?q=MODEL-A")
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Total != 1 || body.Observations[0].ModelID != "local/model-a" {
+		t.Fatalf("filter=%s", w.Body.String())
+	}
+	for _, query := range []string{"limit=0", "limit=501", "offset=-1", "limit=bad", "offset=bad", "q=" + strings.Repeat("a", 257)} {
+		if w := get("/gateway/v1/intelligence/observations?" + query); w.Code != 400 {
+			t.Fatalf("query=%s status=%d", query, w.Code)
+		}
+	}
+	for _, path := range []string{"/gateway/v1/intelligence/sources", "/gateway/v1/intelligence/models"} {
+		w := get(path)
+		if !strings.Contains(w.Body.String(), `"observation_count":`) {
+			t.Fatalf("missing count: %s", w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "large_upstream_row") {
+			t.Fatal("table summary includes raw metadata")
+		}
+	}
+	// Paging must not mutate the underlying provenance.
+	if m.Snapshot().Sources["aa"].Observations[0].Metadata == nil {
+		t.Fatal("pagination mutated stored data")
+	}
+}
 
 func TestBenchmarkIngestionChangesSmartRoutingWithoutFetchingOnInference(t *testing.T) {
 	var benchmarkFetches atomic.Int64

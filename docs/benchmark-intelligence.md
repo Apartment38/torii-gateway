@@ -101,10 +101,45 @@ dataset, with a failure status; successful sources still update.
 Source keys use `{credential: ID}` references from the authenticated provider
 credential API, or transient `{value: "key"}` input encrypted on console save.
 The Credentials page's gateway client keys must not be used as source keys.
-In the console, check **Benchmarks → Enable benchmark intelligence**, configure
-sources, and click **Save & reload** before **Refresh benchmarks**. The toggle
-does not enable individual sources automatically; their `enabled` settings
-remain in the benchmark configuration JSON.
+In the console, check **Benchmarks → Enable benchmark intelligence** to reveal
+the individual source toggles and settings. Enable the sources you want, configure
+their options, and click **Save & reload** before **Refresh benchmarks**. The
+master toggle does not enable individual sources automatically. Unsaved source
+changes must be saved before refreshing; ingestion always uses saved settings.
+
+Each source card shows its status, observation count, last successful update and
+cache age. Artificial Analysis requires a source API key. Other adapters accept
+an optional key/token for their configured endpoint. Entering a key replaces it
+on save; leaving the field blank keeps the encrypted credential reference.
+**Reveal** only reveals a newly entered value, never a previously saved key.
+Keys are held only in memory until submitted and are cleared on save/sign-out.
+
+Source-specific controls include BenchLM's estimated-evidence toggle and dataset
+ID, configuration, split, model/date columns and version for Hugging Face,
+LMArena and LiveBench. Hugging Face requires at least one numeric metric mapping
+per dataset: specify the upstream column, capability category, score range and
+whether lower is better. Operational mappings use explicit canonical metrics
+and units. Arena ratings always remain preference data; LiveBench uses the
+structured judgment schema described below. Optional category/scale overrides
+are available for Artificial Analysis and BenchLM. Refresh interval, timeouts,
+retries and freshness thresholds have their own advanced controls. Existing
+aliases, aggregation and routing weights are preserved when saving these forms.
+
+The **Current model benchmark data** table loads cached data on page entry.
+Choose aggregate capability scores and operational measurements, or raw source
+observations with original/normalized scores, dates, versions and match status.
+Raw results include unmatched models and retained disabled-source data; only
+enabled, matched evidence contributes to aggregates. Both views are filterable
+and paginated. Missing values are unknown, not zero, and preference stays separate.
+
+**Refresh activity** streams real fetch/parse, persistence, publication and failure
+milestones. The progress bar counts completed sources, including failed sources;
+it is not a download-byte percentage. Each source is published only after its
+validated data is saved atomically, and the table reloads after each publication
+or failure without waiting for slower sources. Closing the connection cancels
+the manual refresh; already published results remain available. Scheduled
+refreshes also publish incrementally, but their activity is not attached to
+this manual-refresh stream.
 Authenticated direct submissions are encrypted before saving; configuration
 reads return references only. YAML value/env/file credentials are not supported.
 See [Encrypted credential storage](credential-storage.md).
@@ -245,7 +280,8 @@ are recalculated in memory, not stored as another authoritative dataset.
 The benchmark store owns a separate connection pool using WAL, foreign keys and
 a 5-second busy timeout. It validates and serializes before writing, stages at
 most 250 observations per transaction, verifies staged datasets, then atomically
-publishes all source pointers/statuses and the update timestamp. Unchanged
+publishes source pointers/statuses and the update timestamp. Refresh publishes
+one completed source at a time, independently of slower sources. Unchanged
 evidence is reused. Failed staging/publication leaves previous datasets and the
 routing snapshot intact. Abandoned and superseded datasets are cleaned in bounded
 batches at open/refresh. Credential reads can continue while benchmark writes
@@ -276,9 +312,17 @@ Management routes use the gateway's existing API authentication:
 | `GET /gateway/v1/intelligence` | Full snapshot, source observations, model scores and unmatched IDs |
 | `GET /gateway/v1/intelligence/sources` | Source status, last attempt/success, age, staleness, safe errors and metadata |
 | `GET /gateway/v1/intelligence/models` | Models with aggregates and operational metadata |
+| `GET /gateway/v1/intelligence/observations` | Paginated raw table rows including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; metadata omitted, original observations retained |
 | `GET /gateway/v1/intelligence/models/{id}` | Raw observations, provenance and aggregates for a canonical or physical ID |
 | `GET /gateway/v1/intelligence/unmatched` | Unmatched/ambiguous source IDs and candidate canonical IDs |
 | `POST /gateway/v1/intelligence/refresh` | Refresh all enabled sources; summary includes `partial_failure` and per-source status |
+
+With `Accept: text/event-stream`, the refresh endpoint returns `progress` events
+(`phase`, `source`, `completed`, `total`, `failed`, `observations`, `message`),
+15-second heartbeats, and a final `result` summary. Existing JSON callers remain
+compatible. Proxies must allow streaming and sufficiently long read timeouts;
+the gateway sets `X-Accel-Buffering: no`. Source/model summaries include counts
+without transmitting every raw observation.
 
 Run a manual refresh from the console or against the running gateway:
 

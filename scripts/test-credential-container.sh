@@ -35,10 +35,11 @@ launch() {
 stop() { podman stop --time 30 "$container" >/dev/null; podman rm "$container" >/dev/null; }
 # Never put credentials in curl arguments or enable shell tracing.
 request() {
-  local method=$1 path=$2 authorization=${3:-} body=${4:-} status_only=${5:-false}
+  local method=$1 path=$2 authorization=${3:-} body=${4:-} status_only=${5:-false} accept=${6:-}
   {
     printf 'url = "%s%s"\nrequest = "%s"\n' "$origin" "$path" "$method"
     if [[ -n $authorization ]]; then printf 'header = "Authorization: %s"\n' "$authorization"; fi
+    if [[ -n $accept ]]; then printf 'header = "Accept: %s"\n' "$accept"; fi
     if [[ -n $body ]]; then printf 'header = "Content-Type: application/json"\ndata = '; printf '%s' "$body" | jq -Rs .; fi
     if [[ $status_only == true ]]; then printf 'output = "/dev/null"\nwrite-out = "%%{http_code}"\n'; else printf 'fail\n'; fi
   } | curl --silent --show-error --config -
@@ -76,18 +77,29 @@ request PUT /gateway/v1/config "$basic" "$configuration" >/dev/null
 credential=$(request POST /gateway/v1/credentials "$basic" '{"service":"smoke","purpose":"bearer_token","value":"synthetic-provider-secret-42"}' | jq -er .credential)
 # Add a static fixture explicitly; bootstrap must not invent a provider. No
 # upstream request is made because model discovery is disabled for this fixture.
-updated=$(printf '%s' "$configuration" | jq --arg id "$credential" '.providers=[{id:"smoke",type:"openai_compatible",base_url:"http://127.0.0.1:9",discover_models:false,models:["fixture"],bearer_token:{credential:$id}}] | .intelligence={enabled:true,sources:[{id:"smoke-cache",type:"benchlm",enabled:false}]}')
+updated=$(printf '%s' "$configuration" | jq --arg id "$credential" '.providers=[{id:"smoke",type:"openai_compatible",base_url:"http://127.0.0.1:9",discover_models:false,models:["fixture"],bearer_token:{credential:$id}}] | .intelligence={enabled:true,sources:[{id:"smoke-cache",type:"benchlm",enabled:false,api_key:{value:"synthetic-benchmark-secret-42"}}]}')
 request PUT /gateway/v1/config "$basic" "$updated" >/dev/null
+source_reference=$(request GET /gateway/v1/config "$basic" | jq -er '.intelligence.sources[0].api_key.credential')
+[[ -n $source_reference ]]
 # Persist an empty, disabled source through the normal refresh API (no network).
 request POST /gateway/v1/intelligence/refresh "Bearer $api_key" >/dev/null
 [[ $(request GET /gateway/v1/intelligence "Bearer $api_key" | jq -r '.sources["smoke-cache"].enabled') == false ]]
+[[ $(request GET /gateway/v1/intelligence/observations "$basic" | jq -r '.total') == 0 ]]
+[[ $(request GET /gateway/v1/intelligence/observations '' '' true) == 401 ]]
+refresh_events=$(request POST /gateway/v1/intelligence/refresh "$basic" '' false 'text/event-stream')
+[[ $refresh_events == *'event: progress'* && $refresh_events == *'"phase":"complete"'* && $refresh_events == *'event: result'* ]]
+[[ $refresh_events == *'"partial_failure":false'* ]]
+console_html=$(request GET /)
+[[ $console_html == *'id="benchmark-progress"'* && $console_html == *'id="benchmark-table"'* && $console_html != *'id="intelligence-config"'* ]]
+console_script=$(request GET /web/app.js)
+[[ $console_script == *'text/event-stream'* && $console_script == *'function renderBenchmarkSources'* ]]
 saved_yaml=$(podman cp "$container:/config/config.yaml" - | tar -xOf -)
 app_logs=$(podman logs "$container" 2>&1)
 for text in "$saved_yaml" "$app_logs"; do
-  [[ $text != *synthetic-provider-secret-42* && $text != *"$api_key"* && $text != *"$password"* ]]
+  [[ $text != *synthetic-provider-secret-42* && $text != *synthetic-benchmark-secret-42* && $text != *"$api_key"* && $text != *"$password"* ]]
 done
 [[ $(podman unshare stat -c '%a' "$mountpoint/torii.db") == 600 ]]
-for sensitive in "$password" "$api_key" "$client_key" 'synthetic-provider-secret-42'; do
+for sensitive in "$password" "$api_key" "$client_key" 'synthetic-provider-secret-42' 'synthetic-benchmark-secret-42'; do
   if podman unshare grep -aFq "$sensitive" "$mountpoint/torii.db" "$mountpoint/torii.db-wal"; then printf '%s\n' 'Plaintext found in database.' >&2; exit 1; fi
 done
 rotated=$(request POST /gateway/v1/admin/api-key "$basic" | jq -er .api_key)
@@ -128,4 +140,4 @@ launch
 [[ $(request GET /v1/models "Bearer $terminal_key" '' true) == 401 ]]
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == false ]]
 stop
-printf '%s\n' 'PASS: fresh schema 5, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, usage/identity/benchmark status persistence, stopped backup restore, and wrong-key rejection.'
+printf '%s\n' 'PASS: fresh schema 5, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, benchmark console assets/authenticated table/streamed refresh, usage/identity/benchmark status persistence, stopped backup restore, and wrong-key rejection.'

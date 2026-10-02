@@ -92,6 +92,9 @@ input, select, textarea { width: 100%; border: 1px solid var(--line); border-rad
 input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 17%, transparent); }
 textarea { resize: vertical; line-height: 1.5; }
 .notice { display: flex; gap: 10px; margin-top: 20px; padding: 13px 15px; border-radius: 12px; background: var(--accent-soft); color: var(--muted); font-size: 12px; line-height: 1.5; }
+.notice[hidden] { display: none; }
+#classifier-notice, #classifier-provider-notice { margin: 0 0 20px; flex-wrap: wrap; }
+#classifier-notice a { color: var(--accent-deep); font-weight: 700; }
 .notice span:first-child { color: var(--accent); font-size: 17px; }
 .check-row { margin-top: 20px; }
 .checkbox { display: flex; grid-template-columns: none; align-items: center; gap: 9px; width: max-content; }

@@ -64,6 +64,27 @@ func TestOpenAIHandlerOllamaEndToEnd(t *testing.T) {
 
 type failingProvider struct{}
 
+func TestClassifierProvidersAreNotAdvertisedOrForwardedAsInference(t *testing.T) {
+	p, err := provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: "laya", BaseURL: "http://localhost:8000", StaticModels: []string{"english"}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := api.NewOpenAIHandler([]provider.OpenAIProvider{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "laya/") || !strings.Contains(w.Body.String(), "smart") {
+		t.Fatalf("classifier leaked into inference models: %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"laya/english","messages":[{"role":"user","content":"hello"}]}`)))
+	if w.Code == http.StatusOK {
+		t.Fatal("classifier accepted a Chat Completions request")
+	}
+}
+
 func (failingProvider) ID() string { return "broken" }
 func (failingProvider) Models(context.Context) ([]provider.Model, error) {
 	return nil, context.Canceled

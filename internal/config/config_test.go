@@ -167,6 +167,37 @@ func TestDecodeRejectsUnsafeCompatibleProviderConfiguration(t *testing.T) {
 	}
 }
 
+func TestDecodeJevProviderTypes(t *testing.T) {
+	for _, profile := range []string{
+		"type: jev\n    base_url: https://api.typesafe.ai/v1\n    bearer_token:\n      env: JEV_API_KEY",
+		"type: jev_compatible\n    base_url: http://localhost:8000/v1",
+	} {
+		input := strings.Replace(validConfig, "type: ollama\n    base_url: http://localhost:11434", profile, 1)
+		if _, err := config.Decode(strings.NewReader(input)); err != nil {
+			t.Fatalf("valid decision provider rejected: %v", err)
+		}
+	}
+	for _, profile := range []string{
+		"type: jev\n    base_url: https://api.typesafe.ai/v1",
+		"type: jev\n    base_url: http://api.typesafe.ai\n    bearer_token:\n      env: JEV_API_KEY",
+		"type: jev\n    base_url: https://other.example\n    bearer_token:\n      env: JEV_API_KEY",
+	} {
+		input := strings.Replace(validConfig, "type: ollama\n    base_url: http://localhost:11434", profile, 1)
+		if _, err := config.Decode(strings.NewReader(input)); err == nil {
+			t.Fatal("unsafe hosted Jev configuration accepted")
+		}
+	}
+}
+
+func TestExplicitlyDisabledClassifierConfiguration(t *testing.T) {
+	if _, err := config.Decode(strings.NewReader(validConfig + "router:\n  classifier:\n    type: disabled\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Decode(strings.NewReader(validConfig + "router:\n  classifier:\n    type: disabled\n    model: local/test\n")); err == nil {
+		t.Fatal("disabled classifier accepted a model")
+	}
+}
+
 func TestDecodeOpenAIProfile(t *testing.T) {
 	input := strings.Replace(validConfig, "type: ollama\n    base_url: http://localhost:11434", "type: openai\n    base_url: https://api.openai.com\n    bearer_token:\n      env: OPENAI_API_KEY\n    organization: org_example\n    project: proj_example", 1)
 	cfg, err := config.Decode(strings.NewReader(input))

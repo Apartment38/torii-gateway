@@ -226,3 +226,149 @@ test("provider-native base URLs retain their complete path", () => {
     assert.equal(output.api_path, undefined);
   }
 });
+
+test("routing discovers only classifier-provider models and saves provider transport", async () => {
+  const app = consoleFixture((_, options) => {
+    const provider = JSON.parse(options.body).provider;
+    return response({ models:[{ id:`${provider.id}/${provider.type === "jev" ? "jev-latest" : provider.type === "jev_compatible" ? "english" : "chat-model"}` }] });
+  });
+  app.setProviders([draft("ollama"), draft("jev"), draft("jev_compatible", "laya")]);
+  await app.run("testAllProviders()");
+  const select = app.run("classifierSelect");
+  assert.match(select.innerHTML, /jev\/jev-latest/);
+  assert.match(select.innerHTML, /laya\/english/);
+  assert.doesNotMatch(select.innerHTML, /chat-model/);
+  assert.equal(select.value, "jev/jev-latest");
+  const classifier = app.run("readConfig().router.classifier");
+  assert.equal(classifier.type, "jev");
+  assert.equal(classifier.transport, "provider");
+  assert.equal(classifier.provider, "jev");
+  assert.equal(classifier.model, "jev-latest");
+  assert.equal(classifier.base_url, undefined);
+  assert.equal(classifier.api_key, undefined);
+  select.value = "laya/english";
+  assert.equal(app.run("readConfig().router.classifier.provider"), "laya");
+  assert.equal(app.run("readConfig().router.classifier.model"), "english");
+});
+
+test("routing warns and redirects to providers when no classifiers are available", async () => {
+  const app = consoleFixture(() => response(models(1)));
+  app.setProviders([draft("ollama")]);
+  app.run('configurationLoaded = true; location.hash = "#routing";');
+  await app.run("testAllProviders()");
+  assert.equal(app.run("location.hash"), "#providers");
+  assert.equal(app.run('document.querySelector("#classifier-provider-notice").hidden'), false);
+  assert.match(app.run('document.querySelector("#classifier-notice-message").textContent'), /No classifier models are available/);
+  assert.equal(app.run("readConfig().router.classifier.type"), undefined);
+});
+
+test("routing does not redirect before classifier discovery completes", async () => {
+  let finish;
+  const app = consoleFixture(() => new Promise(resolve => { finish = resolve; }));
+  app.setProviders([draft("jev_compatible", "laya")]);
+  app.run('configurationLoaded = true; location.hash = "#routing";');
+  const check = app.run("testAllProviders()");
+  await Promise.resolve();
+  assert.equal(app.run("location.hash"), "#routing");
+  assert.equal(app.run("classifierSelect.disabled"), true);
+  finish(response({ models:[{ id:"laya/english" }] }));
+  await check;
+  assert.equal(app.run("location.hash"), "#routing");
+  assert.equal(app.run("classifierSelect.value"), "laya/english");
+  assert.equal(app.run('document.querySelector("#classifier-provider-notice").hidden'), true);
+});
+
+test("failed classifier discovery never supplies selectable fallback models", async () => {
+  const app = consoleFixture(() => response({ error:"Catalog unavailable" }, false));
+  app.setProviders([{ ...draft("jev_compatible", "laya"), models:"fake-success" }]);
+  app.run('configurationLoaded = true; location.hash = "#routing";');
+  await app.run("testAllProviders()");
+  assert.equal(app.run("location.hash"), "#providers");
+  assert.doesNotMatch(app.run("classifierSelect.innerHTML"), /fake-success/);
+});
+
+test("a saved classifier choice is preserved while multiple providers are discovered", async () => {
+  const app = consoleFixture((_, options) => {
+    const provider = JSON.parse(options.body).provider;
+    return response({ models:[{ id:`${provider.id}/english` }] });
+  });
+  app.setProviders([draft("jev_compatible", "first"), draft("jev_compatible", "chosen")]);
+  app.run('requestedClassifier = "chosen/english";');
+  await app.run("testAllProviders()");
+  assert.equal(app.run("classifierSelect.value"), "chosen/english");
+  assert.equal(app.run("readConfig().router.classifier.provider"), "chosen");
+});
+
+test("legacy direct Jev connections migrate without losing key-file references", async () => {
+  const app = consoleFixture(() => response({ models:[{ id:"jev/jev-latest" }] }));
+  app.context.legacyConfig = { providers:[], router:{ classifier:{ type:"jev", base_url:"https://api.typesafe.ai", api_key:{ file:"/run/secrets/jev-key" }, model:"jev-latest" } } };
+  app.run("applyConfig(legacyConfig)");
+  await app.run("testAllProviders()");
+  const config = app.run("readConfig()");
+  assert.equal(config.providers[0].type, "jev");
+  assert.equal(config.providers[0].bearer_token.file, "/run/secrets/jev-key");
+  assert.equal(config.router.classifier.transport, "provider");
+  assert.equal(config.router.classifier.api_key, undefined);
+});
+
+test("legacy non-Jev classifiers are preserved until the user chooses a replacement", () => {
+  const app = consoleFixture(() => response(models(1)));
+  app.context.oldConfig = { providers:[], router:{ classifier:{ type:"embedding", provider:"embeddings", model:"embedding-model", on_failure:"fail" } } };
+  app.run("applyConfig(oldConfig)");
+  const classifier = app.run("readConfig().router.classifier");
+  assert.equal(classifier.type, "embedding");
+  assert.equal(classifier.provider, "embeddings");
+  assert.equal(classifier.on_failure, "fail");
+});
+
+test("new classifier provider types set appropriate defaults and custom IDs remain editable", () => {
+  const app = consoleFixture(() => response(models(1)));
+  app.setProviders([draft("ollama")]);
+  const control = new Element();
+  control.dataset = { provider:"0", key:"type" };
+  control.value = "jev";
+  app.context.changeEvent = { target:control };
+  app.run("updateProvider(changeEvent)");
+  assert.equal(app.run("providers[0].id"), "jev");
+  assert.equal(app.run("providers[0].api_url"), "https://api.typesafe.ai/v1");
+  assert.equal(app.run("providers[0].api_key_env"), "JEV_API_KEY");
+  control.value = "jev_compatible";
+  app.run("updateProvider(changeEvent)");
+  assert.equal(app.run("isKnownProvider(providers[0])"), false);
+  assert.equal(app.run("providers[0].id"), "");
+  assert.equal(app.run("providers[0].api_key_env"), "");
+});
+
+test("routing connection controls are absent and classifier setup belongs to providers", () => {
+  const html = readFileSync(new URL("./static/index.html", import.meta.url), "utf8");
+  const routing = html.split('<section id="routing"')[1].split("</section>")[0];
+  assert.match(routing, /id="classifier-model"/);
+  assert.match(routing, /href="#providers"/);
+  for (const name of ["type", "provider", "base_url", "api_key.env", "api_key.file", "transport"]) {
+    assert.ok(!routing.includes(`name="router.classifier.${name}"`));
+  }
+});
+
+test("explicitly disabled classification stays disabled after a config reload", async () => {
+  const app = consoleFixture(() => response({ models:[{ id:"laya/english" }] }));
+  app.context.disabledConfig = { providers:[{ id:"laya", type:"jev_compatible", base_url:"http://localhost:8000" }], router:{ classifier:{ type:"disabled" } } };
+  app.run("applyConfig(disabledConfig)");
+  await app.run("testAllProviders()");
+  assert.equal(app.run("classifierSelect.value"), "disabled");
+  assert.equal(app.run("readConfig().router.classifier.type"), "disabled");
+  assert.match(app.run("classifierSelect.innerHTML"), /laya\/english/);
+});
+
+test("saving an existing Ollama with a classifier omits unsupported generic fields", () => {
+  const app = consoleFixture(() => response(models(1)));
+  app.context.ollamaConfig = { providers:[{ id:"local", type:"ollama", base_url:"http://localhost:11434" }] };
+  app.run("applyConfig(ollamaConfig)");
+  const output = app.run("readConfig().providers[0]");
+  assert.deepEqual(Object.keys(output).sort(), ["base_url", "id", "type"]);
+});
+
+test("discovery preference is editable rather than overwritten by loaded YAML", () => {
+  const app = consoleFixture(() => response(models(1)));
+  app.setProviders([{ ...draft("jev_compatible", "laya"), discover:false, discover_models:true, models:"english" }]);
+  assert.equal(app.run("readProviderConfig(providers[0]).discover_models"), false);
+});

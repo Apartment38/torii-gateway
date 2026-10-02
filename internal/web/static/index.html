@@ -57,22 +57,18 @@
 
           <section id="providers" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">02 / Upstreams</p><h2>Providers</h2></div><button id="add-provider" class="button secondary" type="button">＋ Add provider</button></div>
+            <div id="classifier-provider-notice" class="notice" role="status" hidden><span>◎</span><span>No classifier models are available. Add a provider with type <strong>TypeSafe AI · Jev</strong> or <strong>Jev compatible · Laya / custom</strong>, then test its connection to discover models for Smart Routing.</span></div>
             <div id="providers-list" class="provider-list"></div>
           </section>
 
           <section id="routing" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">03 / Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
+            <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
               <label data-tooltip="The virtual model name clients use to invoke smart routing. Keep this as smart unless your client contract requires another name.">Virtual model name<input name="router.model_name" value="smart" /></label>
               <label data-tooltip="Optional JSON catalog overrides used by deterministic model selection. Leave empty to use the built-in catalog.">Catalog override file<input name="router.catalog_file" placeholder="./catalog-overrides.json" /></label>
-              <label data-tooltip="Selects the classifier used to understand requests. Disabled uses deterministic selection without an external classifier.">Classifier type<select name="router.classifier.type"><option value="">Disabled</option><option value="laya">Laya</option><option value="jev">Jev</option><option value="embedding">Embedding</option></select></label>
-              <label data-tooltip="The physical provider/model that performs classification when a model-based classifier is selected. Use provider/model syntax.">Classifier model<input name="router.classifier.model" placeholder="provider/model" /></label>
-              <label data-tooltip="The provider used for embedding or provider-transport classification. It must match a configured provider ID.">Classifier provider<input name="router.classifier.provider" placeholder="provider id" /></label>
-              <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="fallback">Fallback</option><option value="fail">Fail</option></select></label>
-              <label data-tooltip="The direct classifier service URL. This is used only when the classifier transport is direct.">Classifier base URL<input name="router.classifier.base_url" placeholder="https://..." /></label>
-              <label data-tooltip="The API key for a direct classifier service. Use a secret reference supported by the configuration file.">Classifier API key environment<input name="router.classifier.api_key.env" placeholder="JEV_API_KEY" /></label>
-              <label data-tooltip="Optional file containing the direct classifier API key. Configure either this or the environment variable, not both.">Classifier API key file<input name="router.classifier.api_key.file" placeholder="/run/secrets/jev-key" /></label>
-              <label data-tooltip="Chooses direct classifier credentials or credentials inherited from another provider. Provider transport requires a classifier provider.">Classifier transport<select name="router.classifier.transport"><option value="">Direct</option><option value="provider">Provider</option></select></label>
+              <label data-tooltip="Classifier models are discovered from connected TypeSafe Jev or Jev-compatible providers. Connection URLs and credentials are configured on the Providers page.">Classifier model<select id="classifier-model"><option value="">Discovering classifier models…</option></select></label>
+              <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="capability_fallback">Fallback</option><option value="fail">Fail</option></select></label>
             </div>
             <div class="grid three compact-fields">
               <label data-tooltip="The maximum fraction of a model context window that routing may consume. Lower values leave more room for the model response.">Max context utilization<input name="router.selection.context_utilization_limit" type="number" min="0" max="1" step="0.01" placeholder="0.85" /></label>

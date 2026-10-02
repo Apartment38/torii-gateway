@@ -185,7 +185,7 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" {
+		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.Type != "jev" && providerConfig.Type != "jev_compatible" {
 			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
@@ -194,9 +194,18 @@ func (c Config) Validate() error {
 		if providerConfig.Type == "ollama" && (providerConfig.BearerToken != nil || len(providerConfig.Headers) > 0 || providerConfig.TLS != nil || len(providerConfig.Models) > 0 || providerConfig.DiscoverModels != nil || providerConfig.Transport != "" || providerConfig.Organization != "" || providerConfig.Project != "" || len(providerConfig.ModelRewrites) > 0 || providerConfig.ConnectTimeout != "" || providerConfig.RequestTimeout != "" || providerConfig.DiscoveryTimeout != "") {
 			return fmt.Errorf("%s: generic provider options require type openai_compatible", field)
 		}
-		if providerConfig.Type == "openai_compatible" {
+		if providerConfig.Type == "openai_compatible" || providerConfig.Type == "jev" || providerConfig.Type == "jev_compatible" {
 			if err := validateCompatibleProvider(providerConfig); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
+			}
+			if providerConfig.Type == "jev" {
+				parsed, _ := url.Parse(providerConfig.BaseURL)
+				if parsed.Scheme != "https" || parsed.Host != "api.typesafe.ai" {
+					return fmt.Errorf("%s: type jev requires https://api.typesafe.ai; use jev_compatible for other endpoints", field)
+				}
+				if providerConfig.BearerToken == nil {
+					return fmt.Errorf("%s: type jev requires bearer_token", field)
+				}
 			}
 		}
 		if providerConfig.Type == "openrouter" || providerConfig.Type == "gemini" || providerConfig.Type == "xai" {
@@ -274,8 +283,11 @@ func (r RouterConfig) Validate() error {
 	if strings.TrimSpace(r.CatalogFile) != "" && strings.ContainsAny(r.CatalogFile, "\r\n") {
 		return errors.New("catalog_file must not contain newlines")
 	}
-	if r.Classifier.Type != "" && r.Classifier.Type != "model" && r.Classifier.Type != "laya" && r.Classifier.Type != "embedding" && r.Classifier.Type != "jev" {
+	if r.Classifier.Type != "" && r.Classifier.Type != "disabled" && r.Classifier.Type != "model" && r.Classifier.Type != "laya" && r.Classifier.Type != "embedding" && r.Classifier.Type != "jev" {
 		return fmt.Errorf("classifier.type %q is unsupported", r.Classifier.Type)
+	}
+	if r.Classifier.Type == "disabled" && (r.Classifier.Model != "" || r.Classifier.Provider != "" || r.Classifier.BaseURL != "" || r.Classifier.APIKey != nil || r.Classifier.Transport != "") {
+		return errors.New("disabled classifier must not specify a model or connection")
 	}
 	if r.Classifier.Type == "model" || r.Classifier.Type == "laya" {
 		if r.Classifier.Model == "" || r.Classifier.Model == "smart" {

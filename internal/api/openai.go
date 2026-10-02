@@ -52,18 +52,19 @@ func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, erro
 // live provider metadata during catalog refresh.
 func NewOpenAIHandlerWithOverrides(providers []provider.OpenAIProvider, overrides []catalog.Descriptor) (*OpenAIHandler, error) {
 	registered := make(map[string]provider.OpenAIProvider, len(providers))
+	discovery := make([]provider.Provider, 0, len(providers))
 	for _, p := range providers {
 		if p == nil {
 			return nil, errors.New("register provider: nil provider")
+		}
+		if classifier, ok := p.(interface{ ClassifierOnly() bool }); ok && classifier.ClassifierOnly() {
+			continue
 		}
 		if _, exists := registered[p.ID()]; exists {
 			return nil, fmt.Errorf("register provider: duplicate ID %q", p.ID())
 		}
 		registered[p.ID()] = p
-	}
-	discovery := make([]provider.Provider, len(providers))
-	for i := range providers {
-		discovery[i] = providers[i]
+		discovery = append(discovery, p)
 	}
 	modelCatalog, err := catalog.New(discovery, nil, overrides)
 	if err != nil {
@@ -362,7 +363,10 @@ func (h *OpenAIHandler) resolveSmartModel(r *http.Request, body []byte) (string,
 	if err == nil {
 		complexity := "medium"
 		if h.classifier.Classifier != nil {
-			classification, classifyErr := h.classifier.Classify(r.Context(), classifier.ClassificationRequest{Model: "smart", Text: smartText(body), Requirements: requirements})
+			// The classifier's physical identity, not the client's virtual model,
+			// belongs here. Passing "smart" triggers the recursion guard before
+			// any classifier can run.
+			classification, classifyErr := h.classifier.Classify(r.Context(), classifier.ClassificationRequest{Model: h.classifier.Classifier.ID(), Text: smartText(body), Requirements: requirements})
 			if classifyErr != nil {
 				return "", classifyErr
 			}

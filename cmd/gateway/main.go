@@ -789,7 +789,11 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "models": models})
+	classifierOnly := false
+	if classifier, ok := upstream.(interface{ ClassifierOnly() bool }); ok {
+		classifierOnly = classifier.ClassifierOnly()
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "models": models, "classifier_only": classifierOnly})
 }
 
 func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Request) {
@@ -1451,6 +1455,9 @@ func buildProviderWithState(cfg config.ProviderConfig, stateDirectory string) (p
 		}
 	}
 	var quotaURL string
+	if cfg.Type == "jev" || cfg.Type == "jev_compatible" {
+		return provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout}, cfg.Type == "jev_compatible")
+	}
 	quotaHeaders := make(http.Header)
 	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
 		managementToken, err := cfg.ManagementToken.Resolve()

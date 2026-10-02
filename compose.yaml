@@ -9,6 +9,7 @@ services:
     command: ["serve", "--config", "/config/config.yaml"]
     environment:
       TORII_API_KEY: ${TORII_API_KEY:-}
+      JEV_API_KEY: ${JEV_API_KEY:-}
       TORII_CONFIG_BOOTSTRAP: "true"
     extra_hosts:
       - "host.containers.internal:host-gateway"

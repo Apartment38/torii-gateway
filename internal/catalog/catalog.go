@@ -190,7 +190,7 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 		nextState[p.ID()] = providerState{descriptors: descriptors}
 		usable++
 	}
-	if usable == 0 {
+	if usable == 0 && len(c.providers) != 0 {
 		return errors.New("catalog: no usable providers")
 	}
 	var combined []Descriptor

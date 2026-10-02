@@ -117,6 +117,9 @@ podman compose down
 
 Keep `.env` private; it is ignored by Git. If authentication is omitted from
 `config/config.yaml`, the API key environment variable is not required.
+For the TypeSafe Jev provider, set `JEV_API_KEY` in `.env`; Compose passes it
+into the container. Other custom provider key variables must be added to the
+Compose service's `environment` section explicitly.
 
 The compose file mounts only the host `config/` directory at `/config` as a
 writable Podman bind mount with `rw,Z,U`; the container reads
@@ -414,6 +417,61 @@ requests after one minute and immediately after a successful web login.
 Connection tests report the actual
 discovery error instead of claiming the fallback is a successful connection.
 Use `gateway models --config ./config.yaml` to inspect the catalog.
+
+### Classifier providers for Smart Routing
+
+Add **TypeSafe AI · Jev** (`type: jev`) on the Providers page for the hosted
+TypeSafe service. Its default API URL is `https://api.typesafe.ai/v1` and its
+key environment variable is `JEV_API_KEY`. Add **Jev compatible · Laya / custom**
+(`type: jev_compatible`) for a self-hosted decision server; supply your own
+provider ID and API URL, with an optional bearer key. These providers use the
+[typed System One protocol](https://docs.typesafe.ai/api), not Chat Completions.
+They are excluded from the gateway's public inference model list and from
+smart-routing inference candidates.
+
+Connection checks discover models from `/v1/models` (or the configured API
+path's `/models`). For current Laya servers that return 404/405 there, Torii
+reads the advertised loaded checkpoints from `/health`; see
+[Laya's server implementation](https://github.com/LeonaDavinci/laya-system-one/blob/main/laya/serve.py).
+Discovery does not invent model names, treat authentication errors as success,
+or send billable classification requests while loading the console.
+Connection status reflects discovery, not a classification/inference test.
+
+Smart Routing fills its classifier-model selector from successful provider
+checks, retains the saved choice, and selects the first discovered classifier
+when none was configured. URLs, keys, and transport are no longer configured
+on that page. If no models are available, the console explains how to add a
+classifier and redirects Smart Routing visitors to Providers. Deterministic
+routing still works without a classifier. Use **Save & reload** to apply the
+selected model and provider-backed transport. Legacy direct Jev configuration
+is moved into a provider draft, preserving its key reference; save to persist
+the migration.
+
+```yaml
+providers:
+  - id: jev
+    type: jev
+    base_url: https://api.typesafe.ai
+    api_path: /v1
+    bearer_token:
+      env: JEV_API_KEY
+  - id: laya
+    type: jev_compatible
+    base_url: http://host.containers.internal:8000
+    api_path: /v1
+router:
+  classifier:
+    type: jev
+    transport: provider
+    provider: laya
+    model: english
+    on_failure: capability_fallback
+```
+
+This is a classifier-provider excerpt; configure at least one inference
+provider as well for `smart` to return chat responses. Laya's example model
+must be loaded and advertised by your server. For local, non-container builds,
+use the reachable server hostname (often `localhost`) instead.
 
 Optional catalog metadata overrides can be supplied with
 `router.catalog_file: ./catalog-overrides.json`. The file is a strict JSON

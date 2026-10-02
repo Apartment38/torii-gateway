@@ -44,6 +44,67 @@ func TestInitializeConfigPathDoesNotCreateWithoutBootstrap(t *testing.T) {
 	}
 }
 
+func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
+	var decisions, chats int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/systemone":
+			decisions++
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["model"] != "english" || body["state"] != "hello" || r.Header.Get("Authorization") != "Bearer laya-key" {
+				t.Errorf("wrong decision request: %+v", body)
+			}
+			_, _ = io.WriteString(w, `{"answers":{"task_type":{"type":"choice","choice":"general","confidence":0.9},"complexity":{"type":"choice","choice":"low","confidence":0.9}}}`)
+		case "/v1/chat/completions":
+			chats++
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"hello back"}}]}`)
+		default:
+			t.Errorf("unexpected upstream request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	discover := false
+	cfg := &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, State: config.StateConfig{Directory: t.TempDir()}, Providers: []config.ProviderConfig{
+		{ID: "chat", Type: "openai_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"chat-model"}},
+		{ID: "laya", Type: "jev_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"english"}, BearerToken: &config.SecretRef{Value: "laya-key"}},
+	}, Router: config.RouterConfig{Classifier: config.ClassifierConfig{Type: "jev", Transport: "provider", Provider: "laya", Model: "english", OnFailure: "fail"}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := buildHandler(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"smart","messages":[{"role":"user","content":"hello"}]}`)))
+	if w.Code != http.StatusOK || decisions != 1 || chats != 1 {
+		t.Fatalf("smart did not use decision provider: HTTP %d %s, decisions=%d chats=%d", w.Code, w.Body.String(), decisions, chats)
+	}
+}
+
+func TestProviderConnectionReportsClassifierCatalog(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Errorf("discovery path = %s", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"models":[{"name":"english"}]}`)
+	}))
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := initializeConfigPath(path, "", true); err != nil {
+		t.Fatal(err)
+	}
+	r := &handlerRuntime{configPath: path}
+	w := httptest.NewRecorder()
+	request := fmt.Sprintf(`{"provider":{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1"}}`, server.URL)
+	r.testProvider(w, httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/test", strings.NewReader(request)))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"classifier_only":true`) || !strings.Contains(w.Body.String(), `"id":"laya/english"`) {
+		t.Fatalf("classifier connection = %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCodexConnectionTestDoesNotTreatFallbackAsSuccess(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "config.yaml")

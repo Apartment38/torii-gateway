@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/Apartment38/torii-gateway/internal/buildinfo"
+	"github.com/Apartment38/torii-gateway/internal/state"
 )
 
 func TestVersionRequiresNoConfigurationOrMasterKey(t *testing.T) {
@@ -19,7 +21,7 @@ func TestVersionRequiresNoConfigurationOrMasterKey(t *testing.T) {
 	if err := runWithIO(context.Background(), []string{"version"}, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"v2.0.0-test", "Database schema: 4", "supported baseline: 4", "Encryption key version: 1"} {
+	for _, want := range []string{"v2.0.0-test", fmt.Sprintf("Database schema: %d", state.SchemaVersion), "supported baseline: 4", "Encryption key version: 1"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatal("missing version metadata", want)
 		}

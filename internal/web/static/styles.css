@@ -51,6 +51,8 @@ nav { display: grid; gap: 6px; margin-top: 48px; }
 .nav-link { padding: 11px 13px; border-radius: 12px; color: var(--muted); font-size: 14px; text-decoration: none; transition: .2s ease; }
 .nav-link:hover, .nav-link.active { background: var(--accent-soft); color: var(--text-strong); transform: translateX(3px); }
 .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; color: var(--muted); font-size: 12px; }
+.sidebar-account { margin-top: 24px; padding: 16px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; font-size: 13px; }
+[hidden] { display: none !important; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #38b979; box-shadow: 0 0 0 5px rgba(56,185,121,.14); }
 .content { width: min(1120px, 100%); margin: auto; padding: 42px clamp(22px, 5vw, 72px) 30px; }
 .topbar { display: flex; justify-content: flex-end; gap: 28px; align-items: flex-start; margin-bottom: 36px; }
@@ -139,6 +141,7 @@ textarea { resize: vertical; line-height: 1.5; }
   .sidebar { position: static; height: auto; flex-direction: row; align-items: center; gap: 18px; padding: 14px 20px; }
   nav { display: none; }
   .sidebar-foot { margin: 0 0 0 auto; }
+  .sidebar-account { margin-top: 0; padding: 0; border-top: 0; }
   .content { padding-top: 28px; }
   .topbar, .hero { flex-direction: column; }
   .top-actions { justify-content: flex-start; }

@@ -565,7 +565,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
 	var managementAuth api.ClientAuthenticator = authenticator
 	if database != nil {
-		authenticator = api.CredentialBearerAuthenticator{Resolve: database.GatewayAPIKey}
+		authenticator = api.CredentialBearerAuthenticator{Verify: database.VerifyGatewayAPIKey}
 		managementAuth = api.NewBasicAdminAuthenticator(database.VerifyAdmin)
 	}
 
@@ -749,6 +749,8 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			mux.HandleFunc("GET /gateway/v1/setup", runtime.setupStatus)
 			mux.HandleFunc("POST /gateway/v1/setup", runtime.setupAdmin)
 			protect("POST /gateway/v1/admin/api-key", runtime.rotateAPIKey)
+			protect("/gateway/v1/admin/api-keys", runtime.gatewayKeysAPI)
+			protect("/gateway/v1/admin/api-keys/", runtime.gatewayKeysAPI)
 		}
 		protect("GET /gateway/v1/config", runtime.getConfig)
 		protect("PUT /gateway/v1/config", runtime.putConfig)

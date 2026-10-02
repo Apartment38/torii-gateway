@@ -9,7 +9,7 @@ import (
 // BaselineSchemaVersion is the first database-only release. Older installations
 // must be recreated once; all subsequent upgrades preserve their database.
 const BaselineSchemaVersion = 4
-const SchemaVersion = BaselineSchemaVersion
+const SchemaVersion = 5
 
 type schemaMigration struct {
 	Version int
@@ -17,7 +17,11 @@ type schemaMigration struct {
 }
 
 // Register one immutable step per future version, and increment SchemaVersion.
-var schemaMigrations = []schemaMigration{}
+var schemaMigrations = []schemaMigration{{Version: 5, SQL: `
+CREATE TABLE gateway_api_keys (
+ credential_id TEXT PRIMARY KEY REFERENCES credentials(id) ON DELETE CASCADE,
+ name TEXT NOT NULL, key_hash BLOB NOT NULL UNIQUE CHECK(length(key_hash)=32));
+`}}
 
 const credentialSchema = `
 CREATE TABLE credentials (

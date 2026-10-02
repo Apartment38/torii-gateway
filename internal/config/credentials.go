@@ -50,7 +50,7 @@ func (c *Config) BindSecrets(db *state.Database) error {
 		if r.Credential == "" || r.Env != "" || r.File != "" || r.Value != "" {
 			return errors.New("persisted credentials must use database references; add credentials through the authenticated console")
 		}
-		if strings.HasPrefix(r.Credential, "__") || r.Credential == state.GatewayAPIKeyID {
+		if strings.HasPrefix(r.Credential, "__") || state.IsGatewayAPIKeyID(r.Credential) {
 			return errors.New("system credentials cannot be used as provider credentials")
 		}
 		r.Bind(db)
@@ -63,7 +63,7 @@ func (c *Config) BindSecrets(db *state.Database) error {
 func StoreSubmittedCredentials(c *Config, db *state.Database) error {
 	c.Credentials = db
 	return c.VisitSecrets(func(_, service, purpose string, r *SecretRef) error {
-		if strings.HasPrefix(r.Credential, "__") || r.Credential == state.GatewayAPIKeyID {
+		if strings.HasPrefix(r.Credential, "__") || state.IsGatewayAPIKeyID(r.Credential) {
 			return errors.New("system credentials cannot be used as provider credentials")
 		}
 		if r.Credential == "" {

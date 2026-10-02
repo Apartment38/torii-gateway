@@ -98,7 +98,13 @@ HTTP requests time out separately from the complete source import. Sources run
 independently and concurrently. A failed source retains its previous successful
 dataset, with a failure status; successful sources still update.
 
-Keys use `{credential: ID}` references from the Credentials page.
+Source keys use `{credential: ID}` references from the authenticated provider
+credential API, or transient `{value: "key"}` input encrypted on console save.
+The Credentials page's gateway client keys must not be used as source keys.
+In the console, check **Benchmarks → Enable benchmark intelligence**, configure
+sources, and click **Save & reload** before **Refresh benchmarks**. The toggle
+does not enable individual sources automatically; their `enabled` settings
+remain in the benchmark configuration JSON.
 Authenticated direct submissions are encrypted before saving; configuration
 reads return references only. YAML value/env/file credentials are not supported.
 See [Encrypted credential storage](credential-storage.md).

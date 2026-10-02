@@ -126,8 +126,10 @@ AES encryption at rest does not secure HTTP transport or a compromised host.
 
 Saved credentials cannot be revealed. Providers accept a new key or an existing
 credential ID; advanced management tokens and headers use IDs. The Credentials
-page lists metadata and supports creation, replacement and deletion. Benchmark
-configuration uses the same references:
+page now manages gateway client API keys, not upstream secrets. The existing
+authenticated provider-credential API remains available for advanced management
+credentials and benchmark source keys. Benchmark configuration uses those
+upstream credential references, never gateway client keys:
 
 ```yaml
 bearer_token: {credential: "opaque-id-returned-by-the-gateway"}
@@ -155,6 +157,31 @@ podman compose exec torii-gateway /gateway admin api-key --config /config/config
 ./gateway credentials replace --config ./config.yaml --id STORED_ID
 ./gateway credentials delete --config ./config.yaml --id STORED_ID
 ```
+
+### Named gateway client keys
+
+On **Credentials**, click **Add credential**, enter a client name, and generate
+its key. Save it from the one-time display before closing. Use it as the
+client's `Authorization: Bearer` key. The list contains names and creation
+timestamps only; secrets cannot be retrieved again. Delete invalidates the key
+on subsequent requests and physically removes its encrypted record and metadata.
+Already-authorized in-flight requests are not cancelled.
+
+The administrator's initial key appears as **Default gateway key** and can also
+be deleted. Deleting every API key does not affect administrator Basic login.
+The Server page/terminal rotation replaces only this default key; named client
+keys are independent. Provider secrets and OAuth tokens are unaffected.
+
+Administrator Basic authentication and the normal same-origin boundary protect
+`GET`/`POST /gateway/v1/admin/api-keys` and
+`DELETE /gateway/v1/admin/api-keys/{id}`. POST accepts only `{"name":"Client"}`
+and returns the new key once; list returns metadata only. Gateway keys cannot
+be assigned as provider secrets or modified through generic credential APIs.
+API keys are encrypted with the existing AES-256-GCM credential store. A SHA-256
+digest of each randomly generated 256-bit client key supports indexed lookup;
+authentication also verifies its decrypted encrypted record, with no plaintext
+cache. Backups contain the keys' state at backup time: restoring an older backup
+can reactivate subsequently deleted keys, which must be revoked again.
 
 Terminal API-key generation verifies the administrator password. For automation,
 `admin create --username NAME` / `admin api-key` read the password from stdin,
@@ -187,7 +214,10 @@ online backup use SQLite's backup API or CLI `.backup`, not a live copy of the
 main file alone. Store the master-key backup separately with restricted access.
 Restore the database and original key together before restarting.
 
-The common baseline is SQLite schema 4. Future schema upgrades run after
+The supported baseline is SQLite schema 4; the current schema is 5. Startup
+automatically adds the named-key metadata table transactionally when opening
+a schema-4 database, preserving existing credentials, admin, API key and state.
+No reset or manual migration is required. Future schema upgrades run after
 master-key verification and commit one transactional step at a time.
 Rollback requires restoring the pre-upgrade database and configuration,
 with their matching key and previous application binary/image.

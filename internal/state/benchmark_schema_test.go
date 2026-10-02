@@ -11,7 +11,7 @@ import (
 func TestFreshBaselineAndNoImportMetadata(t *testing.T) {
 	d, _, _ := testDB(t)
 	var version, count int
-	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
+	if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal(version, err)
 	}
 	if err := d.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='imports'").Scan(&count); err != nil || count != 0 {
@@ -41,7 +41,7 @@ func TestUnversionedLookalikeInternalTableIsNotAnEmptyDatabase(t *testing.T) {
 	}
 }
 func TestPreBaselineAndNewerSchemasRejectedUnchanged(t *testing.T) {
-	for _, version := range []int{0, 1, 2, 3, 5} {
+	for _, version := range []int{0, 1, 2, 3, SchemaVersion + 1} {
 		t.Run(string(rune('0'+version)), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "existing.db")
 			db, err := sql.Open("sqlite", path)
@@ -84,27 +84,27 @@ func TestFutureSchemaMigrationPreservesDataAndRetries(t *testing.T) {
 	if err := d.db.QueryRow("SELECT ciphertext FROM credentials WHERE id='key'").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	steps := []schemaMigration{{5, "CREATE TABLE future_state(value TEXT); INSERT INTO future_state VALUES('new')"}}
-	if err := migrateSchema(d.db, 4, 5, steps); err != nil {
+	steps := []schemaMigration{{6, "CREATE TABLE future_state(value TEXT); INSERT INTO future_state VALUES('new')"}}
+	if err := migrateSchema(d.db, 5, 6, steps); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateSchema(d.db, 5, 5, steps); err != nil {
+	if err := migrateSchema(d.db, 6, 6, steps); err != nil {
 		t.Fatal(err)
 	}
 	var after []byte
 	if err := d.db.QueryRow("SELECT ciphertext FROM credentials WHERE id='key'").Scan(&after); err != nil || !bytes.Equal(before, after) {
 		t.Fatal("credential changed", err)
 	}
-	if err := migrateSchema(d.db, 5, 6, append(steps, schemaMigration{6, "CREATE TABLE partial(value TEXT); INSERT INTO missing VALUES(1)"})); err == nil {
+	if err := migrateSchema(d.db, 6, 7, append(steps, schemaMigration{7, "CREATE TABLE partial(value TEXT); INSERT INTO missing VALUES(1)"})); err == nil {
 		t.Fatal("failure accepted")
 	}
 	var version, count int
 	d.db.QueryRow("PRAGMA user_version").Scan(&version)
 	d.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='partial'").Scan(&count)
-	if version != 5 || count != 0 {
+	if version != 6 || count != 0 {
 		t.Fatal("partial upgrade committed")
 	}
-	if err := migrateSchema(d.db, 5, 6, append(steps, schemaMigration{6, "CREATE TABLE partial(value TEXT)"})); err != nil {
+	if err := migrateSchema(d.db, 6, 7, append(steps, schemaMigration{7, "CREATE TABLE partial(value TEXT)"})); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -126,8 +126,8 @@ func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.Close()
-	steps := []schemaMigration{{5, "CREATE TABLE future_state(value TEXT)"}}
-	if bad, err := openDatabase(path, bytes.Repeat([]byte{9}, 32), 5, steps); err == nil {
+	steps := append(append([]schemaMigration{}, schemaMigrations...), schemaMigration{6, "CREATE TABLE future_state(value TEXT)"})
+	if bad, err := openDatabase(path, bytes.Repeat([]byte{9}, 32), 6, steps); err == nil {
 		bad.Close()
 		t.Fatal("wrong key accepted")
 	}
@@ -141,7 +141,7 @@ func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 		t.Fatal("migration ran before authentication")
 	}
 	original.Close()
-	upgraded, err := openDatabase(path, key, 5, steps)
+	upgraded, err := openDatabase(path, key, 6, steps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,18 +150,18 @@ func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 		t.Fatal("upgrade lost credential", err)
 	}
 	upgraded.Close()
-	restarted, err := openDatabase(path, key, 5, steps)
+	restarted, err := openDatabase(path, key, 6, steps)
 	if err != nil {
 		t.Fatal("upgrade restart", err)
 	}
 	restarted.Close()
-	fresh, err := openDatabase(filepath.Join(t.TempDir(), "fresh.db"), key, 5, steps)
+	fresh, err := openDatabase(filepath.Join(t.TempDir(), "fresh.db"), key, 6, steps)
 	if err != nil {
 		t.Fatal("fresh upgrade", err)
 	}
 	defer fresh.Close()
 	var version int
-	if err := fresh.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 5 {
+	if err := fresh.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
 		t.Fatal("fresh skipped migration", err)
 	}
 	if _, err := fresh.db.Exec("SELECT value FROM future_state"); err != nil {

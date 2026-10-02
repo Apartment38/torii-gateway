@@ -45,7 +45,7 @@ request() {
 }
 launch
 mountpoint=$(podman volume inspect --format '{{.Mountpoint}}' "$data_volume")
-[[ $(podman unshare sqlite3 "$mountpoint/torii.db" 'PRAGMA user_version;') == 4 ]]
+[[ $(podman unshare sqlite3 "$mountpoint/torii.db" 'PRAGMA user_version;') == 5 ]]
 [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT count(*) FROM sqlite_master WHERE name='imports';") == 0 ]]
 host_id=$(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT value FROM application_settings WHERE key='codex_host_id';")
 [[ $host_id == urn:uuid:* ]]
@@ -62,6 +62,13 @@ setup_body=$(printf '%s' "$setup_code" | jq -Rs '{username:"test-admin",password
 api_key=$(request POST /gateway/v1/setup '' "$setup_body" | jq -er .api_key)
 [[ $api_key == torii_* ]]
 [[ $(request GET /gateway/v1/config "Bearer $api_key" '' true) == 401 ]]
+client_result=$(request POST /gateway/v1/admin/api-keys "$basic" '{"name":"Smoke client"}')
+client_key=$(printf '%s' "$client_result" | jq -er .api_key)
+client_id=$(printf '%s' "$client_result" | jq -er .key.id)
+[[ $(request GET /v1/models "Bearer $client_key" '' true) == 200 ]]
+[[ $(request GET /gateway/v1/admin/api-keys "Bearer $client_key" '' true) == 401 ]]
+key_metadata=$(request GET /gateway/v1/admin/api-keys "$basic")
+[[ $key_metadata == *'Smoke client'* && $key_metadata != *"$client_key"* ]]
 configuration=$(request GET /gateway/v1/config "$basic")
 [[ $(printf '%s' "$configuration" | jq '.providers | length') == 0 ]]
 [[ $(request GET /v1/models "Bearer $api_key" | jq -r '[.data[].id] == ["smart"]') == true ]]
@@ -80,18 +87,23 @@ for text in "$saved_yaml" "$app_logs"; do
   [[ $text != *synthetic-provider-secret-42* && $text != *"$api_key"* && $text != *"$password"* ]]
 done
 [[ $(podman unshare stat -c '%a' "$mountpoint/torii.db") == 600 ]]
-for sensitive in "$password" "$api_key" 'synthetic-provider-secret-42'; do
+for sensitive in "$password" "$api_key" "$client_key" 'synthetic-provider-secret-42'; do
   if podman unshare grep -aFq "$sensitive" "$mountpoint/torii.db" "$mountpoint/torii.db-wal"; then printf '%s\n' 'Plaintext found in database.' >&2; exit 1; fi
 done
 rotated=$(request POST /gateway/v1/admin/api-key "$basic" | jq -er .api_key)
 [[ $(request GET /v1/models "Bearer $api_key" '' true) == 401 ]]
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
+[[ $(request GET /v1/models "Bearer $client_key" '' true) == 200 ]]
 stop
 # Seed only this disposable stopped database to validate public counter storage.
 podman unshare sqlite3 "$mountpoint/torii.db" "INSERT INTO usage_aggregates VALUES('smoke/fixture','7','70','35',0.25,'2026-10-02T12:00:00Z');"
 podman unshare tar -C "$mountpoint" -cf "$backup_directory/data.tar" .
 launch
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == false ]]
+[[ $(request GET /v1/models "Bearer $client_key" '' true) == 200 ]]
+request DELETE "/gateway/v1/admin/api-keys/$client_id" "$basic" >/dev/null
+[[ $(request GET /v1/models "Bearer $client_key" '' true) == 401 ]]
+[[ $(request GET /gateway/v1/admin/api-keys "$basic" | jq '[.api_keys[] | select(.name=="Smoke client")] | length') == 0 ]]
 [[ $(request GET /v1/models "Bearer $rotated" '' true) == 200 ]]
 [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT value FROM application_settings WHERE key='codex_host_id';") == "$host_id" ]]
 [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT requests FROM usage_aggregates WHERE model_id='smoke/fixture';") == 7 ]]
@@ -116,4 +128,4 @@ launch
 [[ $(request GET /v1/models "Bearer $terminal_key" '' true) == 401 ]]
 [[ $(request GET /gateway/v1/setup | jq -r .setup_required) == false ]]
 stop
-printf '%s\n' 'PASS: fresh baseline, non-root persistence, admin setup, console/CLI rotation, usage/identity/benchmark status persistence, stopped backup restore, and wrong-key rejection.'
+printf '%s\n' 'PASS: fresh schema 5, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, usage/identity/benchmark status persistence, stopped backup restore, and wrong-key rejection.'

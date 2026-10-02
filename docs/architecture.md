@@ -271,7 +271,8 @@ Persistent state normally includes:
 
     /data/torii.db
 
-SQLite schema 4 contains credential, source/status, dataset generation,
+SQLite schema 5 (supported baseline 4) contains credential, named gateway
+client-key metadata/digests, source/status, dataset generation,
 observation, usage and application-setting tables. It contains no legacy import
 metadata. Only each source's latest published generation is retained.
 Staged generations become visible through one short pointer-publication

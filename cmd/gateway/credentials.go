@@ -102,7 +102,7 @@ func (r *handlerRuntime) credentialAPI(w http.ResponseWriter, req *http.Request)
 	if req.URL.Path == "/gateway/v1/credentials" {
 		id = ""
 	}
-	if strings.HasPrefix(id, "__") || (id == state.GatewayAPIKeyID && req.Method != http.MethodGet) {
+	if strings.HasPrefix(id, "__") || (state.IsGatewayAPIKeyID(id) && req.Method != http.MethodGet) {
 		writeConfigError(w, 400, errors.New("protected system credential; use admin API key generation"))
 		return
 	}
@@ -203,7 +203,7 @@ func runCredentials(ctx context.Context, args []string, output io.Writer) error 
 		return err
 	}
 	defer db.Close()
-	if strings.HasPrefix(*id, "__") || *id == state.GatewayAPIKeyID {
+	if strings.HasPrefix(*id, "__") || state.IsGatewayAPIKeyID(*id) {
 		return errors.New("protected system credential; use admin api-key")
 	}
 	if args[0] == "bootstrap" {

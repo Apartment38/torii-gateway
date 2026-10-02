@@ -116,6 +116,10 @@ default, stores all durable gateway state in the named
 `TORII_PORT` in `.env` to publish a different host port or `TORII_IMAGE` to use
 a prebuilt image. Only the master key and published port are needed in `.env`.
 The default deployment mounts only `/data` and `/config`.
+The sidebar shows the signed-in administrator. **Credentials → Add credential**
+generates a named gateway client API key, displayed only once; deleting it revokes
+access for that client. **Benchmarks → Enable benchmark intelligence** enables
+ingestion after **Save & reload**, with individual sources configured in JSON.
 Without an initial configuration, Torii starts with no providers. After signing
 in, open **Providers** and click **Add provider**, then **Save & reload**.
 The empty-state notification remains until you add a provider; no placeholder
@@ -137,7 +141,8 @@ Sign in to the console with your administrator username/password. Provider keys 
 are encrypted in SQLite; saved values are never returned to the browser.
 Persisted provider credentials use database references, not YAML value/env/file fields.
 Use **Server → Generate new API key** or `gateway admin api-key --config PATH`
-to generate a replacement. It is shown once and immediately invalidates the old key.
+to replace the default gateway key. It is shown once and immediately invalidates
+the old default key; named client keys created on **Credentials** are unaffected.
 Docker users must apply `compose.docker.yaml` because Docker does not support
 Podman's `:U` option; the linked guide explains directory ownership.
 

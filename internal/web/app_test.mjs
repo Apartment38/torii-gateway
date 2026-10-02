@@ -76,12 +76,25 @@ class ProviderList extends Element {
     return match ? [...this.buttons.values()].filter(node => match[1] in node.dataset) : [];
   }
 }
+class KeyList extends Element {
+  buttons = [];
+  set innerHTML(html) {
+    this.html = html;
+    this.buttons = [...html.matchAll(/data-delete-key="([^"]+)"/g)].map(match => {
+      const button = new Element();
+      button.dataset.deleteKey = match[1];
+      return button;
+    });
+  }
+  get innerHTML() { return this.html; }
+  querySelectorAll(selector) { return selector === "[data-delete-key]" ? this.buttons : []; }
+}
 const response = (body, ok = true) => ({ ok, json: async () => body, text: async () => JSON.stringify(body) });
 const models = count => ({ models: Array.from({ length: count }, (_, i) => ({ id: `model-${i}` })) });
 const draft = (type, id = type) => ({ id, type, api_url: type === "openai-codex" ? "https://chatgpt.com/backend-api/codex" : `https://${type}.example/v1` });
 function consoleFixture(handler) {
   const list = new ProviderList();
-  const nodes = new Map([["#providers-list", list]]);
+  const nodes = new Map([["#providers-list", list], ["#credential-list", new KeyList()]]);
   const element = name => {
     if (!nodes.has(name)) nodes.set(name, new Element());
     return nodes.get(name);
@@ -562,7 +575,7 @@ test("benchmark refresh uses memory-only login rather than configuration credent
     return response({ updated:true, sources:{ aa:{ last_success:"2026-10-01", stale:false } } });
   });
   app.run('adminAuthorization="Basic test-admin-login"');
-  app.context.config = { providers:[], server:{ authentication:{ api_key:{ credential:"stored-gateway-key" } } } };
+  app.context.config = { providers:[], intelligence:{enabled:true}, server:{ authentication:{ api_key:{ credential:"stored-gateway-key" } } } };
   app.run("applyConfig(config)");
   await app.run("inspectBenchmarks(true)");
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'), /last_success/);
@@ -571,10 +584,18 @@ test("benchmark refresh uses memory-only login rather than configuration credent
 
 test("console sign-in keeps Basic login only in memory and logout clears it",async()=>{
   const app=consoleFixture(url=>url==="/gateway/v1/config"?response({server:{authentication:{api_key:{credential:"gateway-ref"}}},providers:[]}):response({credentials:[]}));
+  assert.equal(app.run('document.querySelector("#console-login").hidden'),false);
+  assert.equal(app.run('document.querySelector("#console-logout").hidden'),true);
   app.run('document.querySelector("#login-username").value="admin";document.querySelector("#login-password").value="memory-login-sentinel"');
   await app.run('document.querySelector("#login-form").listeners.submit({preventDefault(){}})');
   assert.equal(app.run('adminAuthorization'),"Basic "+btoa("admin:memory-login-sentinel"));assert.equal(app.run('document.querySelector("#login-password").value'),"");assert.deepEqual(app.storageWrites,[]);
+  assert.equal(app.run('document.querySelector("#console-login").hidden'),true);
+  assert.equal(app.run('document.querySelector("#console-logout").hidden'),false);
+  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"admin");
   app.run('document.querySelector("#console-logout").listeners.click()');assert.equal(app.run('adminAuthorization'),"");
+  assert.equal(app.run('document.querySelector("#console-login").hidden'),false);
+  assert.equal(app.run('document.querySelector("#console-logout").hidden'),true);
+  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"Not signed in");
 });
 test("unauthorized management clears login and reopens the sign-in dialog",async()=>{
   const app=consoleFixture(()=>({...response({},false),status:401}));app.run('adminAuthorization="Basic expired-login"');await app.run('loadCredentialMetadata()');assert.equal(app.run('adminAuthorization'),"");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
@@ -595,9 +616,109 @@ test("administrator setup clears password fields and reveals only its newly gene
   });
   app.run('document.querySelector("#setup-username").value="my-admin";document.querySelector("#setup-password").value="long-enough-password";document.querySelector("#setup-confirm").value="long-enough-password";document.querySelector("#setup-code").value="terminal-code"');
   await app.run('document.querySelector("#setup-form").listeners.submit({preventDefault(){}})');
+  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"my-admin");
+  assert.equal(app.run('document.querySelector("#console-login").hidden'),true);
   for(const id of ["#setup-password","#setup-confirm","#setup-code"])assert.equal(app.run(`document.querySelector("${id}").value`),"");
   assert.equal(app.run('document.querySelector("#new-api-key").value'),"new-once-key");assert.deepEqual(app.storageWrites,[]);
   app.run('document.querySelector("#close-new-key").listeners.click()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"");
+});
+
+test("benchmark enable toggle persists without dropping source configuration", async () => {
+  let config = {providers:[],intelligence:{enabled:false,sources:[{id:"cache",type:"benchlm",enabled:false}],routing:{price:1}}};
+  const app = consoleFixture((url, options) => {
+    if (url === "/gateway/v1/config") {
+      if (options?.method === "PUT") config = JSON.parse(options.body);
+      return response(config);
+    }
+    return response({sources:{cache:{enabled:false}}});
+  });
+  app.context.config = config;
+  app.run("applyConfig(config)");
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),true);
+  await app.run("inspectBenchmarks(true)");
+  assert.equal(app.calls.length,0);
+  assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/Enable benchmark intelligence/);
+  app.run('document.querySelector("#intelligence-enabled").checked=true;document.querySelector("#intelligence-enabled").listeners.change()');
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),true);
+  assert.match(app.run('document.querySelector("#benchmark-enable-notice").textContent'),/Save & reload/);
+  await app.run("saveConfig()");
+  assert.equal(config.intelligence.enabled,true);
+  assert.equal(config.intelligence.sources[0].id,"cache");
+  assert.equal(config.intelligence.routing.price,1);
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),false);
+  await app.run("inspectBenchmarks(true)");
+  assert.equal(app.calls.at(-1).url,"/gateway/v1/intelligence/refresh");
+  app.run('document.querySelector("#intelligence-config").value=JSON.stringify({enabled:false,sources:[]});document.querySelector("#intelligence-config").listeners.input()');
+  assert.equal(app.run('document.querySelector("#intelligence-enabled").checked'),false);
+  assert.equal(app.run('readConfig().intelligence.enabled'),false);
+});
+
+test("client key creation prompts for a name and reveals only the new generated key once", async () => {
+  const key = {id:"gateway/client-key/test",name:"Hermes <client>",created_at:"2026-10-02"};
+  const app = consoleFixture((url, options) => {
+    assert.equal(url,"/gateway/v1/admin/api-keys");
+    assert.equal(options.headers.Authorization,"Basic admin-login");
+    if (options.method === "POST") {
+      assert.deepEqual(JSON.parse(options.body),{name:key.name});
+      return response({key,api_key:"generated-client-key",warning:"This key is displayed only once"});
+    }
+    return response({api_keys:[key]});
+  });
+  app.run('adminAuthorization="Basic admin-login";document.querySelector("#create-credential").listeners.click()');
+  assert.equal(app.run('document.querySelector("#create-key-dialog").open'),true);
+  app.run('document.querySelector("#client-key-name").value="Hermes <client>"');
+  await app.run('document.querySelector("#create-key-form").listeners.submit({preventDefault(){}})');
+  assert.equal(app.run('document.querySelector("#create-key-dialog").open'),false);
+  assert.equal(app.run('document.querySelector("#new-api-key").value'),"generated-client-key");
+  assert.match(app.run('document.querySelector("#new-key-warning").textContent'),/only once/);
+  assert.match(app.run('document.querySelector("#credential-list").innerHTML'),/Hermes &lt;client&gt;/);
+  assert.doesNotMatch(app.run('document.querySelector("#credential-list").innerHTML'),/generated-client-key|replacement value/);
+  app.run('document.querySelector("#close-new-key").listeners.click()');
+  assert.equal(app.run('document.querySelector("#new-api-key").value'),"");
+  assert.deepEqual(app.storageWrites,[]);
+});
+
+test("deleting a listed client key calls the authenticated API and reloads metadata", async () => {
+  let deleted = false;
+  const app = consoleFixture((url, options) => {
+    assert.equal(options.headers.Authorization,"Basic admin-login");
+    if (options.method === "DELETE") {
+      assert.equal(url,"/gateway/v1/admin/api-keys/gateway%2Fclient-key%2Ftest");
+      deleted = true;
+      return response({status:"deleted"});
+    }
+    assert.equal(url,"/gateway/v1/admin/api-keys");
+    return response({api_keys:deleted?[]:[{id:"gateway/client-key/test",name:"client",created_at:"today"}]});
+  });
+  app.run('adminAuthorization="Basic admin-login"');
+  await app.run("loadCredentialMetadata()");
+  await app.run('document.querySelector("#credential-list").buttons[0].listeners.click()');
+  assert.equal(deleted,true);
+  assert.match(app.run('document.querySelector("#credential-list").innerHTML'),/No gateway API keys/);
+});
+
+test("failed login and expired authentication reset identity and clear one-time keys", async () => {
+  const app=consoleFixture(()=>({...response({},false),status:401}));
+  app.run('adminAuthorization="Basic expired";signedInUsername="admin";updateConsoleIdentity();showNewAPIKey("sensitive-once-key")');
+  await app.run("loadCredentialMetadata()");
+  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"Not signed in");
+  assert.equal(app.run('document.querySelector("#console-logout").hidden'),true);
+  assert.equal(app.run('document.querySelector("#console-login").hidden'),false);
+  assert.equal(app.run('document.querySelector("#new-api-key").value'),"");
+  assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
+});
+
+test("a late key-generation reply cannot reveal a secret after signing out", async () => {
+  let finish;
+  const app=consoleFixture(()=>new Promise(resolve=>{finish=resolve;}));
+  app.run('adminAuthorization="Basic admin-login";signedInUsername="admin";document.querySelector("#client-key-name").value="client"');
+  const creating=app.run('document.querySelector("#create-key-form").listeners.submit({preventDefault(){}})');
+  await Promise.resolve();
+  app.run('document.querySelector("#console-logout").listeners.click()');
+  finish(response({api_key:"must-not-be-shown-after-logout"}));
+  await creating;
+  assert.equal(app.run('document.querySelector("#new-api-key").value'),"");
+  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"Not signed in");
 });
 test("API key generation requires in-memory administrator login and clears its once-only display",async()=>{
   const app=consoleFixture((url,options)=>{assert.equal(url,"/gateway/v1/admin/api-key");assert.equal(options.method,"POST");assert.equal(options.headers.Authorization,"Basic admin-login");return response({api_key:"rotated-once-key"});});

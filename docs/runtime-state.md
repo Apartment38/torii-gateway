@@ -1,7 +1,9 @@
 # Database baseline, updates and recovery
 
-Torii's database-only baseline is SQLite schema **4**. Fresh installations
-create this schema directly. Schemas 1–3 and nonempty unversioned databases are
+Torii's database-only baseline is SQLite schema **4**; the current schema is
+**5**. Fresh installations create the baseline and apply the registered upgrade.
+Schema 4 upgrades automatically, preserving all data and adding named client-key
+metadata. Schemas 1–3 and nonempty unversioned databases are
 rejected without an automatic import, deletion or reset. Future releases retain
 schema 4 as their supported starting point and preserve data through sequential,
 transactional database migrations. Unsupported newer schemas are also rejected.

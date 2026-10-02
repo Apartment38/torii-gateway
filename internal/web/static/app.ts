@@ -11,14 +11,43 @@ class MemoryBasicProvider implements AuthProvider {
 
 const authProvider: AuthProvider = new MemoryBasicProvider();
 async function gatewayFetch(url:string,options?:RequestInit):Promise<Response>{
+  const login = adminAuthorization;
   const response=await fetch(url,options);
-  if(response.status===401){adminAuthorization="";document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
+  if(response.status===401 && login===adminAuthorization){signOutConsole();document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
   return response;
 }
 const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
 let adminAuthorization = "";
+let signedInUsername = "";
+let benchmarksEnabledSaved = false;
+function updateConsoleIdentity(): void {
+  const signedIn = Boolean(adminAuthorization && signedInUsername);
+  document.querySelector<HTMLButtonElement>("#console-login")!.hidden = signedIn;
+  document.querySelector<HTMLButtonElement>("#console-logout")!.hidden = !signedIn;
+  document.querySelector("#signed-in-user")!.textContent = signedIn ? signedInUsername : "Not signed in";
+}
+function signOutConsole(): void {
+  adminAuthorization = "";
+  signedInUsername = "";
+  clearNewAPIKey();
+  document.querySelector<HTMLDialogElement>("#new-key-dialog")!.close();
+  document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();
+  document.querySelector<HTMLInputElement>("#client-key-name")!.value = "";
+  providers = [];
+  configurationLoaded = false;
+  form.reset();
+  document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value = "";
+  document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked = false;
+  benchmarksEnabledSaved = false;
+  document.querySelector("#credential-list")!.textContent = "";
+  document.querySelector("#benchmark-status")!.textContent = "";
+  updateConsoleIdentity();
+  updateBenchmarkControls();
+  renderProviders();
+  saveState.textContent = "Signed out";
+}
 function basicAuthorization(username:string,password:string):string {return "Basic "+btoa(Array.from(new TextEncoder().encode(`${username}:${password}`),byte=>String.fromCharCode(byte)).join(""));}
 const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [];
@@ -140,8 +169,8 @@ function renderProviders(): void {
         ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Reveal entered provider API key" aria-pressed="false">Reveal</button></span></label>`}
       </div>
       <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
-        <label data-tooltip="Select a credential ID from the Credentials page. Values remain encrypted and cannot be revealed.">Stored API credential<input data-provider="${index}" data-key="credential_id" value="${escapeHTML(String((provider.bearer_token as any)?.credential || provider.credential_id || ""))}" placeholder="Credential ID" /></label>
-        <label data-tooltip="Select a separate management credential from the Credentials page for quota lookup.">Management credential<input data-provider="${index}" data-key="management_id" value="${escapeHTML(String((provider.management_token as any)?.credential || provider.management_id || ""))}" placeholder="Credential ID" /></label>
+        <label data-tooltip="An existing encrypted provider credential reference. Gateway client API keys cannot be used here.">Stored API credential<input data-provider="${index}" data-key="credential_id" value="${escapeHTML(String((provider.bearer_token as any)?.credential || provider.credential_id || ""))}" placeholder="Credential ID" /></label>
+        <label data-tooltip="An existing encrypted management credential used for quota lookup. This is separate from gateway client API keys.">Management credential<input data-provider="${index}" data-key="management_id" value="${escapeHTML(String((provider.management_token as any)?.credential || provider.management_id || ""))}" placeholder="Credential ID" /></label>
         <label data-tooltip="The portal URL used for subscription or account management. It is relevant to providers with a separate portal.">Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
         <label data-tooltip="The OAuth client identifier used by a provider portal. Leave empty to use the provider default.">Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
         <label data-tooltip="A static fallback model list used when discovery is disabled or unavailable. Separate model IDs with commas.">Models (comma separated)<input data-provider="${index}" data-key="models" value="${value(provider,"models")}" placeholder="model-a, model-b" /></label>
@@ -256,6 +285,9 @@ function applyConfig(config: Record<string, any>): void {
   requestedClassifier = classifier.type === "disabled" ? "disabled" : classifier.type === "jev" && classifier.transport === "provider"
     ? `${classifier.provider}/${classifier.model}` : "";
   document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value = config.intelligence ? JSON.stringify(config.intelligence, null, 2) : "";
+  benchmarksEnabledSaved = config.intelligence?.enabled === true;
+  document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked = benchmarksEnabledSaved;
+  updateBenchmarkControls();
   providers = (config.providers || []).filter((provider: Record<string, any>) => !isSetupPlaceholder(provider)).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
@@ -306,10 +338,14 @@ function applyConfig(config: Record<string, any>): void {
 }
 
 async function loadServerConfig(): Promise<void> {
+  const login = adminAuthorization;
   try {
     const response = await gatewayFetch("/gateway/v1/config", { headers: await authProvider.headers() });
-    if (!response.ok) { if (response.status === 401 || response.status === 403) {adminAuthorization="";saveState.textContent="Sign in to configure the gateway";document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();} return; }
-    applyConfig(await response.json());
+    if (login !== adminAuthorization) return;
+    if (!response.ok) { if (response.status === 401 || response.status === 403) {signOutConsole();saveState.textContent="Sign in to configure the gateway";document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();} return; }
+    const configuration = await response.json();
+    if (login !== adminAuthorization) return;
+    applyConfig(configuration);
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
   } catch { saveState.textContent = "Gateway config unavailable"; }
@@ -413,11 +449,25 @@ function readConfig(): Record<string, any> {
       config.intelligence = intelligence;
     } catch { throw new Error("Benchmark configuration must be a valid JSON object"); }
   }
+  config.intelligence = { ...(config.intelligence || {}), enabled:document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked };
   return config;
+}
+
+function updateBenchmarkControls(): void {
+  const enabled = document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked;
+  document.querySelector<HTMLButtonElement>("#refresh-benchmarks")!.disabled = !benchmarksEnabledSaved || !enabled;
+  document.querySelector("#benchmark-enable-notice")!.textContent = enabled !== benchmarksEnabledSaved
+    ? "Click Save & reload to apply your benchmark intelligence setting before refreshing."
+    : enabled ? "Benchmark intelligence is enabled. Configure sources below, then Save & reload to apply changes. Refresh uses the saved sources."
+    : "Benchmark intelligence is disabled. Enable it and click Save & reload before refreshing.";
 }
 
 async function inspectBenchmarks(refresh: boolean): Promise<void> {
   const output = document.querySelector<HTMLElement>("#benchmark-status")!;
+  if (refresh && (!benchmarksEnabledSaved || !document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked)) {
+    output.textContent = "Enable benchmark intelligence and click Save & reload before refreshing.";
+    return;
+  }
   const button = document.querySelector<HTMLButtonElement>(refresh ? "#refresh-benchmarks" : "#inspect-benchmarks")!;
   button.disabled = true;
   output.textContent = refresh ? "Refreshing sources; cached routing data remains available…" : "Loading source status…";
@@ -428,7 +478,7 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
     if (!response.ok) throw new Error(body.error?.message || body.error || "Benchmark request failed");
     output.textContent = JSON.stringify(body, null, 2);
   } catch (error) { output.textContent = error instanceof Error ? error.message : "Benchmark request failed"; }
-  finally { button.disabled = false; }
+  finally { if(refresh)updateBenchmarkControls();else button.disabled = false; }
 }
 async function testProvider(index: number): Promise<void> {
   const provider = providers[index];
@@ -549,30 +599,47 @@ window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });
 document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
-renderProviders(); navigate(); void checkSetup();
+renderProviders(); updateConsoleIdentity(); updateBenchmarkControls(); navigate(); void checkSetup();
 
 document.querySelector("#console-login")!.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#login-dialog")!.showModal());
-document.querySelector("#console-logout")!.addEventListener("click",()=>{
-  adminAuthorization="";clearNewAPIKey();document.querySelector<HTMLDialogElement>("#new-key-dialog")!.close();providers=[];configurationLoaded=false;form.reset();document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value="";document.querySelector("#credential-list")!.textContent="";renderProviders();saveState.textContent="Signed out";
-});
+document.querySelector("#console-logout")!.addEventListener("click",signOutConsole);
 document.querySelector("#login-form")!.addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector<HTMLInputElement>("#login-username")!.value;const input=document.querySelector<HTMLInputElement>("#login-password")!;adminAuthorization=basicAuthorization(username,input.value);input.value="";
-  try{const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json());document.querySelector<HTMLDialogElement>("#login-dialog")!.close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
-  catch{adminAuthorization="";document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
+  try{const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json());signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
+  catch{signOutConsole();document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata():Promise<void>{
   const list=document.querySelector<HTMLElement>("#credential-list")!;
-  try{const response=await gatewayFetch("/gateway/v1/credentials",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const body=await response.json();list.innerHTML=(body.credentials||[]).map((c:any)=>`<div class="card"><strong>${escapeHTML(c.service)} · ${escapeHTML(c.purpose)}</strong><p>${escapeHTML(c.id)} · Configured</p>${c.service==="gateway"&&c.purpose==="authentication"?"<p>Manage your gateway API key on the Server page.</p>":c.purpose==="oauth"?"<p>Use provider login to replace OAuth tokens.</p>":`<input type="password" autocomplete="new-password" data-new-secret="${escapeHTML(c.id)}" placeholder="New replacement value" /><button type="button" class="button secondary" data-replace-secret="${escapeHTML(c.id)}">Replace</button>`}${c.service==="gateway"&&c.purpose==="authentication"?"":`<button type="button" class="button quiet" data-delete-secret="${escapeHTML(c.id)}">Delete</button>`}</div>`).join("");
-    list.querySelectorAll<HTMLButtonElement>("[data-replace-secret]").forEach(button=>button.addEventListener("click",async()=>{const id=button.dataset.replaceSecret!;const input=list.querySelector<HTMLInputElement>(`[data-new-secret="${id}"]`)!;const value=input.value;input.value="";await writeCredential(id,"PUT",value);}));
-    list.querySelectorAll<HTMLButtonElement>("[data-delete-secret]").forEach(button=>button.addEventListener("click",async()=>{if(confirm("Delete this credential? Connections using it will stop working."))await writeCredential(button.dataset.deleteSecret!,"DELETE");}));
-  }catch{list.textContent="Sign in to inspect encrypted credentials.";}
+  const login=adminAuthorization;
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-keys",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const body=await response.json();if(login!==adminAuthorization)return;list.innerHTML=(body.api_keys||[]).map((key:any)=>`<div class="card"><strong>${escapeHTML(key.name)}</strong><p>Created ${escapeHTML(key.created_at)}</p><button type="button" class="button quiet" data-delete-key="${escapeHTML(key.id)}">Delete</button></div>`).join("") || "No gateway API keys have been created. Click Add credential to generate one.";
+    list.querySelectorAll<HTMLButtonElement>("[data-delete-key]").forEach(button=>button.addEventListener("click",async()=>{if(confirm("Delete this API key? Clients using it will immediately lose access on their next request."))await deleteClientKey(button.dataset.deleteKey!);}));
+  }catch{list.textContent="Sign in to manage gateway API keys.";}
 }
-async function writeCredential(id:string,method:string,value?:string):Promise<void>{
-  const service=document.querySelector<HTMLInputElement>("#credential-service")!.value;const purpose=document.querySelector<HTMLInputElement>("#credential-purpose")!.value;
-  try{const response=await gatewayFetch(`/gateway/v1/credentials${id?`/${encodeURIComponent(id)}`:""}`,{method,headers:{"Content-Type":"application/json",...await authProvider.headers()},body:method==="DELETE"?undefined:JSON.stringify({value,service:id?"existing":service,purpose:id?"existing":purpose})});if(!response.ok)throw new Error();toast("Credential updated");await loadCredentialMetadata();}catch{toast("Credential update failed. Check authentication and required fields.");}
+async function deleteClientKey(id:string):Promise<void>{
+  try{const response=await gatewayFetch(`/gateway/v1/admin/api-keys/${encodeURIComponent(id)}`,{method:"DELETE",headers:await authProvider.headers()});if(!response.ok)throw new Error();toast("API key deleted and invalidated");await loadCredentialMetadata();}catch{toast("API key deletion failed. Sign in as the administrator.");}
 }
 document.querySelector("#refresh-credentials")!.addEventListener("click",()=>{void loadCredentialMetadata();});
-document.querySelector("#create-credential")!.addEventListener("click",()=>{const input=document.querySelector<HTMLInputElement>("#credential-value")!;const value=input.value;input.value="";void writeCredential("","POST",value);});
+document.querySelector("#create-credential")!.addEventListener("click",()=>{document.querySelector<HTMLInputElement>("#client-key-name")!.value="";document.querySelector("#create-key-error")!.textContent="";document.querySelector<HTMLDialogElement>("#create-key-dialog")!.showModal();});
+document.querySelector("#cancel-create-key")!.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close());
+document.querySelector("#create-key-form")!.addEventListener("submit",async event=>{
+  event.preventDefault();
+  const button=document.querySelector<HTMLButtonElement>("#generate-client-key")!;
+  if(button.disabled)return;
+  button.disabled=true;
+  const login=adminAuthorization;
+  const name=document.querySelector<HTMLInputElement>("#client-key-name")!.value.trim();
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-keys",{method:"POST",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({name})});const result=await response.json();if(!response.ok)throw new Error(result.error||"API key creation failed");if(login!==adminAuthorization)return;document.querySelector<HTMLInputElement>("#client-key-name")!.value="";document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();showNewAPIKey(result.api_key,result.warning);await loadCredentialMetadata();}
+  catch(error){document.querySelector("#create-key-error")!.textContent=error instanceof Error?error.message:"API key creation failed";}
+  finally{button.disabled=false;}
+});
+document.querySelector("#intelligence-enabled")!.addEventListener("change",()=>{
+  const editor=document.querySelector<HTMLTextAreaElement>("#intelligence-config")!;
+  try{const config=JSON.parse(editor.value||"{}");if(config && !Array.isArray(config) && typeof config==="object"){config.enabled=document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked;editor.value=JSON.stringify(config,null,2);}}catch{/* Preserve invalid drafts for correction. */}
+  updateBenchmarkControls();markDirty();
+});
+document.querySelector("#intelligence-config")!.addEventListener("input",()=>{
+  try{const config=JSON.parse(document.querySelector<HTMLTextAreaElement>("#intelligence-config")!.value||"{}");document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked=config.enabled===true;updateBenchmarkControls();}catch{/* Save reports invalid JSON without discarding the draft. */}
+});
 
 async function checkSetup():Promise<void>{
   try{const response=await fetch("/gateway/v1/setup",{cache:"no-store"});if(!response.ok)throw new Error();const status=await response.json();document.querySelector<HTMLDialogElement>(status.setup_required?"#setup-dialog":"#login-dialog")!.showModal();}
@@ -589,12 +656,13 @@ document.querySelector("#setup-form")!.addEventListener("submit",async event=>{
   const username=field("#setup-username").value,password=field("#setup-password").value,code=field("#setup-code").value;
   if(password!==field("#setup-confirm").value){document.querySelector("#setup-error")!.textContent="Passwords do not match.";return;}
   field("#setup-password").value="";field("#setup-confirm").value="";field("#setup-code").value="";
-  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");adminAuthorization=basicAuthorization(username,password);document.querySelector<HTMLDialogElement>("#setup-dialog")!.close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
+  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");adminAuthorization=basicAuthorization(username,password);signedInUsername=username;updateConsoleIdentity();document.querySelector<HTMLDialogElement>("#setup-dialog")!.close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
   catch(error){document.querySelector("#setup-error")!.textContent=error instanceof Error?error.message:"Administrator setup failed.";}
 });
 document.querySelector("#generate-api-key")!.addEventListener("click",async()=>{
   if(!confirm("Generate a new API key? All clients using the current key will need updating."))return;
-  try{const response=await gatewayFetch("/gateway/v1/admin/api-key",{method:"POST",headers:await authProvider.headers()});if(!response.ok)throw new Error();const result=await response.json();showNewAPIKey(result.api_key,result.warning);}
+  const login=adminAuthorization;
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-key",{method:"POST",headers:await authProvider.headers()});if(!response.ok)throw new Error();const result=await response.json();if(login!==adminAuthorization)return;showNewAPIKey(result.api_key,result.warning);}
   catch{toast("API key generation failed. Sign in as the administrator.");}
 });
 function clearNewAPIKey():void{document.querySelector<HTMLTextAreaElement>("#new-api-key")!.value="";}

@@ -109,6 +109,62 @@ func (r *handlerRuntime) rotateAPIKey(w http.ResponseWriter, req *http.Request) 
 	}
 	writeJSON(w, 200, map[string]string{"api_key": key, "warning": "Save this API key now. It is displayed only once; the previous key no longer works."})
 }
+
+// Named client keys are distinct from provider secrets. Management is protected
+// by the same administrator Basic boundary as configuration and rotation.
+func (r *handlerRuntime) gatewayKeysAPI(w http.ResponseWriter, req *http.Request) {
+	if r.credentials == nil {
+		writeConfigError(w, 503, errors.New("credential database unavailable"))
+		return
+	}
+	id := strings.TrimPrefix(strings.TrimPrefix(req.URL.Path, "/gateway/v1/admin/api-keys"), "/")
+	switch req.Method {
+	case http.MethodGet:
+		if id != "" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		keys, err := r.credentials.ListGatewayAPIKeys()
+		if err != nil {
+			writeConfigError(w, 500, errors.New("cannot list API keys"))
+			return
+		}
+		writeJSON(w, 200, map[string]any{"api_keys": keys})
+	case http.MethodPost:
+		if id != "" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var input struct {
+			Name string `json:"name"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, 4096))
+		decoder.DisallowUnknownFields()
+		var extra any
+		if decoder.Decode(&input) != nil || decoder.Decode(&extra) != io.EOF {
+			writeConfigError(w, 400, errors.New("provide an API key name"))
+			return
+		}
+		metadata, key, err := r.credentials.CreateGatewayAPIKey(input.Name)
+		if err != nil {
+			writeConfigError(w, 400, err)
+			return
+		}
+		writeJSON(w, 201, map[string]any{"key": metadata, "api_key": key, "warning": "This API key is displayed only once. Save it securely before closing this dialog."})
+	case http.MethodDelete:
+		if id == "" {
+			writeConfigError(w, 400, errors.New("API key ID required"))
+			return
+		}
+		if err := r.credentials.DeleteGatewayAPIKey(id); err != nil {
+			writeConfigError(w, 404, errors.New("API key not found"))
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "deleted"})
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
 func promptAdminCredentials(username string, confirm bool, output io.Writer) (string, string, error) {
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	if username == "" {

@@ -154,24 +154,24 @@ aggregation/routing weights and timing options are preserved on console saves.
 An empty Hugging Face dataset or the old `org/your-leaderboard` example placeholder
 uses the built-in preset instead. Nothing is enabled or contacted by default.
 
-The **Current model benchmark data** table loads cached data on page entry.
-Choose aggregate capability scores and operational measurements, or raw source
-observations with canonical/external model IDs, original/normalized scores,
-units, dates, versions, date basis and match status. Both views put capability
-columns (including coding, agentic and knowledge) next to the model name.
-Raw rows fill only their measured capability's normalized score; unknown scales
-and unmeasured capabilities remain unknown. JSON metadata is hidden from the
-console table and excluded from its requests, but remains stored in SQLite
-and available through the management API.
-Aggregate results include evaluation/retrieval dates, age and validity as well
-as every capability and operational measurement.
-Raw results include unmatched models and retained disabled-source data; only
-enabled, matched evidence contributes to aggregates. If imported observations
-exist but no models match configured providers, the console automatically shows
-raw results rather than an empty aggregate table. Explicitly choosing a view
-keeps that choice. Both views are filterable
-and paginated; choose **25, 50 or 100 rows per page** (default 25).
-Missing values are unknown, not zero, and preference stays separate.
+The **Current model benchmark data** table loads cached data on page entry and
+always shows **one row per model**, with its available coding, agentic, knowledge
+and other capability scores together in columns. Summaries use the same weighted,
+freshness-aware aggregation as routing and combine the full dataset before
+filtering or pagination; scores for a model cannot be split across pages.
+Choose **All benchmark models** (default) to include unmatched/ambiguous imported
+models from enabled sources, or **Configured models only** for matched models.
+Known aliases group under their canonical Torii ID. Display-only unmatched rows
+group identical normalized external IDs across sources; model dates, versions
+and effort suffixes stay distinct. Ambiguous identities are explicitly labelled
+and never become eligible for routing because they appear in this table.
+JSON metadata and individual observations remain stored in SQLite and inspectable
+through the management API, but are no longer fetched or rendered by the table.
+Disabled-source raw data remains accessible through those inspection APIs.
+The table also shows operational measurements, provenance dates, age and validity.
+Both scopes are filterable and paginated; choose **25, 50 or 100 models per page**
+(default 25). Missing or incomparable values are unknown, not zero, and preference
+stays separate rather than silently contributing to overall quality.
 
 **Refresh activity** streams real fetch/parse (including dataset page counts),
 rate-limit waits, persistence, publication and failure
@@ -362,8 +362,8 @@ Management routes use the gateway's existing API authentication:
 | --- | --- |
 | `GET /gateway/v1/intelligence` | Full snapshot, source observations, model scores and unmatched IDs |
 | `GET /gateway/v1/intelligence/sources` | Source status, last attempt/success, age, staleness, safe errors and metadata |
-| `GET /gateway/v1/intelligence/models` | Models with aggregates and operational metadata |
-| `GET /gateway/v1/intelligence/observations` | Paginated raw table rows including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; `include_metadata=true` returns complete captured metadata for inspection; omitted by default and by the console |
+| `GET /gateway/v1/intelligence/models` | Matched models with aggregates and operational data; optional `include_unmatched=true` adds display-only model summaries with `display_name`, `match` and `external_ids`, without changing routing eligibility |
+| `GET /gateway/v1/intelligence/observations` | Paginated raw observations including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; `include_metadata=true` returns complete captured metadata for inspection; the console table uses model summaries instead |
 | `GET /gateway/v1/intelligence/models/{id}` | Raw observations, provenance and aggregates for a canonical or physical ID |
 | `GET /gateway/v1/intelligence/unmatched` | Unmatched/ambiguous source IDs and candidate canonical IDs |
 | `POST /gateway/v1/intelligence/refresh` | Refresh all enabled sources; summary includes `partial_failure` and per-source status |

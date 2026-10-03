@@ -7,11 +7,8 @@ let benchmarkSources                         = [];
 let benchmarkSourceStatus                      = {};
 let benchmarkSourceActivity                         = {};
 let benchmarkModels                      = {};
-let benchmarkRawRows                        = [];
-let benchmarkRawTotal = 0;
 let benchmarkPage = 0;
 let benchmarkTableView = "models";
-let benchmarkViewChosen = false;
 let benchmarkFilter = "";
 let benchmarkDirty = false;
 let benchmarkRefreshRunning = false;
@@ -51,8 +48,8 @@ function applyBenchmarkConfig(config                      = {})       {
 }
 function clearBenchmarkConsole()       {
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
-  benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {}; benchmarkRawRows = [];
-  benchmarkRawTotal = 0; benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models"; benchmarkViewChosen = false;
+  benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
+  benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
   benchmarkPageSize = 25;
   benchmarkDirty = false; benchmarkRefreshRunning = false; benchmarkProgressLog = [];
   benchmarkProgressCounts = {total:0,completed:0,failed:0};
@@ -130,32 +127,24 @@ function benchmarkSafeMessage(message        )         {
 }
 function benchmarkNumber(raw     , score = false)         { return typeof raw === "number" && Number.isFinite(raw) ? (score ? (raw * 100).toFixed(1) : String(Number(raw.toFixed(4)))) : "—"; }
 function renderBenchmarkTable()       {
-  const raw = benchmarkTableView === "observations";
-  const scores = raw ? benchmarkCapabilities : ["overall", ...benchmarkCapabilities];
+  const scores = ["overall", ...benchmarkCapabilities];
   const scoreHeaders = scores.map(score => `${score.replace(/_/g," ").replace(/^./, letter => letter.toUpperCase())} %`);
   const operations = Object.keys(benchmarkOperations);
-  const headers = raw ? ["Model", ...scoreHeaders, "External model ID", "Source", "Benchmark", "Category", "Raw score", "Normalized %", "Unit", "Version", "Evaluation date", "Retrieved", "Date basis", "Match"]
-    : ["Model", ...scoreHeaders, "Providers", "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Data status", "Latest evaluation", "Last retrieval", "Age seconds", "Valid until"];
-  let rows       ;
-  let total        ;
-  if (raw) { rows = benchmarkRawRows; total = benchmarkRawTotal; }
-  else {
-    const query = benchmarkFilter.toLowerCase();
-    const models = Object.entries(benchmarkModels).sort(([a],[b]) => a.localeCompare(b)).filter(([id, model]) => `${id} ${(model.provider_ids || []).join(" ")} ${(model.sources || []).join(" ")}`.toLowerCase().includes(query));
-    total = models.length;
-    benchmarkPage = Math.min(benchmarkPage, Math.max(0, Math.ceil(total / benchmarkPageSize) - 1));
-    rows = models.slice(benchmarkPage * benchmarkPageSize, (benchmarkPage + 1) * benchmarkPageSize).map(([id, model]) => ({...model,id}));
-  }
+  const headers = ["Model", ...scoreHeaders, "Providers", "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Match", "Data status", "Latest evaluation", "Last retrieval", "Age seconds", "Valid until"];
+  const query = benchmarkFilter.toLowerCase();
+  const models = Object.entries(benchmarkModels).sort(([a,left],[b,right]) => String(left.display_name || a).localeCompare(String(right.display_name || b)) || a.localeCompare(b))
+    .filter(([id, model]) => `${id} ${model.display_name || ""} ${(model.external_ids || []).join(" ")} ${(model.provider_ids || []).join(" ")} ${(model.sources || []).join(" ")}`.toLowerCase().includes(query));
+  const total = models.length;
+  benchmarkPage = Math.min(benchmarkPage, Math.max(0, Math.ceil(total / benchmarkPageSize) - 1));
+  const rows = models.slice(benchmarkPage * benchmarkPageSize, (benchmarkPage + 1) * benchmarkPageSize).map(([id, model]) => ({...model,id}));
   document.querySelector("#benchmark-table-head") .innerHTML = `<tr>${headers.map(header => `<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
   document.querySelector("#benchmark-table-body") .innerHTML = rows.length ? rows.map(row => {
-    // Raw rows only score the capability actually measured by the benchmark.
-    // Never guess an aggregate or normalize an unknown upstream scale here.
-    const values = raw ? [row.model_id || row.external_model_id || "—", ...scores.map(score => benchmarkNumber(row.category === score ? row.normalized_score : undefined,true)), row.external_model_id, row.source, row.benchmark, row.category, benchmarkNumber(row.original_score), benchmarkNumber(row.normalized_score,true), row.unit || "—", row.version || "—", benchmarkDate(row.evaluated_at), benchmarkDate(row.retrieved_at), row.date_basis || "Unknown", row.model_id ? "Matched" : "Unmatched / ambiguous"]
-      : [row.id, ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), (row.provider_ids || []).join(", "), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
+    const match = row.match === "ambiguous" ? "Ambiguous" : row.match === "unmatched" ? "Unmatched" : "Matched";
+    const values = [row.display_name || row.id, ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), (row.provider_ids || []).join(", "), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), match, row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
     return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}</tr>`;
   }).join("") : `<tr><td colspan="${headers.length}">No cached benchmark data matches this view. Enable sources, save, and refresh to import results.</td></tr>`;
   const pages = Math.max(1, Math.ceil(total / benchmarkPageSize));
-  document.querySelector("#benchmark-data-count") .textContent = `${total} ${raw ? "observations" : "models"}`;
+  document.querySelector("#benchmark-data-count") .textContent = `${total} models`;
   document.querySelector("#benchmark-page-label") .textContent = `Page ${benchmarkPage + 1} of ${pages}`;
   document.querySelector                   ("#benchmark-previous") .disabled = benchmarkPage === 0;
   document.querySelector                   ("#benchmark-next") .disabled = (benchmarkPage + 1) * benchmarkPageSize >= total;
@@ -167,9 +156,9 @@ async function loadBenchmarkData()                   {
   const login = adminAuthorization;
   try {
     const headers = await authProvider.headers();
-    // Always check the raw data too: imported models need not match the user's
-    // configured providers, and an empty aggregate view must not hide an import.
-    const paths = ["sources", "models", `observations?offset=${benchmarkTableView === "observations" ? benchmarkPage * benchmarkPageSize : 0}&limit=${benchmarkPageSize}&q=${encodeURIComponent(benchmarkFilter)}`];
+    // Request full model summaries, not a page of per-score observations.
+    // Grouping happens on the backend before filtering or client pagination.
+    const paths = ["sources", benchmarkTableView === "routable" ? "models" : "models?include_unmatched=true"];
     const replies = await Promise.all(paths.map(async path => {
       const response = await gatewayFetch(`/gateway/v1/intelligence/${path}`, {headers});
       const body = await response.json();
@@ -178,12 +167,6 @@ async function loadBenchmarkData()                   {
     }));
     if (sequence !== benchmarkReloadSequence || login !== adminAuthorization) return false;
     [benchmarkSourceStatus, benchmarkModels] = replies;
-    if (replies[2]) { benchmarkRawRows = replies[2].observations || []; benchmarkRawTotal = replies[2].total || 0; }
-    if (!benchmarkViewChosen && benchmarkTableView === "models" && Object.keys(benchmarkModels).length === 0 && benchmarkRawTotal > 0) {
-      benchmarkTableView = "observations"; benchmarkPage = 0;
-      document.querySelector                   ("#benchmark-table-view") .value = "observations";
-    }
-    if (benchmarkTableView === "observations" && replies[2] && benchmarkPage > 0 && benchmarkPage * benchmarkPageSize >= benchmarkRawTotal) {benchmarkPage = Math.max(0,Math.ceil(benchmarkRawTotal/benchmarkPageSize)-1);return await loadBenchmarkData();}
     renderBenchmarkSourceStatus(); renderBenchmarkTable();
     if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status") .textContent = "Showing saved benchmark evidence. Missing scores are unknown, not zero; human preference remains a separate signal.";
     return true;
@@ -282,11 +265,11 @@ async function inspectBenchmarks(refresh         )                {
 function initializeBenchmarks()       {
   const list = document.querySelector("#benchmark-sources-list") ;
   list.addEventListener("input", updateBenchmarkSource); list.addEventListener("click", benchmarkSourceAction);
-  document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
-  document.querySelector("#benchmark-table-view") .addEventListener("change",()=>{benchmarkTableView=document.querySelector                   ("#benchmark-table-view") .value;benchmarkViewChosen=true;benchmarkPage=0;void loadBenchmarkData();});
-  document.querySelector("#benchmark-table-filter") .addEventListener("input",()=>{benchmarkFilter=document.querySelector                  ("#benchmark-table-filter") .value;benchmarkPage=0;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
-  document.querySelector("#benchmark-previous") .addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();}});
-  document.querySelector("#benchmark-next") .addEventListener("click",()=>{benchmarkPage++;if(benchmarkTableView==="models")renderBenchmarkTable();else void loadBenchmarkData();});
+  document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;renderBenchmarkTable();});
+  document.querySelector("#benchmark-table-view") .addEventListener("change",()=>{benchmarkTableView=document.querySelector                   ("#benchmark-table-view") .value;benchmarkPage=0;void loadBenchmarkData();});
+  document.querySelector("#benchmark-table-filter") .addEventListener("input",()=>{benchmarkFilter=document.querySelector                  ("#benchmark-table-filter") .value;benchmarkPage=0;renderBenchmarkTable();});
+  document.querySelector("#benchmark-previous") .addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;renderBenchmarkTable();}});
+  document.querySelector("#benchmark-next") .addEventListener("click",()=>{benchmarkPage++;renderBenchmarkTable();});
   renderBenchmarkTable();
 }
 

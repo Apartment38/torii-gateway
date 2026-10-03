@@ -76,6 +76,17 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 	case r.URL.Path == "/gateway/v1/intelligence/unmatched":
 		response = snapshot.Unmatched
 	case r.URL.Path == "/gateway/v1/intelligence/models":
+		if raw := r.URL.Query().Get("include_unmatched"); raw != "" {
+			includeUnmatched, err := strconv.ParseBool(raw)
+			if err != nil {
+				writeAPIError(w, http.StatusBadRequest, "Invalid benchmark model scope", "invalid_request_error", "invalid_scope")
+				return
+			}
+			if includeUnmatched {
+				response = h.intelligence.TableModels(snapshot)
+				break
+			}
+		}
 		models := map[string]intelligence.Model{}
 		for id, model := range snapshot.Models {
 			model.Observations = nil

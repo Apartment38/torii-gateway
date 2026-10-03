@@ -251,6 +251,51 @@ func TestBenchmarkObservationTablePaginationPreservesUnmatchedAndProvenance(t *t
 	}
 }
 
+func TestBenchmarkModelTableCombinesScoresAndKeepsLegacyRoutingAPIUnchanged(t *testing.T) {
+	source := consoleBenchmarkSource{id: "aa", fetch: func(context.Context) (intelligence.Result, error) {
+		coding := consoleBenchmarkObservation("claude-opus-5")
+		agentic, knowledge := coding, coding
+		agentic.Benchmark, agentic.Category, agentic.Normalized = "tools", intelligence.Agentic, benchmarkPtr(.8)
+		knowledge.Benchmark, knowledge.Category, knowledge.Normalized = "knowledge", intelligence.Knowledge, benchmarkPtr(.95)
+		return intelligence.Result{Observations: []intelligence.Observation{coding, agentic, knowledge, consoleBenchmarkObservation("model-a")}}, nil
+	}}
+	handler, m := consoleBenchmarkManager(t, []intelligence.Source{source})
+	if err := m.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+	w := get("/gateway/v1/intelligence/models?include_unmatched=true")
+	var rows map[string]intelligence.TableModel
+	if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil || w.Code != 200 || len(rows) != 2 {
+		t.Fatalf("model table: %d %s %v", w.Code, w.Body.String(), err)
+	}
+	model := rows["external/claude-opus-5"]
+	if model.Scores[intelligence.Coding] != .9 || model.Scores[intelligence.Agentic] != .8 || model.Scores[intelligence.Knowledge] != .95 || model.ObservationCount != 3 || model.Observations != nil {
+		t.Fatalf("scores not combined: %+v", model)
+	}
+	if strings.Contains(w.Body.String(), "large_upstream_row") {
+		t.Fatal("hidden metadata returned in summary")
+	}
+	w = get("/gateway/v1/intelligence/models")
+	rows = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil || len(rows) != 1 {
+		t.Fatalf("legacy models API changed: %s %v", w.Body.String(), err)
+	}
+	if w := get("/gateway/v1/intelligence/models/external/claude-opus-5"); w.Code != 404 {
+		t.Fatal("unmatched summary exposed as a routable model")
+	}
+	if w := get("/gateway/v1/intelligence/models?include_unmatched=bad"); w.Code != 400 {
+		t.Fatal("invalid summary scope accepted")
+	}
+	if len(m.Snapshot().Sources["aa"].Observations) != 4 {
+		t.Fatal("table discarded the raw observations")
+	}
+}
+
 func TestBenchmarkIngestionChangesSmartRoutingWithoutFetchingOnInference(t *testing.T) {
 	var benchmarkFetches atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

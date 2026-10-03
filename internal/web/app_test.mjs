@@ -590,8 +590,7 @@ test("benchmark refresh uses memory-only login rather than configuration credent
   const app = consoleFixture((url, options) => {
     assert.equal(options.headers.Authorization, "Basic test-admin-login");
     if (url.endsWith("/sources")) return response({aa:{last_success:"2026-10-01",enabled:true,observation_count:10}});
-    if (url.endsWith("/models")) return response({});
-    if (url.includes("/observations?")) return response({total:0,observations:[]});
+    if (url.includes("/models")) return response({});
     assert.equal(url, "/gateway/v1/intelligence/refresh");
     assert.equal(options.method, "POST");
     assert.equal(options.headers.Accept,"text/event-stream");
@@ -736,50 +735,35 @@ test("hidden custom source settings survive saves without being replaced by pres
   assert.deepEqual(saved.sources[0],source);assert.equal(saved.source_timeout,"45m");assert.equal(saved.aggregation.source_weights["hf-custom"],2);
 });
 
-test("cached table shows scores, operational data, raw unmatched observations and safe HTML", async () => {
+test("cached model table combines capabilities, operational data and unmatched models safely", async () => {
   const app=consoleFixture(url=>{
     if(url.endsWith("/sources"))return response({aa:{enabled:true,last_success:"2026-10-02",observation_count:2}});
-    if(url.endsWith("/models"))return response({"provider/model":{provider_ids:["provider/model"],scores:{coding:.92,preference:.81},operations:{ttft:.2,context_length:128000},sources:["aa"],observation_count:2,latest_retrieval:"2026-10-02"}});
-    assert.match(url,/observations\?offset=0&limit=25&q=/);
-    assert.doesNotMatch(url,/include_metadata=true/);
-    return response({total:1,observations:[{external_model_id:"<unmatched>",source:"aa",benchmark:"code",category:"coding",original_score:85,normalized_score:.85,version:"v1",retrieved_at:"2026-10-02",date_basis:"retrieval_only",metadata:{confidence_interval:[.8,.9],detail:"<script>upstream</script>"}}]});
+    assert.equal(url,"/gateway/v1/intelligence/models?include_unmatched=true");
+    return response({"provider/model":{provider_ids:["provider/model"],scores:{coding:.92,preference:.81},operations:{ttft:.2,context_length:128000},sources:["aa"],observation_count:2,latest_retrieval:"2026-10-02"},"external/unmatched":{display_name:"<unmatched>",match:"unmatched",scores:{coding:.85,agentic:.8,knowledge:.9},sources:["aa"],observation_count:3}});
   });
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('loadBenchmarkData()');
   let html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
   assert.match(html,/92\.0/);assert.match(html,/81\.0/);assert.match(html,/128000/);assert.match(html,/—/);
-  app.run('benchmarkTableView="observations"');await app.run('loadBenchmarkData()');
-  html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
-  assert.match(html,/&lt;unmatched&gt;/);assert.match(html,/85\.0/);assert.match(html,/Unmatched \/ ambiguous/);
-  assert.match(html,/retrieval_only/);assert.doesNotMatch(html,/confidence_interval|upstream|<script>|benchmark-metadata/);
+  assert.match(html,/&lt;unmatched&gt;/);assert.match(html,/85\.0/);assert.match(html,/Unmatched/);
+  assert.equal([...html.matchAll(/<tr>/g)].length,2);
+  assert.doesNotMatch(html,/confidence_interval|upstream|<script>|benchmark-metadata/);
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-table-head").innerHTML'),/>Metadata</);
 });
 
-test("benchmark capability columns show only measured comparable scores and hide metadata", () => {
+test("one model row contains every available capability score and hides metadata", () => {
   const app=consoleFixture(()=>response({}));
-  app.context.rows=[
-    {external_model_id:"model-a",source:"aa",benchmark:"code",category:"coding",original_score:84,normalized_score:.84,metadata:{hidden:"metadata-sentinel"}},
-    {external_model_id:"model-a",source:"aa",benchmark:"tools",category:"agentic",original_score:0,normalized_score:0},
-    {external_model_id:"model-b",source:"aa",benchmark:"knowledge",category:"knowledge",original_score:99},
-    {external_model_id:"model-c",source:"aa",benchmark:"knowledge",category:"knowledge",original_score:91,normalized_score:.91},
-  ];
-  app.run('benchmarkTableView="observations";benchmarkRawRows=rows;benchmarkRawTotal=4;renderBenchmarkTable()');
+  app.context.models={"external/claude-opus-5":{display_name:"claude-opus-5",match:"unmatched",scores:{overall:.9,coding:.92,agentic:.88,knowledge:.94,math:0},metadata:{hidden:"metadata-sentinel"}}};
+  app.run('benchmarkModels=models;renderBenchmarkTable()');
   const headers=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
   const cells=[...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>(.*?)<\/tr>/g)].map(row=>[...row[1].matchAll(/<td>(.*?)<\/td>/g)].map(match=>match[1]));
   for(const name of ["Coding %","Agentic %","Knowledge %","Reasoning %","Math %","Instruction following %","Multimodal %","Preference %","General intelligence %"])assert.ok(headers.includes(name));
   assert.equal(headers.includes("Metadata"),false);
-  assert.equal(cells[0][headers.indexOf("Coding %")],"84.0");
-  assert.equal(cells[0][headers.indexOf("Agentic %")],"—");
-  assert.equal(cells[1][headers.indexOf("Agentic %")],"0.0");
-  assert.equal(cells[2][headers.indexOf("Knowledge %")],"—","unknown scales must not be guessed");
-  assert.equal(cells[3][headers.indexOf("Knowledge %")],"91.0");
+  assert.equal(cells.length,1);
+  assert.equal(cells[0][headers.indexOf("Model")],"claude-opus-5");
+  for(const [name,score] of [["Overall %","90.0"],["Coding %","92.0"],["Agentic %","88.0"],["Knowledge %","94.0"],["Math %","0.0"],["Reasoning %","—"]])assert.equal(cells[0][headers.indexOf(name)],score);
   assert.ok(cells.every(row=>row.length===headers.length));
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/metadata-sentinel/);
-  app.context.models={"provider/model":{scores:{overall:.9,coding:.92,agentic:.88,knowledge:.94}}};
-  app.run('benchmarkTableView="models";benchmarkModels=models;renderBenchmarkTable()');
-  const modelHeaders=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
-  const modelCells=[...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<td>(.*?)<\/td>/g)].map(match=>match[1]);
-  for(const [name,score] of [["Overall %","90.0"],["Coding %","92.0"],["Agentic %","88.0"],["Knowledge %","94.0"]])assert.equal(modelCells[modelHeaders.indexOf(name)],score);
 });
 
 test("streamed refresh advances actual source progress and updates the table before completion", async () => {
@@ -823,7 +807,6 @@ test("refresh button shows activity immediately and table requests cannot block 
   const app=consoleFixture(url=>{
     if(url.endsWith("/refresh"))return {ok:true,headers:{get:()=>"text/event-stream"},body:new ReadableStream({start(c){controller=c;}})};
     if(url.endsWith("/sources"))return response({aa:{enabled:true,observation_count:1}});
-    if(url.includes("/observations?"))return response({total:0,observations:[]});
     return new Promise(resolve=>pendingModels.push(()=>resolve(response({ready:{scores:{coding:.9}}}))));
   });
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
@@ -851,22 +834,26 @@ test("refresh button shows activity immediately and table requests cannot block 
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").textContent'),"Refresh benchmarks");
 });
 
-test("imported unmatched data populates the table without silently merging model identities",async()=>{
-  const app=consoleFixture(url=>url.endsWith("/sources")?response({benchlm:{enabled:true,observation_count:1}}):url.endsWith("/models")?response({}):response({total:1,observations:[{external_model_id:"external-model",source:"benchlm",benchmark:"coding",category:"coding",original_score:80,normalized_score:.8,metadata:{}}]}));
+test("unmatched model summaries populate the table and scopes never fall back to score rows",async()=>{
+  const app=consoleFixture(url=>url.endsWith("/sources")?response({benchlm:{enabled:true,observation_count:3}}):url.endsWith("/models")?response({}):response({"external/model":{display_name:"external-model",match:"unmatched",sources:["benchlm"],scores:{coding:.8,agentic:.7,knowledge:.9},observation_count:3}}));
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('loadBenchmarkData()');
-  assert.equal(app.run('document.querySelector("#benchmark-table-view").value'),"observations");
+  assert.equal(app.run('benchmarkTableView'),"models");
   assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/external-model/);
-  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/Unmatched \/ ambiguous/);
-  assert.equal(app.run('Object.keys(benchmarkModels).length'),0);
-  app.run('document.querySelector("#benchmark-table-view").value="models";document.querySelector("#benchmark-table-view").listeners.change()');
+  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/Unmatched/);
+  assert.equal(app.run('Object.keys(benchmarkModels).length'),1);
+  app.run('document.querySelector("#benchmark-table-view").value="routable";document.querySelector("#benchmark-table-view").listeners.change()');
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(app.run('benchmarkTableView'),"models","an explicitly selected view must remain selected");
+  assert.equal(app.run('benchmarkTableView'),"routable");
+  assert.equal(app.run('Object.keys(benchmarkModels).length'),0);
+  assert.ok(app.calls.every(call=>!call.url.includes("/observations")));
+  const index=readFileSync(new URL("./static/index.html",import.meta.url),"utf8");
+  assert.doesNotMatch(index,/value="observations"|Raw benchmark results/);
 });
 
 test("refresh completion waits for both the table response and the browser paint",async()=>{
   let finishModels;
-  const app=consoleFixture(url=>url.endsWith("/sources")?response({}):url.includes("/observations?")?response({total:0,observations:[]}):new Promise(resolve=>{finishModels=()=>resolve(response({ready:{scores:{coding:.9}}}));}));
+  const app=consoleFixture(url=>url.endsWith("/sources")?response({}):new Promise(resolve=>{finishModels=()=>resolve(response({ready:{scores:{coding:.9}}}));}));
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkRefreshRunning=true;benchmarkProgressCounts={total:2,completed:2,failed:0}');
   const frames=[];app.context.window.requestAnimationFrame=callback=>frames.push(callback);
   const finished=app.run('finishBenchmarkRefresh({partial_failure:false},adminAuthorization,new AbortController())');
@@ -890,14 +877,12 @@ test("failed table loading cannot announce a completed refresh",async()=>{
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-refresh-log").textContent'),/Benchmark refresh finished/);
 });
 
-test("page size choices paginate models and request raw observations in 25, 50 or 100 row chunks",async()=>{
+test("page sizes paginate complete model rows and filtering never splits capabilities",async()=>{
   const app=consoleFixture(url=>{
     if(url.endsWith("/sources"))return response({});
-    if(url.endsWith("/models"))return response({});
-    const parsed=new URL(url,"http://gateway");const size=Number(parsed.searchParams.get("limit")),offset=Number(parsed.searchParams.get("offset"));
-    return response({total:120,observations:Array.from({length:Math.min(size,120-offset)},(_,i)=>({model_id:`raw-${offset+i}`,external_model_id:`raw-${offset+i}`,metadata:{row:offset+i}}))});
+    return response(app.context.rows);
   });
-  app.context.rows=Object.fromEntries(Array.from({length:120},(_,i)=>[`model-${String(i).padStart(3,"0")}`,{scores:{coding:.9}}]));
+  app.context.rows=Object.fromEntries(Array.from({length:120},(_,i)=>[`model-${String(i).padStart(3,"0")}`,{scores:{coding:.9,agentic:.8,knowledge:.7}}]));
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkModels=rows;renderBenchmarkTable()');
   assert.equal([...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>/g)].length,25);
   assert.equal(app.run('document.querySelector("#benchmark-page-label").textContent'),"Page 1 of 5");
@@ -907,13 +892,18 @@ test("page size choices paginate models and request raw observations in 25, 50 o
     app.run(`document.querySelector("#benchmark-page-size").value="${size}";document.querySelector("#benchmark-page-size").listeners.change()`);
     assert.equal([...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>/g)].length,size);
   }
-  app.run('benchmarkTableView="observations"');
+  app.run('benchmarkTableView="routable"');
+  await app.run('loadBenchmarkData()');
   for(const size of [25,50,100]){
     app.run(`document.querySelector("#benchmark-page-size").value="${size}";document.querySelector("#benchmark-page-size").listeners.change()`);
     await new Promise(resolve=>setImmediate(resolve));
-    assert.ok(app.calls.at(-1).url.includes(`limit=${size}`));
     assert.equal([...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>/g)].length,size);
   }
+  app.run('document.querySelector("#benchmark-table-filter").value="model-119";document.querySelector("#benchmark-table-filter").listeners.input()');
+  const html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
+  assert.equal([...html.matchAll(/<tr>/g)].length,1);
+  for(const value of ["model-119","90.0","80.0","70.0"])assert.ok(html.includes(value));
+  assert.equal(app.run('document.querySelector("#benchmark-data-count").textContent'),"1 models");
 });
 
 test("interrupted refresh reports incomplete progress and ignores late data after logout", async () => {

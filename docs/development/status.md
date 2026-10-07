@@ -6,13 +6,11 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-The model-picker catalog repair is in progress: `smart` now precedes physical
-models so client list truncation does not hide it. Provider-prefixed display
-labels and Fast controls are governed by Hermes; permission to expand the
-earlier no-Hermes-code boundary is pending. Configuration revision
-protection and the combined Podman provider catalog are deployed and validated.
-Hermes's saved-endpoint connection test still omits the stored key; Hermes code
-changes remain outside scope. Re-entering the key for each test is the workaround.
+No implementation milestone is currently in progress. The Smart-first catalog
+repair and configuration revision protection are deployed and validated.
+Hermes remains unchanged as requested; its model-label formatting and custom
+endpoint Fast controls remain outside scope. Its saved-endpoint re-test also
+requires re-entering the actual key rather than a credential preview.
 
 ## Pending release checks and future work
 
@@ -34,6 +32,32 @@ changes remain outside scope. Re-entering the key for each test is the workaroun
   or general comparative routing superiority is established by the retained evaluation.
 
 ## Completed milestones without separate old task records
+
+### Smart-first client model catalog — 2026-10-07
+
+Hermes defaults to showing the first 50 models per provider. Adding seven Codex
+models moved the trailing virtual `smart` entry beyond that initial list. Torii
+now emits `smart` first from `/v1/models`, followed by the unchanged, sorted
+physical models. A regression catalog with 60 physical models verifies that
+Smart remains on the first client page without changing or omitting other IDs.
+
+The user confirmed Hermes must remain unchanged. Read-only checks reproduced
+its stripping of provider prefixes from labels and rejection of Fast overrides
+through custom proxy endpoints. Those behaviors were not changed; client/API
+documentation explains visibility, **Refresh Models**, and these boundaries.
+
+API baseline, final full Go tests/race tests, vet/build, formatting, generated
+console freshness, unchanged module metadata, affected documentation links and
+`git diff --check` passed. Built the standard image at source commit `2af3bc2`
+and deployed it through the existing Podman Compose project and volume after a
+protected stopped database/configuration backup; the previous image is retained.
+Live requests returned all 57 models with Smart first and exactly the same
+physical IDs, metadata and order. Provider configuration matched before/after;
+valid-key access, wrong-key rejection and container health passed. Hermes's
+unchanged installed discovery/parser also received Smart first among 57 entries;
+its code, configuration and model cache were not modified. Users must choose
+**Refresh Models** to replace their cached catalog. Task-owned source files were
+replicated into both authorized Torii checkouts; the task worktree is retained.
 
 ### Configuration save conflict protection — 2026-10-07
 

@@ -20,6 +20,13 @@ key in your client. These keys have different jobs and are not interchangeable.
 Model names can contain additional slashes: `openrouter/google/MODEL` belongs to
 provider `openrouter` with upstream model `google/MODEL`.
 
+Connection tests query the live catalog even when **Discover models** is disabled.
+The status then warns that **Save & reload** uses the static model list. Enable
+discovery to expose the returned models. For an Ollama server, choose **Ollama**
+and its server URL without `/v1`; Torii also queries native capability metadata
+so `smart` can select models that support the request. A leftover `setup` entry
+is a placeholder, not an upstream model.
+
 ## Multiple providers and advanced YAML
 
 The following are configuration excerpts: merge them into your existing config.
@@ -48,6 +55,14 @@ providers:
 
 If both servers expose `llama3.2`, clients see `local/llama3.2` and
 `lab/llama3.2`. A request for either name goes only to the named server. Explicit model requests are never substituted with a different provider/model.
+
+Ollama inference has a **5-minute request timeout** by default to allow cold model
+loading. Change **Request timeout** on its provider card, or set `request_timeout`
+to a positive Go duration such as `10m` in its YAML entry, then **Save & reload**.
+The deadline includes loading, generation, and reading the complete streamed or
+JSON response. Leave the field blank to restore the default. Discovery remains
+limited to 10 seconds; client cancellation still stops inference immediately.
+Set client and proxy deadlines high enough to allow the chosen provider timeout.
 
 Generic `openai_compatible` providers additionally support `bearer_token`,
 secret-reference-valued `headers`, `tls.ca_file`, `tls.server_name`, `models`,

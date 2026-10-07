@@ -30,6 +30,23 @@ func TestDecodeValidConfiguration(t *testing.T) {
 	}
 }
 
+func TestOllamaRequestTimeout(t *testing.T) {
+	for _, raw := range []string{"5m", "10m", "45s", "0s", "-1m", "forever"} {
+		t.Run(raw, func(t *testing.T) {
+			cfg, err := config.Decode(strings.NewReader(validConfig + "    request_timeout: " + raw + "\n"))
+			if raw == "0s" || raw == "-1m" || raw == "forever" {
+				if err == nil || !strings.Contains(err.Error(), "request_timeout must be a positive duration") {
+					t.Fatalf("invalid timeout accepted: %v", err)
+				}
+				return
+			}
+			if err != nil || cfg.Providers[0].RequestTimeout != raw {
+				t.Fatalf("Ollama request timeout = %q, error = %v", raw, err)
+			}
+		})
+	}
+}
+
 func TestDecodeAllowsNoProviders(t *testing.T) {
 	for _, input := range []string{
 		"server:\n  listen: 127.0.0.1:8080\nproviders: []\n",

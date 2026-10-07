@@ -17,6 +17,8 @@ This replaces the historical Version 1 implementation specification.
   Public route existence does not imply all providers/models support it.
 - Reuse HTTP clients. Client cancellation propagates upstream. Hop-by-hop headers
   are stripped. Provider redirects never carry credentials to another origin.
+- Ollama inference defaults to a configurable five-minute whole-request deadline,
+  including response consumption. Its ten-second discovery budget is independent.
 
 ## Identity and metadata
 

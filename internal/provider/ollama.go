@@ -18,6 +18,10 @@ import (
 
 const modelDiscoveryTimeout = 10 * time.Second
 
+// DefaultOllamaRequestTimeout allows cold model loading and response generation,
+// including consuming a streaming response. Discovery has its own shorter limit.
+const DefaultOllamaRequestTimeout = 5 * time.Minute
+
 const maxModelCatalogSize = 16 << 20
 
 // Ollama implements model discovery and inference for an Ollama server.
@@ -33,15 +37,25 @@ func NewOllama(id, baseURL string, client *http.Client) (*Ollama, error) {
 	if err := ValidateID(id); err != nil {
 		return nil, err
 	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	// Do not change a caller's shared client when applying the inference default.
+	if client.Timeout == 0 {
+		copy := *client
+		copy.Timeout = DefaultOllamaRequestTimeout
+		client = &copy
+	}
 	compatible, err := transport.NewOpenAICompatible(baseURL, client)
 	if err != nil {
 		return nil, err
 	}
 	u, _ := url.Parse(baseURL)
-	if client == nil {
-		client = http.DefaultClient
-	}
-	return &Ollama{id: id, baseURL: u, client: client, transport: compatible}, nil
+	// Discovery uses its own context deadline, even if inference is configured
+	// with a shorter timeout. Both clients share the same connection transport.
+	discoveryClient := *client
+	discoveryClient.Timeout = 0
+	return &Ollama{id: id, baseURL: u, client: &discoveryClient, transport: compatible}, nil
 }
 
 func (o *Ollama) ID() string { return o.id }

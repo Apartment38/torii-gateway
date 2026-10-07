@@ -44,7 +44,7 @@ administrator login, and gateway API keys are never YAML settings.
 | `organization` / `project` | Strings, absent | OpenAI profile headers; no newlines |
 | `model_rewrites` | Alias → upstream string map, empty | Compatible public aliases; distinct nonempty target per alias |
 | `connect_timeout` | Positive duration, transport default | Connection deadline for compatible clients |
-| `request_timeout` | Positive duration, no completion timeout | Whole compatible inference HTTP timeout |
+| `request_timeout` | Positive duration, `5m` Ollama; no completion timeout for compatible profiles | Whole inference HTTP timeout, including loading and reading JSON/SSE; Ollama accepts overrides such as `10m`. Zero/negative/invalid durations are rejected; omit to use the profile default |
 | `discovery_timeout` | Positive duration, 10s compatible | Separate catalog-discovery deadline |
 
 Persisted secrets must have exactly the stored reference form:

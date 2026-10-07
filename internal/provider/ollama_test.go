@@ -153,6 +153,88 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
 
+func TestOllamaInferenceDeadlineAndClientIsolation(t *testing.T) {
+	for _, timeout := range []time.Duration{0, 10 * time.Minute} {
+		t.Run(timeout.String(), func(t *testing.T) {
+			want := timeout
+			if want == 0 {
+				want = 5 * time.Minute
+			}
+			client := &http.Client{Timeout: timeout, Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				deadline, ok := r.Context().Deadline()
+				remaining := time.Until(deadline)
+				if !ok || remaining > want || remaining < want-time.Second {
+					t.Fatalf("inference deadline remaining = %v, present = %v, want %v", remaining, ok, want)
+				}
+				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+			})}
+			ollama, err := provider.NewOllama("local", "http://ollama.test", client)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := ollama.Forward(context.Background(), "/v1/chat/completions", []byte(`{"model":"cold","messages":[]}`), "cold")
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if client.Timeout != timeout {
+				t.Fatal("constructor changed the caller's shared client timeout")
+			}
+		})
+	}
+}
+
+func TestOllamaTimeoutIncludesStreamAndPropagatesCancellation(t *testing.T) {
+	canceled := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {}\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+		close(canceled)
+	}))
+	defer server.Close()
+	client := server.Client()
+	client.Timeout = 100 * time.Millisecond
+	ollama, err := provider.NewOllama("local", server.URL, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := ollama.Forward(context.Background(), "/v1/chat/completions", []byte(`{"model":"cold","stream":true}`), "cold")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if _, err := io.ReadAll(response.Body); err == nil {
+		t.Fatal("stream continued beyond the configured inference deadline")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("inference timeout did not cancel the upstream stream")
+	}
+}
+
+func TestOllamaInferenceTimeoutDoesNotShortenDiscovery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(150 * time.Millisecond):
+			_, _ = io.WriteString(w, `{"data":[]}`)
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	client := server.Client()
+	client.Timeout = 50 * time.Millisecond
+	ollama, err := provider.NewOllama("local", server.URL, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ollama.Models(context.Background()); err != nil {
+		t.Fatalf("inference timeout shortened model discovery: %v", err)
+	}
+}
+
 func TestOllamaModelDiscoveryHasDeadline(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		deadline, ok := request.Context().Deadline()

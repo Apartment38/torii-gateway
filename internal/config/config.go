@@ -190,8 +190,13 @@ func (c Config) Validate() error {
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
 			return fmt.Errorf("%s.base_url: %w", field, err)
 		}
-		if providerConfig.Type == "ollama" && (providerConfig.BearerToken != nil || len(providerConfig.Headers) > 0 || providerConfig.TLS != nil || len(providerConfig.Models) > 0 || providerConfig.DiscoverModels != nil || providerConfig.Transport != "" || providerConfig.Organization != "" || providerConfig.Project != "" || len(providerConfig.ModelRewrites) > 0 || providerConfig.ConnectTimeout != "" || providerConfig.RequestTimeout != "" || providerConfig.DiscoveryTimeout != "") {
+		if providerConfig.Type == "ollama" && (providerConfig.BearerToken != nil || len(providerConfig.Headers) > 0 || providerConfig.TLS != nil || len(providerConfig.Models) > 0 || providerConfig.DiscoverModels != nil || providerConfig.Transport != "" || providerConfig.Organization != "" || providerConfig.Project != "" || len(providerConfig.ModelRewrites) > 0 || providerConfig.ConnectTimeout != "" || providerConfig.DiscoveryTimeout != "") {
 			return fmt.Errorf("%s: generic provider options require type openai_compatible", field)
+		}
+		if providerConfig.Type == "ollama" && providerConfig.RequestTimeout != "" {
+			if d, err := time.ParseDuration(providerConfig.RequestTimeout); err != nil || d <= 0 {
+				return fmt.Errorf("%s.request_timeout must be a positive duration", field)
+			}
 		}
 		if providerConfig.Type == "openai_compatible" || providerConfig.Type == "jev" || providerConfig.Type == "jev_compatible" {
 			if err := validateCompatibleProvider(providerConfig); err != nil {

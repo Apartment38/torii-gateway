@@ -16,6 +16,19 @@ traffic. A provider's URL/key belongs in Torii's settings, not in the client.
 An OpenAI SDK that accepts a custom base URL can use these same values; endpoint
 availability still depends on the selected provider.
 
+In Hermes, add Torii as a custom OpenAI-compatible endpoint using the base URL
+above, a Torii client key, and Chat Completions mode. Refresh the discovered models
+after saving Torii's providers. If a saved endpoint re-test rejects the key, enter
+the actual key again: a credential preview such as `${KEY_ENV}` is not a bearer
+token. Verify the same URL/key with `/v1/models` below to distinguish client
+credential resolution from gateway authentication.
+
+A cold local model may take longer to load than the client's inference timeout.
+Torii allows Ollama requests 5 minutes by default; the provider's **Request
+timeout** can extend this (see [Providers](providers.md)). Client and proxy
+deadlines must also allow enough time; Torii cannot extend their deadlines.
+Discovery can succeed while an inference model is still loading.
+
 ## List models and chat
 
 ```sh

@@ -67,6 +67,8 @@ providers:
   - id: local
     type: ollama
     base_url: http://127.0.0.1:11434
+    # Cold loading plus the complete response defaults to 5 minutes.
+    # request_timeout: 10m
 
   # The normal OpenAI API profile is origin-locked and uses an external key.
   # Uncomment to expose OpenAI models as openai/<model>.

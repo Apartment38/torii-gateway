@@ -198,6 +198,18 @@ test("adding and removing the last provider toggles the empty-state notice", () 
   assert.equal(app.run("readConfig().providers.length"), 0);
 });
 
+test("connection tests disclose when discovered models will not be used after saving", async () => {
+  const app = consoleFixture(() => response(models(3)));
+  app.setProviders([{ ...draft("openai_compatible"), discover: false, models: "setup" }]);
+  await app.run("testProvider(0)");
+  assert.equal(app.status(0).textContent, "Connected · Working · 3 models discovered · Discovery disabled: Save & reload uses the static model list");
+  assert.equal(app.run("readProviderConfig(providers[0]).discover_models"), false);
+  assert.deepEqual(Array.from(app.run("readProviderConfig(providers[0]).models")), ["setup"]);
+  app.run("providers[0].discover = true");
+  await app.run("testProvider(0)");
+  assert.equal(app.status(0).textContent, "Connected · Working · 3 models discovered");
+});
+
 test("all provider types show a working status and discovered model count", async () => {
   const app = consoleFixture((_, options) => {
     const provider = JSON.parse(options.body).provider;
@@ -471,6 +483,18 @@ test("saving an existing Ollama with a classifier omits unsupported generic fiel
   app.run("applyConfig(ollamaConfig)");
   const output = app.run("readConfig().providers[0]");
   assert.deepEqual(Object.keys(output).sort(), ["base_url", "id", "type"]);
+});
+
+test("Ollama request timeout is editable, survives reload and can reset to default", () => {
+  const app = consoleFixture(() => response(models(1)));
+  app.context.config = { providers:[{ id:"local", type:"ollama", base_url:"http://localhost:11434", request_timeout:"10m" }] };
+  app.run("applyConfig(config)");
+  assert.match(app.list.innerHTML, /data-key="request_timeout" value="10m" placeholder="5m"/);
+  assert.equal(app.run("readConfig().providers[0].request_timeout"), "10m");
+  app.run('providers[0].request_timeout = "15m"');
+  assert.equal(app.run("readConfig().providers[0].request_timeout"), "15m");
+  app.run('providers[0].request_timeout = ""');
+  assert.equal(app.run("readConfig().providers[0].request_timeout"), undefined);
 });
 
 test("discovery preference is editable rather than overwritten by loaded YAML", () => {

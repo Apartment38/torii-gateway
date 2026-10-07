@@ -1495,7 +1495,15 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		cfg.Headers = nil
 	}
 	if cfg.Type == "ollama" {
-		return provider.NewOllama(cfg.ID, cfg.BaseURL, &http.Client{})
+		timeout := provider.DefaultOllamaRequestTimeout
+		if cfg.RequestTimeout != "" {
+			var err error
+			timeout, err = time.ParseDuration(cfg.RequestTimeout)
+			if err != nil || timeout <= 0 {
+				return nil, errors.New("Ollama request_timeout must be a positive duration")
+			}
+		}
+		return provider.NewOllama(cfg.ID, cfg.BaseURL, &http.Client{Timeout: timeout})
 	}
 	if cfg.Type == "nous" {
 		if db == nil {

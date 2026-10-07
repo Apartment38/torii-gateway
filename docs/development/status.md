@@ -6,8 +6,10 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-No implementation milestone is currently recorded as in progress. The documentation
-refresh is complete; validation and remaining platform checks are listed below.
+No implementation milestone is currently in progress. The Podman/Hermes gateway
+repair is validated. Hermes's saved-endpoint connection test still omits the
+stored key; Hermes code changes are outside the authorized scope. Re-entering
+the key for each test is the current workaround.
 
 ## Pending release checks and future work
 
@@ -29,6 +31,54 @@ refresh is complete; validation and remaining platform checks are listed below.
   or general comparative routing superiority is established by the retained evaluation.
 
 ## Completed milestones without separate old task records
+
+### Configurable Ollama inference deadline — 2026-10-07
+
+Ollama inference now defaults to a five-minute whole-request deadline instead of
+being unbounded. Positive `request_timeout` overrides are accepted in YAML and
+the provider card; clearing the console field restores the default. Model
+discovery retains its independent ten-second deadline, and client cancellation
+still propagates upstream. Updated the example, configuration reference and
+provider/client/design explanations. Shorter client/proxy deadlines remain
+outside Torii's control; no Hermes code or configuration was changed.
+
+Relevant baseline checks, final full Go tests/vet/build, module/format checks,
+full race checks plus affected-package races after discovery isolation, 67 console
+tests/generated-script freshness, example YAML, documentation links and diff
+whitespace passed. An isolated gateway completed a simulated 32-second cold load;
+short and longer live timeout overrides behaved correctly. Regression tests
+also cover stream cancellation and independence from discovery. Rebuilt the
+Podman image, passed its disposable non-root persistence/recovery suite, saved
+`5m` on the existing deployment's Ollama provider, and verified 50-model discovery,
+smart chat, the deployed console control and wrong-key rejection. Both project
+copies contain the change; previous deployment image/configuration are retained.
+
+### Podman/Hermes connection troubleshooting — 2026-10-07
+
+Replaced a deployment's static `setup` model with native Ollama discovery; the
+public catalog now returns 49 upstream models plus `smart`. Jev remains a
+classifier-only provider. Added a console warning when connection-test discovery
+differs from the static catalog that saving will expose, with a regression test
+and provider/client guidance. Replicated project changes to the deployment and
+source checkouts and rebuilt/recreated the existing Compose service with its
+database intact; retained the previous image and configuration for rollback.
+
+Baseline API/provider/configuration/gateway tests passed. Final Go formatting,
+module metadata, vet, build, full tests and race tests passed, as did console
+tests/generated-script freshness, affected documentation links, diff whitespace,
+and the fresh non-root image's disposable credential/persistence/recovery suite.
+Live repeated discovery, persisted-key authentication after recreation, explicit
+chat, smart JSON/SSE chat, and wrong-key rejection passed. A cold larger model
+exceeded a 30-second client deadline; warmed requests completed under one second.
+An isolated fresh Hermes conversation using the already-installed runtime also
+passed. Live checks establish connectivity, not general model quality or latency.
+
+The installed Hermes runtime resolves the saved key correctly. Its re-test
+validator rejects blank and literal credential-preview submissions; a proposed
+saved-key lookup was tested in memory with endpoint/identity isolation and
+wrong-key rejection, but no Hermes files were changed. A schema-constrained
+request can still fail smart selection because native Ollama discovery does not
+verify structured-output support; the existing capability gates remain intact.
 
 TASK-021/022: endpoint-bound Codex credentials, device login, PKCE/remote helper,
 refresh and translated Chat/Responses/SSE. TASK-025–027/029–033: connected,

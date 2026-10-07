@@ -63,8 +63,8 @@ JSON response and no cross-model retry is attempted.
 | `GET /healthz` | None | HTTP 200, `status: ok`; server liveness, not all-provider readiness |
 | `GET /gateway/v1/setup` | None | `setup_required` boolean |
 | `POST /gateway/v1/setup` | `username`, `password`, `setup_code` | 201 with username and newly generated `api_key` once; existing admin gives 409, bad/expired code 403 |
-| `GET /gateway/v1/config` | Admin | Active config JSON with references, never secret values |
-| `PUT /gateway/v1/config` (also `POST`) | Full config JSON, admin | `reloaded: true` on successful validated atomic save; listener/database live changes rejected |
+| `GET /gateway/v1/config` | Admin | Config JSON with references, never secret values; `ETag` identifies its revision |
+| `PUT /gateway/v1/config` (also `POST`) | Full config JSON, admin, `If-Match` | `reloaded: true` on successful validated atomic save; revision checks described below |
 | `POST /gateway/v1/providers/test` | `{"provider": PROVIDER_CONFIG}` JSON, admin | Actual discovery status/models, including classifier-only metadata; no inference test |
 | `POST /gateway/v1/providers/login` | `{"provider_id":"ID"}` or `{"provider":"ID"}`, admin | Pending login instructions/URL or helper session details |
 | `GET /gateway/v1/providers/login?provider=ID` | Admin | Login status without stored tokens |
@@ -73,6 +73,21 @@ JSON response and no cross-model retry is attempted.
 | `POST /gateway/v1/providers/login/import` | Pairing bearer token and helper-generated OAuth payload | Validated single-use credential import; token/state/endpoint/scopes checked |
 | `GET /gateway/v1/providers/login/callback` or `/auth/callback` | Authorization code/state query | Complete matching pending login; use generated flow rather than constructing callback |
 | `DELETE /gateway/v1/sessions/{id}` | Bearer/admin | End in-memory affinity for that identity |
+
+Configuration saves replace the full document. First read it, retain the exact
+quoted `ETag` response header, and send it as `If-Match` when submitting your
+edited document. Missing revisions return **428 Precondition Required**;
+outdated revisions return **412 Precondition Failed**, before credentials or
+configuration are written. One exact strong tag is required; wildcard, weak,
+and multiple tags are rejected. This is required for API scripts as well as the
+console, including the POST alias.
+
+Every successful save advances the revision, including an unchanged document.
+Read again before preparing another save. Meaningful external YAML edits and
+gateway restarts invalidate earlier revisions. On conflict, reload and reconcile
+your draft; do not fetch a new revision merely to retry the old full document.
+The console preserves conflicted drafts. Copy your edits before choosing
+**Refresh config**, which discards the local draft.
 
 Use the console/helper to orchestrate OAuth; do not hand-author import payloads.
 The helper URL/token comes from the pending login, is short-lived, and must not be

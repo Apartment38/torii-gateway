@@ -97,6 +97,9 @@ func TestConsoleBootstrapWithoutProvidersCanServeAndReload(t *testing.T) {
 	request := func(method, url, body string, bearer bool) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, url, strings.NewReader(body))
+		if method == http.MethodPut && url == "/gateway/v1/config" {
+			req.Header.Set("If-Match", currentConfigRevision(t, r))
+		}
 		if bearer {
 			req.Header.Set("Authorization", "Bearer "+key)
 		} else {
@@ -297,7 +300,7 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 	defer r.closeUsage()
 	updated := fmt.Sprintf(`{"server":{"listen":"127.0.0.1:8080"},"providers":[{"id":"laya","type":"jev_compatible","base_url":%q,"api_path":"/v1","bearer_token":{"value":%q}}],"router":{"classifier":{"type":"disabled"}}}`, server.URL, key)
 	put := httptest.NewRecorder()
-	r.putConfig(put, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(updated)))
+	r.putConfig(put, configSaveRequest(t, r, updated))
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
 		t.Fatalf("save direct provider key = HTTP %d", put.Code)
 	}
@@ -566,6 +569,7 @@ providers:
 	updated := []byte(`{"server":{"listen":"127.0.0.1:9090"},"providers":[{"id":"local","type":"openai_compatible","base_url":"https://example.test","discover_models":false,"models":["model"]}]}`)
 	put := httptest.NewRecorder()
 	putReq := httptest.NewRequest(http.MethodPut, "/gateway/v1/config", bytes.NewReader(updated))
+	putReq.Header.Set("If-Match", get.Header().Get("ETag"))
 	putReq.SetBasicAuth("config-admin", "config-admin-password")
 	handler.ServeHTTP(put, putReq)
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {

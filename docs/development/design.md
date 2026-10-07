@@ -19,6 +19,11 @@ This replaces the historical Version 1 implementation specification.
   are stripped. Provider redirects never carry credentials to another origin.
 - Ollama inference defaults to a configurable five-minute whole-request deadline,
   including response consumption. Its ten-second discovery budget is independent.
+- Full configuration saves require the revision from the preceding read. A
+  runtime-keyed opaque tag covers the canonical configuration and a save counter;
+  external configuration changes and restarts invalidate older revisions.
+  Serialize checking through publication, before storing submitted credentials.
+  Conflicts preserve console drafts rather than silently retrying them.
 
 ## Identity and metadata
 

@@ -6,8 +6,12 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-No implementation milestone is currently in progress. The Podman/Hermes gateway
-repair is validated. Hermes's saved-endpoint connection test still omits the
+Configuration save conflict protection is implemented and undergoing final
+validation and Podman deployment. A stale console can currently overwrite a
+newer provider configuration when adding Codex; mandatory revision checks prevent
+that overwrite. Historical request bodies are unavailable, so the specific
+stale-tab incident remains inferred from the reproduced path and save timestamps.
+Hermes's saved-endpoint connection test still omits the
 stored key; Hermes code changes are outside the authorized scope. Re-entering
 the key for each test is the current workaround.
 

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func TestUsageSharedAcrossReloadAndDiscardedConfig(t *testing.T) {
 	}
 	body := view.Body.String()
 	w := httptest.NewRecorder()
-	r.putConfig(w, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(body)))
+	r.putConfig(w, configSaveRequest(t, r, body))
 	if w.Code != 200 || r.usageStore != original {
 		t.Fatalf("reload replaced usage store: %d %s", w.Code, w.Body.String())
 	}
@@ -56,7 +55,7 @@ func TestUsageSharedAcrossReloadAndDiscardedConfig(t *testing.T) {
 		defer os.Chmod(dir, 0700)
 		r.configPath = alias
 		w = httptest.NewRecorder()
-		r.putConfig(w, httptest.NewRequest(http.MethodPut, "/gateway/v1/config", strings.NewReader(body)))
+		r.putConfig(w, configSaveRequest(t, r, body))
 		if w.Code != 500 || r.usageStore != original {
 			t.Fatalf("rejected save=%d %s", w.Code, w.Body.String())
 		}

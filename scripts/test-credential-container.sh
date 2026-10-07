@@ -16,6 +16,7 @@ cleanup() {
   podman secret rm "$key_secret" "$wrong_secret" >/dev/null 2>&1 || true
   # Only this invocation's validated temporary archive.
   if [[ -f "$backup_directory/data.tar" ]]; then podman unshare rm "$backup_directory/data.tar"; fi
+  rm -f "$backup_directory/http-headers" "$backup_directory/config-etag"
   rmdir "$backup_directory"
 }
 trap cleanup EXIT
@@ -39,10 +40,16 @@ request() {
   {
     printf 'url = "%s%s"\nrequest = "%s"\n' "$origin" "$path" "$method"
     if [[ -n $authorization ]]; then printf 'header = "Authorization: %s"\n' "$authorization"; fi
+    if [[ $path == /gateway/v1/config && ( $method == PUT || $method == POST ) && -f "$backup_directory/config-etag" ]]; then
+      printf 'header = '; printf 'If-Match: %s' "$(cat "$backup_directory/config-etag")" | jq -Rs .
+    fi
     if [[ -n $accept ]]; then printf 'header = "Accept: %s"\n' "$accept"; fi
     if [[ -n $body ]]; then printf 'header = "Content-Type: application/json"\ndata = '; printf '%s' "$body" | jq -Rs .; fi
     if [[ $status_only == true ]]; then printf 'output = "/dev/null"\nwrite-out = "%%{http_code}"\n'; else printf 'fail\n'; fi
-  } | curl --silent --show-error --config -
+  } | curl --silent --show-error --dump-header "$backup_directory/http-headers" --config -
+  if [[ $path == /gateway/v1/config && $method == GET ]]; then
+    awk 'tolower($1) == "etag:" { sub(/\r$/, "", $2); print $2 }' "$backup_directory/http-headers" > "$backup_directory/config-etag"
+  fi
 }
 launch
 mountpoint=$(podman volume inspect --format '{{.Mountpoint}}' "$data_volume")
@@ -74,6 +81,7 @@ configuration=$(request GET /gateway/v1/config "$basic")
 [[ $(printf '%s' "$configuration" | jq '.providers | length') == 0 ]]
 [[ $(request GET /v1/models "Bearer $api_key" | jq -r '[.data[].id] == ["smart"]') == true ]]
 request PUT /gateway/v1/config "$basic" "$configuration" >/dev/null
+configuration=$(request GET /gateway/v1/config "$basic")
 credential=$(request POST /gateway/v1/credentials "$basic" '{"service":"smoke","purpose":"bearer_token","value":"synthetic-provider-secret-42"}' | jq -er .credential)
 # Add a static fixture explicitly; bootstrap must not invent a provider. No
 # upstream request is made because model discovery is disabled for this fixture.

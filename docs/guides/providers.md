@@ -20,6 +20,12 @@ key in your client. These keys have different jobs and are not interchangeable.
 Model names can contain additional slashes: `openrouter/google/MODEL` belongs to
 provider `openrouter` with upstream model `google/MODEL`.
 
+If configuration changed in another tab or through the API, **Save & reload**
+rejects the outdated draft rather than restoring old provider settings. Copy
+your edits, choose **Refresh config**, then reconcile them with the current
+settings before saving. The same applies after a gateway restart. API clients
+must use the [configuration revision header](../reference/api.md#health-setup-configuration-and-providers).
+
 Connection tests query the live catalog even when **Discover models** is disabled.
 The status then warns that **Save & reload** uses the static model list. Enable
 discovery to expose the returned models. For an Ollama server, choose **Ollama**

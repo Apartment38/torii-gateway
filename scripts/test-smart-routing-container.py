@@ -118,7 +118,8 @@ def main():
                 pass
             return response.code, data, dict(response.headers), (time.perf_counter() - started) * 1000
 
-    status, original, _, _ = request("/gateway/v1/config")
+    status, original, config_headers, _ = request("/gateway/v1/config")
+    revision = next(value for name, value in config_headers.items() if name.lower() == "etag")
     assert status == 200, "Administrator login failed"
     server = ThreadingHTTPServer(("0.0.0.0", 0), Fixture)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -158,10 +159,13 @@ def main():
         cfg["intelligence"] = {"enabled": False}
 
         def save():
-            nonlocal edited
-            status, _, _, _ = request("/gateway/v1/config", cfg, "PUT")
+            nonlocal edited, revision
+            status, _, _, _ = request("/gateway/v1/config", cfg, "PUT", headers={"If-Match": revision})
             assert status == 200, "Temporary configuration failed validation/reload"
             edited = True
+            status, _, config_headers, _ = request("/gateway/v1/config")
+            assert status == 200, "Failed to read saved configuration revision"
+            revision = next(value for name, value in config_headers.items() if name.lower() == "etag")
 
         def case(name, body, expected, path="/v1/chat/completions", session=None, expected_decisions=None):
             before = len(Fixture.records)
@@ -256,7 +260,7 @@ def main():
         case("minimal_setup_discovery", chat("tools", tools=[{"type": "function", "function": {"name": "lookup"}}]), "strong")
     finally:
         if edited:
-            status, _, _, _ = request("/gateway/v1/config", original, "PUT")
+            status, _, _, _ = request("/gateway/v1/config", original, "PUT", headers={"If-Match": revision})
             assert status == 200, "RESTORE FAILED: recover original configuration before continuing"
             status, restored, _, _ = request("/gateway/v1/config")
             assert status == 200 and restored == original, "Configuration restoration did not match"

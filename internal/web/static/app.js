@@ -296,6 +296,7 @@ const form = document.querySelector                 ("#config-form") ;
 const providerList = document.querySelector                ("#providers-list") ;
 const saveState = document.querySelector                 ("#save-state") ;
 let adminAuthorization = "";
+let configurationRevision = "";
 let signedInUsername = "";
 let benchmarksEnabledSaved = false;
 function updateConsoleIdentity()       {
@@ -306,6 +307,7 @@ function updateConsoleIdentity()       {
 }
 function signOutConsole()       {
   adminAuthorization = "";
+  configurationRevision = "";
   signedInUsername = "";
   clearNewAPIKey();
   document.querySelector                   ("#new-key-dialog") .close();
@@ -606,7 +608,8 @@ function isSetupPlaceholder(provider                     )          {
     && Object.keys(provider).every(key => fields.includes(key));
 }
 
-function applyConfig(config                     )       {
+function applyConfig(config                     , revision = "")       {
+  configurationRevision = revision;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
   legacyClassifier = null;
@@ -679,17 +682,30 @@ async function loadServerConfig()                {
     if (!response.ok) { if (response.status === 401 || response.status === 403) {signOutConsole();saveState.textContent="Sign in to configure the gateway";document.querySelector                   ("#login-dialog")?.showModal?.();} return; }
     const configuration = await response.json();
     if (login !== adminAuthorization) return;
-    applyConfig(configuration);
+    applyConfig(configuration, response.headers.get("ETag") || "");
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
   } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
 async function saveConfig()                {
+  if (!configurationRevision) {
+    saveState.textContent = "Reload the configuration before saving";
+    toast("Configuration revision unavailable. Copy your edits, then reload before saving.");
+    return;
+  }
+  const login = adminAuthorization;
+  const revision = configurationRevision;
   let configuration                     ;
   try { configuration = readConfig(); }
   catch (error) { toast(error instanceof Error ? error.message : "Invalid benchmark configuration JSON"); return; }
-  const response = await gatewayFetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify(configuration) });
+  const response = await gatewayFetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", "If-Match": revision, ...await authProvider.headers() }, body: JSON.stringify(configuration) });
+  if (login !== adminAuthorization) return;
+  if (response.status === 412 || response.status === 428) {
+    saveState.textContent = "Configuration changed · your draft is still here";
+    toast("Configuration changed since you loaded it. Copy your edits, reload, and reconcile them before saving. Your draft has been preserved.");
+    return;
+  }
   if (!response.ok) { toast(redactProviderKeys(`Save failed: ${await response.text()}`)); return; }
   providers.forEach(provider=>{provider.api_key="";});
   clearSubmittedBenchmarkKeys();
@@ -946,7 +962,7 @@ document.querySelector("#console-login") .addEventListener("click",()=>document.
 document.querySelector("#console-logout") .addEventListener("click",signOutConsole);
 document.querySelector("#login-form") .addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector                  ("#login-username") .value;const input=document.querySelector                  ("#login-password") ;adminAuthorization=basicAuthorization(username,input.value);input.value="";
-  try{const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json());signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error") .textContent="";document.querySelector                   ("#login-dialog") .close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
+  try{const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json(),response.headers.get("ETag")||"");signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error") .textContent="";document.querySelector                   ("#login-dialog") .close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
   catch{signOutConsole();document.querySelector("#login-error") .textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata()              {

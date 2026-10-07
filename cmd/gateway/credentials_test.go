@@ -63,6 +63,9 @@ func TestCredentialManagementAuthenticationCRUDAndNoDisclosure(t *testing.T) {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		if key != "" {
 			req.SetBasicAuth("chosen-admin", "administrator-password")
+			if method == http.MethodPut && path == "/gateway/v1/config" {
+				req.Header.Set("If-Match", currentConfigRevision(t, r))
+			}
 		}
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -119,8 +122,8 @@ func TestCredentialManagementAuthenticationCRUDAndNoDisclosure(t *testing.T) {
 	}
 	// Decoder errors must not quote secret-bearing input.
 	w = call("PUT", "/gateway/v1/config", `{"providers":"`+secret+`"}`, "admin-sentinel")
-	if strings.Contains(w.Body.String(), secret) {
-		t.Fatal("parser echoed credential")
+	if w.Code != 400 || strings.Contains(w.Body.String(), secret) {
+		t.Fatal("unsafe parser error", w.Code)
 	}
 	if strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "admin-sentinel") {
 		t.Fatal("credential logged")

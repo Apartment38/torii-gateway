@@ -445,6 +445,9 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
+	configMu      sync.Mutex
+	configKey     []byte
+	configVersion uint64
 	usageMu       sync.Mutex
 	usageStore    *usage.Store
 	setupDigest   [32]byte
@@ -810,6 +813,8 @@ func (h *catalogHandler) Close() error {
 }
 
 func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
+	r.configMu.Lock()
+	defer r.configMu.Unlock()
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.handler == nil {
@@ -831,11 +836,41 @@ func (r *handlerRuntime) getConfig(w http.ResponseWriter, _ *http.Request) {
 		writeConfigError(w, http.StatusInternalServerError, err)
 		return
 	}
+	revision, err := r.configRevision(cfg)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, errors.New("cannot create configuration revision"))
+		return
+	}
+	w.Header().Set("ETag", revision)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(document)
 }
 
 func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
+	// Hold this through publication: two callers with the same revision must
+	// never both store credentials or publish replacement configurations.
+	r.configMu.Lock()
+	defer r.configMu.Unlock()
+	if len(req.Header.Values("If-Match")) == 0 {
+		writeConfigError(w, http.StatusPreconditionRequired, errors.New("configuration revision required; read configuration and send its ETag in If-Match"))
+		return
+	}
+	current, err := r.loadConfig()
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, errors.New("cannot load active configuration"))
+		return
+	}
+	revision, err := r.configRevision(current)
+	if err != nil {
+		writeConfigError(w, http.StatusInternalServerError, errors.New("cannot create configuration revision"))
+		return
+	}
+	// Require one exact strong revision; wildcards, weak tags and lists would
+	// let callers bypass the protection against outdated full documents.
+	if len(req.Header.Values("If-Match")) != 1 || req.Header.Get("If-Match") != revision {
+		writeConfigError(w, http.StatusPreconditionFailed, errors.New("configuration changed; reload and reconcile your edits before saving"))
+		return
+	}
 	if req.ContentLength > 2<<20 {
 		writeConfigError(w, http.StatusRequestEntityTooLarge, errors.New("configuration exceeds 2 MiB"))
 		return
@@ -861,11 +896,6 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if r.credentials != nil {
-		current, err := r.loadConfig()
-		if err != nil {
-			writeConfigError(w, 500, errors.New("cannot load active configuration"))
-			return
-		}
 		if current.State.DatabasePath != next.State.DatabasePath {
 			writeConfigError(w, 400, errors.New("database path changes require an offline configuration edit and restart"))
 			return
@@ -888,6 +918,7 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	r.swap(newHandler)
+	r.configVersion++
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = io.WriteString(w, `{"status":"saved","reloaded":true}`+"\n")
 }

@@ -103,7 +103,7 @@ class BenchmarkList extends Element {
   get innerHTML() { return this.html; }
   querySelectorAll(selector) { return selector === '[data-benchmark-field="api_key_input"]' ? this.inputs : []; }
 }
-const response = (body, ok = true) => ({ ok, json: async () => body, text: async () => JSON.stringify(body) });
+const response = (body, ok = true, revision = '"fixture"', status = ok ? 200 : 400) => ({ ok, status, headers: { get: name => name.toLowerCase() === "etag" ? revision : null }, json: async () => body, text: async () => JSON.stringify(body) });
 const models = count => ({ models: Array.from({ length: count }, (_, i) => ({ id: `model-${i}` })) });
 const draft = (type, id = type) => ({ id, type, api_url: type === "openai-codex" ? "https://chatgpt.com/backend-api/codex" : `https://${type}.example/v1` });
 function consoleFixture(handler) {
@@ -130,7 +130,7 @@ function consoleFixture(handler) {
     matchMedia: () => ({ matches: false }),
     HTMLInputElement: Element,
     FormData: class { forEach() {} },
-    URL, Error, TextEncoder, TextDecoder, AbortController, structuredClone, btoa, confirm:()=>true,
+    fixtureRevision: '"fixture"', URL, Error, TextEncoder, TextDecoder, AbortController, structuredClone, btoa, confirm:()=>true,
     fetch: async (url, options) => {
       // Keep the script's startup load isolated; tests explicitly load config.
       if (url === "/gateway/v1/setup" && startupLoad) {
@@ -181,7 +181,7 @@ test("generated setup placeholders display the empty state instead of testing an
   // Never hide configured credentials or real endpoints just because the ID is setup.
   for (const provider of [{ ...placeholder, base_url:"https://real.example" }, { ...placeholder, bearer_token:{ credential:"stored-key" } }]) {
     app.context.config = { providers:[provider] };
-    app.run("applyConfig(config)");
+    app.run("applyConfig(config, fixtureRevision)");
     assert.equal(app.run("providers.length"), 1);
     assert.equal(app.run('document.querySelector("#providers-empty-notice").hidden'), true);
   }
@@ -420,7 +420,7 @@ test("a saved classifier choice is preserved while multiple providers are discov
 test("legacy direct Jev connections migrate without losing key-file references", async () => {
   const app = consoleFixture(() => response({ models:[{ id:"jev/jev-latest" }] }));
   app.context.legacyConfig = { providers:[], router:{ classifier:{ type:"jev", base_url:"https://api.typesafe.ai", api_key:{ file:"/run/secrets/jev-key" }, model:"jev-latest" } } };
-  app.run("applyConfig(legacyConfig)");
+  app.run("applyConfig(legacyConfig, fixtureRevision)");
   await app.run("testAllProviders()");
   const config = app.run("readConfig()");
   assert.equal(config.providers[0].type, "jev");
@@ -432,7 +432,7 @@ test("legacy direct Jev connections migrate without losing key-file references",
 test("legacy non-Jev classifiers are preserved until the user chooses a replacement", () => {
   const app = consoleFixture(() => response(models(1)));
   app.context.oldConfig = { providers:[], router:{ classifier:{ type:"embedding", provider:"embeddings", model:"embedding-model", on_failure:"fail" } } };
-  app.run("applyConfig(oldConfig)");
+  app.run("applyConfig(oldConfig, fixtureRevision)");
   const classifier = app.run("readConfig().router.classifier");
   assert.equal(classifier.type, "embedding");
   assert.equal(classifier.provider, "embeddings");
@@ -470,7 +470,7 @@ test("routing connection controls are absent and classifier setup belongs to pro
 test("explicitly disabled classification stays disabled after a config reload", async () => {
   const app = consoleFixture(() => response({ models:[{ id:"laya/english" }] }));
   app.context.disabledConfig = { providers:[{ id:"laya", type:"jev_compatible", base_url:"http://localhost:8000" }], router:{ classifier:{ type:"disabled" } } };
-  app.run("applyConfig(disabledConfig)");
+  app.run("applyConfig(disabledConfig, fixtureRevision)");
   await app.run("testAllProviders()");
   assert.equal(app.run("classifierSelect.value"), "disabled");
   assert.equal(app.run("readConfig().router.classifier.type"), "disabled");
@@ -480,7 +480,7 @@ test("explicitly disabled classification stays disabled after a config reload", 
 test("saving an existing Ollama with a classifier omits unsupported generic fields", () => {
   const app = consoleFixture(() => response(models(1)));
   app.context.ollamaConfig = { providers:[{ id:"local", type:"ollama", base_url:"http://localhost:11434" }] };
-  app.run("applyConfig(ollamaConfig)");
+  app.run("applyConfig(ollamaConfig, fixtureRevision)");
   const output = app.run("readConfig().providers[0]");
   assert.deepEqual(Object.keys(output).sort(), ["base_url", "id", "type"]);
 });
@@ -488,7 +488,7 @@ test("saving an existing Ollama with a classifier omits unsupported generic fiel
 test("Ollama request timeout is editable, survives reload and can reset to default", () => {
   const app = consoleFixture(() => response(models(1)));
   app.context.config = { providers:[{ id:"local", type:"ollama", base_url:"http://localhost:11434", request_timeout:"10m" }] };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   assert.match(app.list.innerHTML, /data-key="request_timeout" value="10m" placeholder="5m"/);
   assert.equal(app.run("readConfig().providers[0].request_timeout"), "10m");
   app.run('providers[0].request_timeout = "15m"');
@@ -536,7 +536,7 @@ test("entering a direct key replaces references and connection tests send an inl
     return response({ models:[{ id:"jev/english" }] });
   });
   app.context.config = { providers:[{ id:"jev", type:"jev", base_url:"https://api.typesafe.ai", api_path:"/v1", bearer_token:{ env:"OLD_KEY_ENV" } }] };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   const input = app.list.querySelector("#provider-api-key-0");
   input.value = "test-direct-provider-key";
   input.listeners.input({ target:input });
@@ -552,7 +552,7 @@ test("stored credential references survive reload without exposing keys", () => 
   const app = consoleFixture(() => response(models(1)));
   for (const secret of [{ credential:"stored-provider-key" }]) {
     app.context.config = { providers:[{ id:"custom", type:"openai_compatible", base_url:"https://custom.example", bearer_token:secret }] };
-    app.run("applyConfig(config)");
+    app.run("applyConfig(config, fixtureRevision)");
     assert.deepEqual(JSON.parse(app.run("JSON.stringify(readProviderConfig(providers[0]).bearer_token)")), secret);
   }
   const input = app.list.querySelector("#provider-api-key-0");
@@ -587,6 +587,7 @@ test("saving clears newly entered keys and reloads only stored references", asyn
     return response({ ...saved,providers:saved.providers.map(p=>({...p,bearer_token:{credential:"stored-key"}})) });
   });
   app.setProviders([{ ...draft("openai"), api_key:"test-save-reload-key" }]);
+  app.run("configurationRevision = fixtureRevision");
   await app.run("saveConfig()");
   assert.deepEqual(saved.providers[0].bearer_token, { value:"test-save-reload-key" });
   const input = app.list.querySelector("#provider-api-key-0");
@@ -599,7 +600,7 @@ test("benchmark source controls preserve weights and saved credentials and requi
   const app = consoleFixture(() => response({}));
   const intelligence = { enabled:true, sources:[{ id:"aa", type:"artificial_analysis", enabled:true, api_key:{ env:"AA_API_KEY" } }], routing:{ task_weights:{ coding:{ coding:3, agentic:1 } } } };
   app.context.config = { providers:[], intelligence };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   const saved = JSON.parse(app.run("JSON.stringify(readConfig().intelligence)"));
   assert.deepEqual(saved.routing, intelligence.routing);
   assert.deepEqual(saved.sources[0].api_key, intelligence.sources[0].api_key);
@@ -622,7 +623,7 @@ test("benchmark refresh uses memory-only login rather than configuration credent
   });
   app.run('adminAuthorization="Basic test-admin-login"');
   app.context.config = { providers:[], intelligence:{enabled:true}, server:{ authentication:{ api_key:{ credential:"stored-gateway-key" } } } };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   await app.run("inspectBenchmarks(true)");
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'), /refresh finished/);
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'), false);
@@ -647,13 +648,13 @@ test("unauthorized management clears login and reopens the sign-in dialog",async
   const app=consoleFixture(()=>({...response({},false),status:401}));app.run('adminAuthorization="Basic expired-login"');await app.run('loadCredentialMetadata()');assert.equal(app.run('adminAuthorization'),"");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
 });
 test("legacy classifier conversion preserves encrypted credential references",()=>{
-  const app=consoleFixture(()=>response({}));app.context.config={providers:[],router:{classifier:{type:"jev",base_url:"https://api.typesafe.ai",model:"jev-latest",api_key:{credential:"classifier-ref"}}}};app.run("applyConfig(config)");assert.equal(app.run('readProviderConfig(providers[0]).bearer_token.credential'),"classifier-ref");
+  const app=consoleFixture(()=>response({}));app.context.config={providers:[],router:{classifier:{type:"jev",base_url:"https://api.typesafe.ai",model:"jev-latest",api_key:{credential:"classifier-ref"}}}};app.run("applyConfig(config, fixtureRevision)");assert.equal(app.run('readProviderConfig(providers[0]).bearer_token.credential'),"classifier-ref");
 });
 
 test("classifier tuning keeps defaults optional and panel collapsed", () => {
   const app = consoleFixture(() => response({}));
   app.context.config = { providers:[], router:{ classifier:{ type:"disabled" } } };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   const classifier = app.run("readConfig().router.classifier");
   for (const name of ["timeout", "minimum_confidence", "questions", "noul_thresholds"]) assert.equal(classifier[name], undefined);
   const html = readFileSync(new URL("./static/index.html", import.meta.url), "utf8");
@@ -664,7 +665,7 @@ test("classifier tuning keeps defaults optional and panel collapsed", () => {
 test("saved classifier tuning survives model replacement and disabled selection", () => {
   const app = consoleFixture(() => response({}));
   app.context.config = { providers:[], router:{ classifier:{ type:"jev", transport:"provider", provider:"laya", model:"english", timeout:"750ms", minimum_confidence:.4, on_failure:"fail", questions:{ task_type:{ instructions:"Review source code", criteria:{ coding:"Software development" } } }, noul_thresholds:{ tools:0, reasoning:1 } } } };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   app.run('classifierSelect.value="other/multilingual"; classifierSelect.listeners.change()');
   let saved = app.run("readConfig().router.classifier");
   assert.equal(saved.provider, "other");
@@ -683,7 +684,7 @@ test("saved classifier tuning survives model replacement and disabled selection"
 test("unsaved question edits survive question changes and provider discovery", async () => {
   const app = consoleFixture(() => response({ok:true, models:[{id:"laya/english"}]}));
   app.context.config = { providers:[{ id:"laya", type:"jev_compatible", base_url:"http://localhost:8000" }], router:{ classifier:{ type:"jev", transport:"provider", provider:"laya", model:"english" } } };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   app.run('classifierInstructions.value="Classify code reviews as coding"; classifierInstructions.listeners.input(); classifierOption.value="coding"; classifierOption.listeners.change(); classifierRubric.value="Developing and reviewing software"; classifierRubric.listeners.input()');
   app.run('classifierQuestion.value="tools"; classifierQuestion.listeners.change(); classifierThreshold.value="0.8"; classifierThreshold.listeners.input(); classifierRubric.value="Needs external actions"; classifierRubric.listeners.input()');
   await app.run("testAllProviders()");
@@ -699,11 +700,11 @@ test("unsaved question edits survive question changes and provider discovery", a
 test("clearing tuning restores defaults and loading another config clears prior controls", () => {
   const app = consoleFixture(() => response({}));
   app.context.config = { providers:[], router:{ classifier:{ type:"disabled", timeout:"2s", minimum_confidence:.4, questions:{ task_type:{ instructions:"Custom" } }, noul_thresholds:{ tools:.8 } } } };
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   app.run('classifierInstructions.value=""; classifierInstructions.listeners.input(); classifierQuestion.value="tools"; classifierQuestion.listeners.change(); classifierThreshold.value=""; classifierThreshold.listeners.input(); form.elements.namedItem("router.classifier.timeout").value=""; form.elements.namedItem("router.classifier.minimum_confidence").value=""');
   const cleared = app.run("readConfig().router.classifier");
   for (const name of ["timeout", "minimum_confidence", "questions", "noul_thresholds"]) assert.equal(cleared[name], undefined);
-  app.run("applyConfig(config); applyConfig({ providers:[], router:{ classifier:{ type:'disabled' } } })");
+  app.run("applyConfig(config, fixtureRevision); applyConfig({ providers:[], router:{ classifier:{ type:'disabled' } } })");
   assert.equal(app.run('form.elements.namedItem("router.classifier.timeout").value'), "");
   assert.equal(app.run('form.elements.namedItem("router.classifier.minimum_confidence").value'), "");
   assert.equal(app.run("readConfig().router.classifier.questions"), undefined);
@@ -711,6 +712,7 @@ test("clearing tuning restores defaults and loading another config clears prior 
 
 test("invalid confidence draft cannot silently save as null", async () => {
   const app = consoleFixture(() => response({}));
+  app.run("configurationRevision = fixtureRevision");
   app.run('form.elements.namedItem("router.classifier.minimum_confidence").value="invalid"');
   await app.run("saveConfig()");
   assert.equal(app.calls.filter(call => call.options?.method === "PUT").length, 0);
@@ -724,7 +726,7 @@ test("saving an unchecked paid-model policy preserves false after reload", async
     return response(persisted);
   });
   app.context.config = persisted;
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'), false);
   await app.run("saveConfig()");
   assert.equal(persisted.router.allow_paid_models, false);
@@ -764,7 +766,7 @@ test("benchmark enable toggle persists without dropping source configuration", a
     return response({sources:{cache:{enabled:false}}});
   });
   app.context.config = config;
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),true);
   await app.run("inspectBenchmarks(true)");
   assert.equal(app.calls.length,0);
@@ -790,7 +792,7 @@ test("benchmark page replaces JSON with five source controls and cached evidence
   for (const id of ["benchmark-sources-list","benchmark-table","benchmark-refresh-log","benchmark-progress"]) assert.ok(html.includes(`id="${id}"`));
   const app = consoleFixture(()=>response({}));
   app.context.config={providers:[],intelligence:{enabled:true}};
-  app.run("applyConfig(config)");
+  app.run("applyConfig(config, fixtureRevision)");
   assert.equal(app.run("benchmarkSources.length"),5);
   assert.equal(app.run('document.querySelector("#benchmark-configuration").hidden'),false);
   const sourceHTML=app.run('document.querySelector("#benchmark-sources-list").innerHTML');
@@ -801,7 +803,7 @@ test("benchmark page replaces JSON with five source controls and cached evidence
 test("benchmark source keys are masked, only newly entered keys are revealable, and logout clears drafts", () => {
   const app=consoleFixture(()=>response({}));
   app.context.config={providers:[],intelligence:{enabled:true,sources:[{id:"aa",type:"artificial_analysis",enabled:true,api_key:{credential:"encrypted-aa"}}]}};
-  app.run('applyConfig(config);benchmarkSources[0].api_key_input="source-secret-sentinel";renderBenchmarkSources()');
+  app.run('applyConfig(config, fixtureRevision);benchmarkSources[0].api_key_input="source-secret-sentinel";renderBenchmarkSources()');
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-sources-list").innerHTML'),/source-secret-sentinel/);
   const input=app.run('document.querySelector("#benchmark-sources-list").inputs[0]');
   assert.equal(input.value,"source-secret-sentinel");assert.equal(input.type,"password");
@@ -818,7 +820,7 @@ test("benchmark source keys are masked, only newly entered keys are revealable, 
 test("sources only need enablement and required keys; shared presets supply valid datasets", () => {
   const app=consoleFixture(()=>response({}));
   app.context.config={providers:[],intelligence:{enabled:true,identities:[{canonical_id:"model",aliases:["Model"]}],aggregation:{overall_weights:{preference:0}},routing:{price:1}}};
-  app.run('applyConfig(config);benchmarkSources.forEach(source=>source.enabled=true);benchmarkSources[0].api_key_input="source-key";renderBenchmarkSources()');
+  app.run('applyConfig(config, fixtureRevision);benchmarkSources.forEach(source=>source.enabled=true);benchmarkSources[0].api_key_input="source-key";renderBenchmarkSources()');
   const config=JSON.parse(app.run("JSON.stringify(readConfig().intelligence)"));
   assert.deepEqual(config.identities,app.context.config.intelligence.identities);
   assert.deepEqual(config.aggregation,app.context.config.intelligence.aggregation);
@@ -839,7 +841,7 @@ test("hidden custom source settings survive saves without being replaced by pres
   const app=consoleFixture(()=>response({}));
   const source={id:"hf-custom",type:"huggingface",enabled:true,url:"https://custom.example/rows",max_rows:42,api_key:{credential:"hf-key"},datasets:[{dataset:"org/results",config:"subset",split:"test",model_field:"model_id",date_field:"date",metrics:{accuracy:{category:"knowledge",min:0,max:100}}}]};
   app.context.config={providers:[],intelligence:{enabled:true,sources:[source],source_timeout:"45m",aggregation:{source_weights:{"hf-custom":2}}}};
-  app.run('applyConfig(config)');
+  app.run('applyConfig(config, fixtureRevision)');
   const saved=JSON.parse(app.run('JSON.stringify(readConfig().intelligence)'));
   assert.deepEqual(saved.sources[0],source);assert.equal(saved.source_timeout,"45m");assert.equal(saved.aggregation.source_weights["hf-custom"],2);
 });
@@ -1141,4 +1143,58 @@ test("API key generation requires in-memory administrator login and clears its o
   const app=consoleFixture((url,options)=>{assert.equal(url,"/gateway/v1/admin/api-key");assert.equal(options.method,"POST");assert.equal(options.headers.Authorization,"Basic admin-login");return response({api_key:"rotated-once-key"});});
   app.run('adminAuthorization="Basic admin-login"');await app.run('document.querySelector("#generate-api-key").listeners.click()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"rotated-once-key");
   app.run('document.querySelector("#new-key-dialog").listeners.cancel()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"");assert.deepEqual(app.storageWrites,[]);
+});
+
+test("stale configuration save retains Codex and secret drafts without reloading or retrying", async () => {
+  const old = { providers:[{id:"ziz",type:"openai_compatible",base_url:"http://ollama.example",api_path:"/v1",discover_models:false,models:["setup"]}] };
+  const app = consoleFixture((url, options) => {
+    if (options?.method === "PUT") {
+      assert.equal(options.headers["If-Match"], '"old"');
+      return response({error:"configuration changed"}, false, null, 412);
+    }
+    return response(old, true, '"old"');
+  });
+  await app.run("loadServerConfig()");
+  app.run('providers.push({...providerDefaults,id:"openai-codex",type:"openai-codex",api_url:"https://chatgpt.com/backend-api/codex",models:"gpt-5.3-codex",api_key:"draft-secret"});');
+  const start = app.calls.length;
+  await app.run("saveConfig()");
+  assert.deepEqual(app.calls.slice(start).map(call=>call.options?.method), ["PUT"]);
+  assert.equal(app.run("providers.length"),2);
+  assert.equal(app.run("providers[1].api_key"),"draft-secret");
+  assert.match(app.run("saveState.textContent"),/draft is still here/);
+  assert.match(app.run('document.querySelector("#toast").textContent'),/reconcile/);
+});
+
+test("fresh Codex additions preserve existing discovery and Ollama timeout settings", async () => {
+  for (const existing of [
+    {id:"ziz",type:"ollama",base_url:"http://ollama.example",request_timeout:"10m"},
+    {id:"ziz",type:"openai_compatible",base_url:"http://ollama.example",api_path:"/v1",discover_models:true,request_timeout:"10m"},
+  ]) {
+    let config={providers:[existing]};
+    let revision='"initial"';
+    const app=consoleFixture((url, options)=>{
+      if (options?.method === "PUT") {
+        assert.equal(options.headers["If-Match"],revision);
+        config=JSON.parse(options.body);
+        revision='"saved"';
+      }
+      return response(config,true,revision);
+    });
+    await app.run("loadServerConfig()");
+    app.run('providers.push({...providerDefaults,id:"openai-codex",type:"openai-codex",api_url:"https://chatgpt.com/backend-api/codex",models:"gpt-5.3-codex"});');
+    await app.run("saveConfig()");
+    assert.deepEqual(config.providers[0],existing);
+    assert.equal(app.run("configurationRevision"),'"saved"');
+    await app.run("saveConfig()");
+  }
+});
+
+test("missing revision blocks saving and sign-out clears the loaded revision", async () => {
+  const app=consoleFixture(()=>response({providers:[]},true,null));
+  await app.run("loadServerConfig()");
+  await app.run("saveConfig()");
+  assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,0);
+  assert.match(app.run("saveState.textContent"),/before saving/);
+  app.run('configurationRevision=fixtureRevision;signOutConsole()');
+  assert.equal(app.run("configurationRevision"),"");
 });

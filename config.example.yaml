@@ -13,7 +13,7 @@ state:
 
 # Opt-in background benchmark ingestion. Sources and routing weights are
 # independent: leave intelligence disabled to retain existing behavior.
-# See docs/benchmark-intelligence.md for source licences, aliases and metrics.
+# See docs/guides/benchmarks.md for source licences, aliases and metrics.
 intelligence:
   enabled: false
   refresh_interval: 24h

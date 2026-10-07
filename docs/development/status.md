@@ -1,32 +1,97 @@
-# Tasks
+# Project status
 
-## Project status
+Updated 2026-10-07. This is the sole project progress and backlog tracker.
+Current user-visible support is in [Features](../reference/features.md), with
+contracts in [Design](design.md). Old Version 1/2 labels no longer define support.
 
-The repository contains the Version 1 implementation described by
-`docs/implementation-plan.md`. The local implementation and automated checks
-are complete; live provider smoke tests and the production image build remain
-environment-dependent release checks.
+## Active work
 
-## IN PROGRESS
+No implementation milestone is currently recorded as in progress. The documentation
+refresh is complete; validation and remaining platform checks are listed below.
 
-The Version 1 slices are implemented in dependency order. The current release
-checks are:
+## Pending release checks and future work
 
-- TASK-021/TASK-022: endpoint-bound Codex credentials, device-code login,
-  browser PKCE, refresh coalescing, translated Chat/Responses transport, tool
-  translation, and SSE adaptation are implemented and locally tested.
-- TASK-025–TASK-036: connected/Laya-compatible and embedding classifiers,
-  deterministic smart selection, session affinity, pre-stream retry, quota,
-  aggregate usage, cost, and latency integration are implemented and locally
-  tested.
-- TASK-037–TASK-041: strict configuration, operational CLI, non-root image
-  definition, CI gates, compatibility tests, and performance baseline are
-  implemented. Live provider smoke tests and registry-backed image builds are
-  intentionally opt-in.
+- Before publishing a release, rerun the CI gate and disposable container
+  persistence/recovery check, complete compatibility notes, verify all artifacts,
+  and run opt-in live checks for the provider/account combinations being claimed.
+  Code and local test completion is distinct from publication (TASK-041).
+- Published release availability and current GitLab template bodies could not be fetched
+  in this session. Archived first-party tutorial/how-to materials were inspected
+  for structure. Installation keeps source builds as a complete path and refers
+  to actual release assets rather than claiming a release exists.
+- Docker, macOS, and Windows native/service workflows need validation on their
+  respective hosts; documented build targets are not platform test results.
+- Future scope, currently unimplemented: administrator password reset, multi-user
+  administration, Authentik/OIDC, automated master-key rotation, stateful Responses,
+  streaming usage accounting, automatic updater, and MCP/tool/skill gateways.
+- Performance measurements beyond the transparent dispatch microbenchmark require
+  a reproducible harness; no production answer-quality, savings, actual billing,
+  or general comparative routing superiority is established by the retained evaluation.
 
----
+## Completed milestones without separate old task records
 
-## DONE
+TASK-021/022: endpoint-bound Codex credentials, device login, PKCE/remote helper,
+refresh and translated Chat/Responses/SSE. TASK-025–027/029–033: connected,
+embedding/typed classification, smart endpoint, session affinity/tool safety,
+and bounded pre-stream retry. TASK-035/036: SQLite aggregate usage, cost/quota/
+latency integration. TASK-037–040: strict schema/CLI, compatibility/security suites,
+non-root container and performance harness. These were locally implemented/tested;
+release-environment checks remain separate above.
+
+Previously called Version 2 tasks are implemented: TASK-013 OpenRouter discovery,
+transparent inference/metadata/quota and separate credit key; TASK-015 Gemini
+compatibility; TASK-016 xAI compatibility; TASK-018 Anthropic Messages Chat/basic
+Responses/streaming translation; TASK-023 Nous subscription login/refresh/catalog/
+quota. Typed Jev and Jev-compatible adapters are implemented. Their limitations
+are in the provider reference, not a deferred-adapter backlog.
+
+### Smart-routing evaluation — 2026-10-07
+
+The final scoped critic acceptance resolved the earlier quota checkpoint's pending
+usage decoding/fixture/test issues. Retained evidence records 21 final gateway
+cases, matched pinned-reference constraint checks, default setup/customization,
+and two measured live Jev decisions with synthetic inference output. No general
+production-quality/economic claim is made. See [Evaluation](evaluations/smart-routing/README.md).
+Temporary continuation/HQ/account-quota instructions are retired.
+
+### Documentation refresh — 2026-10-07
+
+Reconciled current feature/authentication/persistence claims; simplified README;
+added complete installation/tutorial/guides/reference; moved technical explanations
+and evaluation evidence under development; consolidated the old task ledger,
+implementation-plan status, and checkpoints here. Preserved release tooling paths
+and migrated artifact consumers. Validation evidence is recorded below.
+
+Validation completed for this refresh:
+
+- Built gateway and helper from source; both version commands succeeded.
+- Validated the full example configuration and two standalone documentation
+  configs; parsed all 13 YAML blocks, with fragments kept as excerpts.
+- Local Markdown file/anchor checks, stale-path search, and `git diff --check`
+  passed. All 17 frozen artifacts, including the anonymous review, are preserved
+  byte-for-byte at their new location; relocated Python consumers parse.
+- Native disposable-fixture smoke passed fresh setup, administrator/bearer
+  boundaries, provider test/save/discovery, JSON inference, exact SSE, named
+  client keys, restart persistence, and revocation. No real provider calls.
+- Existing local `localhost/torii-gateway:benchmark-files` image passed the
+  disposable non-root credential container suite: schema 5, setup/rotation,
+  named keys, benchmark console/auth/streamed refresh, usage/identity persistence,
+  coherent stopped backup/restore, and wrong-key rejection.
+- The same existing image passed the documented rootless Podman Compose
+  file-secret/ownership/bootstrap/first-admin flow and persisted key after
+  down/up in a unique temporary project. Deployment containers/config/data
+  were not used. This validates the installation procedure against that image;
+  it is not a fresh production image build or registry-backed release test.
+- `go test ./internal/state` and release-metadata Node tests passed. The only Go
+  source edit repairs the schema-error documentation link; application behavior
+  is unchanged. Docker, macOS, Windows, and live upstream checks were not run.
+
+
+## Historical completed task records
+
+The following dated records preserve task IDs, rationale, tests, results, and
+limitations from the original ledger. Their historical wording is not a current
+feature specification or active TODO list. Follow current guides for deployment.
 
 ### Benchmark file ingestion and console organization — 2026-10-07
 
@@ -55,7 +120,7 @@ transparent compatible transport. The profile requires an external bearer-key
 reference, rejects alternate origins and generic header/model-rewrite options,
 supports optional project and organization headers, and remains isolated from
 the persistent Codex credential store. Official API reference URLs and the
-2026-09-30 verification date are recorded in `docs/provider-notes.md`.
+2026-09-30 verification date are recorded in `docs/development/provider-notes.md`.
 
 ### TASK-034 — Implement quota and allowance state
 
@@ -350,7 +415,7 @@ version declared in `go.mod`.
 Clarified that documentation updates are required for durable changes to
 architecture, public behavior, configuration, developer workflow, and
 significant design decisions. Narrow task-specific test commands no longer need
-to be added to `docs/development.md` unless they are reusable development
+to be added to `docs/development/contributing.md` unless they are reusable development
 procedures.
 
 ---
@@ -459,283 +524,3 @@ Completed:
 - documented and verified the repository-wide build and test commands
 
 ---
-
-## TODO — Ordered Version 1 roadmap
-
-Each numbered item below is one implementation milestone and should produce one
-focused commit. Tasks are ordered by dependency; a task may start only after
-all IDs in its `Depends on` field are done. Every task must add focused tests,
-run the repository checks, update this file, and update durable documentation
-when public behavior or architecture changes. Provider tasks must first update
-`docs/provider-notes.md` with dated, primary-source protocol findings. Optional
-upstream metadata must not block the transparent gateway path.
-
-Milestone boundaries organize tracking, review, and commits; they are not stop
-conditions. An agent may complete multiple milestones in one session by
-processing them sequentially, satisfying each task's dependencies and checks,
-and recording a focused commit for each before beginning the next.
-
-### Foundation and complete public API
-
-##### TASK-014 — Verify the normal OpenAI API profile
-
-**Depends on:** TASK-012
-
-Document current official OpenAI API behavior and provide a tested `openai`
-configuration/profile over the standard compatible provider. Keep API-key
-credentials, endpoints, and clients strictly separate from Codex subscription
-OAuth credentials.
-
-**Handoff instructions for the completing agent:**
-
-1. Start with primary-source research. Use only current official OpenAI API
-   documentation and, where documentation links to it, an official OpenAI
-   specification. Record the verification date and direct source URLs in the
-   `OpenAI API` section of `docs/provider-notes.md`. At minimum verify the API
-   origin/base path, bearer authentication, project/organization headers,
-   model listing, each Version 1 transparent endpoint, SSE behavior, error
-   envelopes, request IDs, and whether redirects are part of the contract.
-2. Do not infer normal API behavior from ChatGPT, Codex CLI, or third-party SDK
-   implementations. Clearly label anything not stated by a primary source as
-   unverified and do not turn it into capability metadata.
-3. Inspect `internal/config/config.go`, `internal/provider/openai_compatible.go`,
-   `internal/transport/openai.go`, and `cmd/gateway/main.go` before coding. Add a
-   first-class `openai` profile over the existing compatible provider rather
-   than duplicating its forwarding implementation. Define and test which
-   fields are fixed by the profile and which safe fields remain configurable.
-4. Require an external secret reference for the normal OpenAI API key. Bind
-   that key, any project/organization headers, the HTTP client, and the
-   verified normal-API origin together. Never read credentials from
-   legacy OAuth files, and never accept a ChatGPT/Codex OAuth credential.
-5. Add strict configuration tests, fake-server discovery and inference tests,
-   JSON and SSE passthrough tests, model-rewrite tests, redirect/origin
-   isolation tests, and explicit tests proving a stored `openai-codex`
-   credential cannot be sent by this profile. No real API key is required for
-   the automated suite; any live smoke test must be opt-in and secret-safe.
-6. Update the README, example configuration, architecture/provider notes, and
-   this task record. Run the full repository checks and leave one focused
-   commit. Do not mark TASK-014 done merely for adding documentation or a type
-   alias; the configured profile must work through the public endpoints.
-
-Previous attempts in this environment could not reach the official sources:
-the web research service returned `401 Unauthorized`, and direct `curl` calls
-to `platform.openai.com` and `api.openai.com` were rejected by the environment
-proxy with `403`. Retry from an environment with official-source access rather
-than copying the unverified placeholders in `docs/provider-notes.md`.
-
-#### 2. Build the Codex subscription path
-
-##### TASK-021 — Verify and implement ChatGPT Codex subscription authentication
-
-**Depends on:** TASK-019, TASK-020
-
-Document the current verified ChatGPT OAuth flow, refresh lifecycle, audience,
-account identifiers, and persisted fields. Implement the supported login and
-refresh flow with endpoint binding and tests proving API keys and OAuth tokens
-cannot cross endpoints.
-
-**Handoff instructions for the completing agent:**
-
-1. Treat this as security-sensitive research before implementation. Use
-   current official OpenAI documentation and the official `openai/codex`
-   repository as primary sources. Pin every source-code finding to a commit
-   SHA, record the verification date and direct links in the `OpenAI Codex
-   Subscription` section of `docs/provider-notes.md`, and distinguish observed
-   code behavior from documented guarantees.
-2. Verify rather than guess all OAuth details: client identifier, authorization
-   and token origins, device-code endpoints and polling errors, browser
-   authorization-code + PKCE parameters, redirect URI, scopes, audience,
-   refresh grant and rotation, expiry handling, account/principal selection,
-   cancellation, and the exact endpoint/account binding required on requests.
-   Never place real tokens, authorization codes, or identifying account values
-   in the repository, fixtures, logs, errors, or task notes.
-3. Read `internal/state/credentials.go`, the `gateway auth` implementation in
-   `cmd/gateway/main.go`, `internal/config/config.go`, and the canonical types in
-   `internal/transport/canonical.go` before changing shared contracts. Extend
-   the existing credential store and CLI; do not create a second token store or
-   silently reinterpret the normal OpenAI `bearer_token` configuration.
-4. Add an explicit `openai-codex` provider configuration whose OAuth issuer,
-   token client, persisted credential, refresh path, and eventual inference
-   client are origin-bound. Validate loaded records against both provider ID
-   and endpoint/issuer identity. Refresh early enough to avoid expiry during a
-   request, coalesce concurrent refreshes, persist rotated refresh tokens
-   atomically, and fail closed on corrupt, expired-without-refresh, wrong
-   audience, wrong account, or endpoint-mismatched credentials.
-5. Integrate verified device-code login as the default and browser PKCE only as
-   supported by the verified upstream. Preserve non-interactive operation for
-   status/logout and automation. Never print tokens; ensure cancellation and
-   OAuth error paths have deterministic exit behavior.
-6. Use fake authorization/token servers and injectable clocks/randomness for
-   automated tests. Cover successful login, device polling (`pending`, pacing,
-   denial, expiry), PKCE verification, refresh and rotation, restart, concurrent
-   refresh, logout, redaction, account selection, cancellation, malformed
-   responses, and strict cross-origin/cross-provider isolation. Add tests that
-   normal OpenAI API keys cannot reach Codex endpoints and Codex OAuth tokens
-   cannot reach `api.openai.com`. Keep any real login test opt-in.
-7. Update provider notes before code, then update architecture, configuration,
-   CLI/README documentation, and this task record. Run all repository checks
-   and leave one focused commit. TASK-021 is complete only when login, durable
-   restart, automatic refresh, logout, and the credential-isolation tests all
-   pass; transport translation and inference remain TASK-022.
-
-Official OpenAI/Codex sources were unreachable in the previous environment
-(web research returned `401`; direct HTTPS was proxy-blocked with `403`). A
-completing agent must repeat the research with working official-source access.
-Do not implement from memory, Hermes behavior alone, or stale blog posts.
-
-##### TASK-022 — Implement the ChatGPT Codex subscription transport
-
-**Depends on:** TASK-017, TASK-021
-
-Implement the verified Codex Responses protocol and catalog, translate supported
-public requests and streams, preserve tools/reasoning/usage/errors, reject
-unsupported features explicitly, and expose `openai-codex/<model>` IDs. Add
-fixtures, fake-server tests, and opt-in live tests.
-
-#### 3. Implement classification and smart selection
-
-##### TASK-025 — Implement the generic connected-model classifier
-
-**Depends on:** TASK-024
-
-Invoke a configured physical model through the provider registry, require and
-validate structured classification output, prevent `smart` recursion, bound the
-call, and test malformed output, cancellation, and fallback behavior.
-
-##### TASK-026 — Verify and implement the self-hosted Laya classifier
-
-**Depends on:** TASK-012, TASK-024
-
-Document the Laya model's current input/output contract from primary sources.
-Run a configured provider-qualified Laya model through local Ollama or a
-self-hosted standard OpenAI-compatible endpoint; do not add a separate cloud
-provider or credential path. Validate output against the common schema, forbid
-`smart` recursion, and test malformed output, timeouts, cancellation, and
-failure policy with a fake local endpoint.
-
-##### TASK-027 — Implement the Ollama embedding classifier
-
-**Depends on:** TASK-024
-
-Add deterministic in-memory prototype similarity over a configured physical
-Ollama embedding model. Validate vector shape and finite values and test
-thresholds, cancellation, and stability.
-
-##### TASK-029 — Expose and route the `smart` virtual model
-
-**Depends on:** TASK-025, TASK-026, TASK-027, TASK-028
-
-Add `smart` catalog behavior and route requirements through classification and
-selection to one physical model. Explicit model requests must bypass semantic
-routing. Add end-to-end deterministic-choice and failure-policy tests.
-
-#### 4. Add sessions, handoff, quota, and usage
-
-##### TASK-030 — Implement session identification
-
-**Depends on:** TASK-029
-
-Resolve bounded session identity from explicit header, metadata, `user`, then a
-conversation fingerprint; avoid logging raw identifiers or content.
-
-##### TASK-031 — Implement in-memory affinity lifecycle
-
-**Depends on:** TASK-030
-
-Add concurrency-safe pinning, expiry, context reset, cleanup, and authenticated
-session deletion with bounded memory and race coverage.
-
-##### TASK-032 — Preserve affinity through agent/tool loops
-
-**Depends on:** TASK-031
-
-Keep smart sessions pinned across assistant tool calls and results, including
-parallel and incomplete tool exchanges.
-
-##### TASK-033 — Implement typed provider failures and pre-stream handoff
-
-**Depends on:** TASK-029, TASK-031
-
-Classify retryable failures and support configured fail/reroute behavior only
-before downstream bytes are committed. Preserve request/tool context, cap
-attempts, and never substitute an explicit model.
-
-##### TASK-035 — Persist minimal aggregate usage
-
-**Depends on:** TASK-034
-
-Persist only routing-required aggregate usage with versioning, restrictive
-permissions, atomic replacement, recovery, and streaming-safe collection.
-
-##### TASK-036 — Integrate quota, usage, cost, and latency with smart routing
-
-**Depends on:** TASK-028, TASK-033, TASK-034, TASK-035
-
-Feed quota, aggregate usage, verified pricing, and latency into selection and
-test budget, unknown-data, local-preference, and reroute boundaries.
-
-#### 5. Harden and release Version 1
-
-##### TASK-037 — Complete Version 1 configuration and operational CLI
-
-**Depends on:** TASK-012, TASK-014, TASK-022, TASK-024–TASK-036
-
-Finalize the strict schema for only the Version 1 provider families and routing
-components, finish model/version commands, validate combinations, update the
-example configuration, and add migration/error tests.
-
-##### TASK-038 — Add compatibility, security, and agent-loop suites
-
-**Depends on:** TASK-037
-
-Cover every public endpoint, compatible provider, Codex translation, self-hosted
-Laya classification, unknown fields, tools, multimodality, SSE, cancellation,
-credential isolation, malformed inputs, and multi-turn handoff.
-
-##### TASK-039 — Add the production container and shutdown hardening
-
-**Depends on:** TASK-037
-
-Build a reproducible non-root `linux/amd64` image with read-only configuration,
-persistent `/state`, health checks, cancellation, and graceful shutdown tests.
-
-##### TASK-040 — Establish performance and resource baselines
-
-**Depends on:** TASK-038, TASK-039
-
-Benchmark startup, idle RSS, catalogs, transparent proxy overhead, SSE first
-byte, classifier latency, and concurrent sessions using a reproducible method.
-
-##### TASK-041 — Validate and publish Version 1
-
-**Depends on:** TASK-038, TASK-039, TASK-040
-
-Audit the narrowed Version 1 definition of done, run all formatting, tidy, vet,
-unit/race/integration/security checks, build artifacts, exercise documented
-Ollama and opt-in OpenAI/Codex/Laya smoke tests, and publish limitations and
-checksums only after all required behavior passes.
-
----
-
-## Version 2 backlog (core adapters implemented in the current tree)
-
-These tasks are deliberately unordered until Version 1 is complete. Before
-implementation, refresh their requirements and dependencies against current
-primary documentation.
-
-- **TASK-013 — OpenRouter adapter:** implemented discovery, authentication,
-  model metadata, transparent inference, response-header quota capture, and
-  optional credits/balance polling through a separate management token.
-- **TASK-015 — Gemini adapter:** implemented through the verified
-  `/v1beta/openai` compatibility surface.
-- **TASK-016 — xAI adapter:** implemented through the verified OpenAI-compatible
-  `/v1` surface with provider-scoped credentials.
-- **TASK-018 — Anthropic adapter:** implemented native Messages translation
-  for Chat Completions and basic stateless Responses, including streaming,
-  vision, client tools/tool results, usage, finish reasons, and reasoning;
-  structured output is explicitly rejected as unsupported.
-- **TASK-023 — Nous Portal adapter:** implemented subscription authentication,
-  refresh, catalog pricing, inference, and response-header quota behavior.
-- **Jev classifier adapters:** direct and provider-transport modes are implemented
-  behind the Version 1 classifier contract; they must not replace or complicate
-  the self-hosted Laya path.

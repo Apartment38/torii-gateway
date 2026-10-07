@@ -28,8 +28,7 @@ The repository's provider research covers local Ollama, standard
 OpenAI-compatible endpoints, ChatGPT Codex subscription access, Nous Portal,
 Jev, Gemini, xAI, and Anthropic. Before changing an adapter, record dated
 findings from primary documentation, identify which fields are verified versus
-inferred, and record unsupported behavior explicitly. A provider task is not
-complete until its notes and contract tests agree.
+inferred, and record unsupported behavior explicitly. Provider protocol changes must keep these notes and contract tests consistent.
 
 ## Bundled core-model catalog
 

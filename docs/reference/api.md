@@ -1,0 +1,160 @@
+# HTTP API reference
+
+The base origin in examples is `http://127.0.0.1:8080`. Use HTTPS remotely.
+For client setup see [Clients](../guides/clients.md); supported endpoint/model
+combinations are in [Provider support](providers.md).
+
+## Authentication
+
+| Boundary | Authorization |
+| --- | --- |
+| `/v1/*` inference and model routes | `Authorization: Bearer GATEWAY_KEY` |
+| Config, provider tests/login/status/helper download, credential/client-key management | Administrator HTTP Basic (`curl -u USERNAME`, prompts for password) |
+| Intelligence and session deletion | Administrator Basic or gateway bearer key |
+| Static console, `/healthz`, setup status | Public |
+| Initial setup write | Unused 30-minute setup code, only while no administrator exists |
+| Remote login session/import | One-time pairing bearer token (10-minute pending session), not an inference key |
+| OAuth callback | Pending authorization state validation |
+
+Management responses use `Cache-Control: no-store` and enforce same-origin
+boundaries when an Origin header is present. Static console availability does
+not imply public access to configuration. Basic and bearer keys have different
+permissions. There is one administrator; named client keys do not create users.
+
+## Inference and models
+
+| Method/path | Input | Successful result |
+| --- | --- | --- |
+| `GET /v1/models` | No body | OpenAI-style `object: list`, `data` model objects |
+| `GET /v1/models/{provider/model}` | Public ID in path | One model object; 404 if unknown |
+| `POST /v1/chat/completions` | `model`, `messages`, optional `stream` and supported upstream fields | Chat JSON or SSE |
+| `POST /v1/completions` | `model`, `prompt`, supported upstream fields | Completion JSON or SSE if upstream supports it |
+| `POST /v1/embeddings` | `model`, `input`, supported upstream fields | Embedding JSON |
+| `POST /v1/responses` | `model`, `input`, optional instructions/tools/stream | Stateless response JSON or adapted SSE |
+
+Bodies are JSON objects and limited to 32 MiB. Transparent forwarding replaces
+only the top-level model value, preserving other fields/bytes. The model may be
+`smart`, or a provider-qualified ID. `previous_response_id` and `conversation`
+on Responses are rejected with `unsupported_parameter`. Context must be supplied
+in each request. Provider-specific endpoint, tool, vision, and format limits apply.
+
+### Request examples
+
+Set `GATEWAY_API_KEY` to your saved Torii key. Substitute actual discovered models
+with the needed endpoint capability:
+
+```sh
+curl --fail http://127.0.0.1:8080/v1/chat/completions   -H "Authorization: Bearer $GATEWAY_API_KEY"   -H 'Content-Type: application/json'   -d '{"model":"local/llama3.2","messages":[{"role":"user","content":"Hello!"}]}'
+curl --fail http://127.0.0.1:8080/v1/completions   -H "Authorization: Bearer $GATEWAY_API_KEY"   -H 'Content-Type: application/json'   -d '{"model":"local/llama3.2","prompt":"Complete this: Hello"}'
+curl --fail http://127.0.0.1:8080/v1/embeddings   -H "Authorization: Bearer $GATEWAY_API_KEY"   -H 'Content-Type: application/json'   -d '{"model":"local/nomic-embed-text","input":"Text to embed"}'
+curl --fail http://127.0.0.1:8080/v1/responses   -H "Authorization: Bearer $GATEWAY_API_KEY"   -H 'Content-Type: application/json'   -d '{"model":"openai/RESPONSES_CAPABLE_MODEL","input":"Hello!"}'
+```
+
+The embedding example requires that model installed in Ollama; the Responses
+placeholder must be replaced with an actual supported model. JSON payload shape
+follows the selected OpenAI-compatible endpoint. Streaming uses `stream: true`
+and `curl --no-buffer`; after bytes are sent, errors cannot become a replacement
+JSON response and no cross-model retry is attempted.
+
+## Health, setup, configuration, and providers
+
+| Method/path | Request | Response / limits |
+| --- | --- | --- |
+| `GET /healthz` | None | HTTP 200, `status: ok`; server liveness, not all-provider readiness |
+| `GET /gateway/v1/setup` | None | `setup_required` boolean |
+| `POST /gateway/v1/setup` | `username`, `password`, `setup_code` | 201 with username and newly generated `api_key` once; existing admin gives 409, bad/expired code 403 |
+| `GET /gateway/v1/config` | Admin | Active config JSON with references, never secret values |
+| `PUT /gateway/v1/config` (also `POST`) | Full config JSON, admin | `reloaded: true` on successful validated atomic save; listener/database live changes rejected |
+| `POST /gateway/v1/providers/test` | `{"provider": PROVIDER_CONFIG}` JSON, admin | Actual discovery status/models, including classifier-only metadata; no inference test |
+| `POST /gateway/v1/providers/login` | `{"provider_id":"ID"}` or `{"provider":"ID"}`, admin | Pending login instructions/URL or helper session details |
+| `GET /gateway/v1/providers/login?provider=ID` | Admin | Login status without stored tokens |
+| `GET /gateway/v1/providers/login/helper/{asset}` | Admin | OS/architecture-matching binary; unavailable assets fail |
+| `GET /gateway/v1/providers/login/session` | Pairing bearer token | Pending session metadata used by helper |
+| `POST /gateway/v1/providers/login/import` | Pairing bearer token and helper-generated OAuth payload | Validated single-use credential import; token/state/endpoint/scopes checked |
+| `GET /gateway/v1/providers/login/callback` or `/auth/callback` | Authorization code/state query | Complete matching pending login; use generated flow rather than constructing callback |
+| `DELETE /gateway/v1/sessions/{id}` | Bearer/admin | End in-memory affinity for that identity |
+
+Use the console/helper to orchestrate OAuth; do not hand-author import payloads.
+The helper URL/token comes from the pending login, is short-lived, and must not be
+logged or shared. See [Providers](../guides/providers.md).
+
+## Credentials and client keys
+
+| Method/path | Request | Result |
+| --- | --- | --- |
+| `GET /gateway/v1/credentials` | Admin | `credentials` metadata list; no values |
+| `POST /gateway/v1/credentials` | `value`, `service`, `purpose`, admin | HTTP 200, `credential` ID and `status: configured` |
+| `PUT /gateway/v1/credentials/{id}` | `value`, `service`, `purpose`, admin | Replace generic secret; preserve existing service/purpose |
+| `DELETE /gateway/v1/credentials/{id}` | Admin | Revoke generic credential; protected system/OAuth/client-key records denied |
+| `POST /gateway/v1/admin/api-key` | Admin | New default `api_key` once; prior default invalid immediately |
+| `GET /gateway/v1/admin/api-keys` | Admin | `api_keys` metadata list |
+| `POST /gateway/v1/admin/api-keys` | `{"name":"Client"}`, admin | 201, `key` metadata and newly generated `api_key` once |
+| `DELETE /gateway/v1/admin/api-keys/{id}` | Admin | Delete/revoke named or default key |
+
+Example creating a client key, with a password prompt:
+
+```sh
+curl --fail -u YOUR_ADMIN_USERNAME http://127.0.0.1:8080/gateway/v1/admin/api-keys   -H 'Content-Type: application/json' -d '{"name":"My client"}'
+```
+
+Save the returned key securely. Responses containing it must not be shared.
+See [Credentials](../guides/credentials.md) for consequences of rotation/deletion.
+
+## Benchmark intelligence
+
+All routes below use the `/gateway/v1/intelligence` prefix and accept admin Basic
+or gateway bearer authentication. Disabled intelligence returns 503.
+
+| Method/suffix | Result and parameters |
+| --- | --- |
+| `GET` base path | Full snapshot, sources/observations, models, unmatched |
+| `GET /sources` | Source status, safe errors, last attempt/success, count, age, metadata |
+| `GET /models` | Matched summaries without raw observations; `include_unmatched=true` adds display-only summaries; `configured_only=true` filters by catalog associations |
+| `GET /observations` | Raw paginated observations; `offset` ≥0, `limit` 1–500 (default 100), optional `q` ≤256 characters; `include_metadata=true` includes captured metadata |
+| `GET /models/{id}` | Canonical/physical model details with raw observations/provenance |
+| `GET /unmatched` | Unmatched/ambiguous IDs and candidate identities |
+| `POST /refresh` | JSON `updated`, `partial_failure`, `sources`, model/unmatched counts; failed sources retain cache |
+
+```sh
+curl --fail http://127.0.0.1:8080/gateway/v1/intelligence/sources   -H "Authorization: Bearer $GATEWAY_API_KEY"
+curl --fail --no-buffer -X POST http://127.0.0.1:8080/gateway/v1/intelligence/refresh   -H "Authorization: Bearer $GATEWAY_API_KEY" -H 'Accept: text/event-stream'
+```
+
+SSE refresh emits `progress` events with phase/source/completed/total/failed/
+observations/message, 15-second heartbeats, and a final `result` summary.
+An existing worker is observed rather than duplicated. Reverse proxies need
+streaming and sufficiently long read timeouts (`X-Accel-Buffering: no` is set).
+Both JSON and SSE callers must check partial-source failure, not HTTP 200 alone.
+
+## Errors and correlation
+
+Inference errors use an OpenAI-style envelope, for example:
+
+```json
+{"error":{"message":"The model does not exist","type":"invalid_request_error","param":null,"code":"model_not_found"}}
+```
+
+| Status | Typical cause |
+| --- | --- |
+| 400 | Invalid JSON/config/parameter or unsupported endpoint/capability |
+| 401 | Invalid/missing credentials for this authentication boundary |
+| 403 | Cross-origin/unauthorized management or invalid setup/pairing flow |
+| 404 | Unknown model/path/resource |
+| 409 | Setup already complete or conflicting management state |
+| 413 | Inference body exceeds 32 MiB |
+| 429 | Upstream rate limit/quota exhaustion or login failure limiting |
+| 502 | Upstream/auth/classifier/stream failure |
+| 503 | No eligible model, missing tool pin, disabled intelligence, unavailable state |
+
+Management routes also return safe validation messages; some boundary failures
+use plain HTTP text. Do not assume every route has the inference error envelope.
+`X-Request-ID` is returned on responses; a single safe supplied ID ≤128 characters
+is retained, otherwise generated. Upstream headers cannot replace it.
+
+Smart response evidence includes `X-Torii-Model`, `X-Torii-Task`,
+`X-Torii-Complexity`, `X-Torii-Routing-Ms`, `X-Torii-Classifier-Ms`,
+`X-Torii-Classifier-Source`, and `X-Torii-Estimated-Inference-Cost-Usd`.
+Classifier version and input/output token headers appear only when reported and
+valid. `X-Torii-Classifier-Cost-Usd` remains `unknown`; inference cost is an
+estimate, not a bill. Cached tool continuation is not a fresh measured classifier
+call. These headers expose safe evidence, not prompts or full classifier context.

@@ -135,7 +135,7 @@ def registry_fixture():
     transport = fixture.TypedTransport()
     router._client_factory = lambda settings: client_module.JevClient(settings, transport=transport)
     rows = []
-    reference_path = Path(__file__).resolve().parent.parent / 'docs/gauntlet/hermes-reference-results.json'
+    reference_path = Path(__file__).resolve().parent.parent / 'docs/development/evaluations/smart-routing/hermes-reference-results.json'
     reference_bytes = reference_path.read_bytes()
     reference = json.loads(reference_bytes)
     matched = [row for row in reference['cases'] if row['scope'] == 'matched_routing']
@@ -163,7 +163,7 @@ def registry_fixture():
                      'decision_records': transport.records[before:]})
     assert reference_path.read_bytes() == reference_bytes
     output = {'registration': loaded, 'middleware_count': len(callbacks),
-              'immutable_fixture_source': 'docs/gauntlet/hermes-reference-results.json',
+              'immutable_fixture_source': 'docs/development/evaluations/smart-routing/hermes-reference-results.json',
               'immutable_fixture_source_sha256': hashlib.sha256(reference_bytes).hexdigest(),
               'byte_identical_matched_host_inputs': len(matched),
               'registered_tools': sorted(x for x in manager._plugin_tool_names if x.startswith('jev_effort_router_')),

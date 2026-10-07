@@ -1,4 +1,4 @@
-# Routing customization
+# Routing and classifier contracts
 
 Configure a TypeSafe Jev or Jev-compatible provider, test its connection, select
 its discovered classifier model on Smart Routing, and choose Save & reload.
@@ -78,3 +78,19 @@ authoritative when editing YAML or submitting console settings.
 
 The console always saves `allow_paid_models` as an explicit boolean, so an
 unchecked policy stays false after reload.
+
+
+## Session identity and enforcement
+
+Session identity resolves `X-Session-ID`, `X-Conversation-ID`,
+`metadata.session_id`, `user`, then a bounded conversation fingerprint.
+IDs are capped at 256 characters; the in-memory store is bounded at 10,000
+sessions. Context signatures trigger reset. No session content is persisted.
+
+A selected pin is checked against current capability, paid-model, quota,
+context and quality gates. Only successful inference establishes affinity.
+Tool continuations require their existing eligible pin; expired/ineligible pins
+fail before dispatch. Retry cannot begin after downstream commitment.
+See `internal/api/smart_safety_test.go` and `gauntlet_critic_test.go`.
+
+[User setup](../guides/smart-routing.md) · [Configuration](../reference/configuration.md)

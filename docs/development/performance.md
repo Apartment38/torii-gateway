@@ -1,4 +1,4 @@
-# Version 1 performance baseline
+# Performance baseline
 
 The repository contains a reproducible transparent-dispatch benchmark:
 

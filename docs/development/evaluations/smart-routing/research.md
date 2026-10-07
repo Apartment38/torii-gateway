@@ -29,7 +29,3 @@ Torii already has encrypted provider credentials, discovery, a classifier select
 ## Evaluation
 
 Freeze fixtures before judging the corresponding change. Exercise valid and malformed TypeSafe/Laya responses, objective tools/vision/reasoning/schema/stream requirements, exhausted quota and paid-model policy, session evolution, pre-stream retries, explicit models, and transparent JSON/SSE forwarding. Inspect setup and save/reload behavior in the authenticated running Podman console. Record setup actions, actual/estimated classifier usage, and elapsed routing time; use anonymous A/B artifacts where provenance can be hidden without hiding correctness evidence. Critics report the largest remaining gap and builders revise it.
-
-## Model and quota policy
-
-Current official guidance recommends GPT-6.1 Sol for complex coding at lower cost than Astra and Luna for focused repeatable tasks: https://learn.chatgpt.com/docs/models. The local account catalog exposes both. Escalate judgment-intensive tasks only when needed. Read actual account rate-limit telemetry, checkpoint before any observed remaining allowance reaches 5%, and resume after a verified reset. A missing telemetry source is not permission to invent an allowance or reset time.

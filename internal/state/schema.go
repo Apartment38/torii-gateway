@@ -36,7 +36,7 @@ func checkSchema(version, tables, target int) error {
 		return nil
 	}
 	if version < BaselineSchemaVersion {
-		return errors.New("database predates the database-only baseline: stop Torii, archive the database and configuration, then provision a fresh database and configuration; see docs/runtime-state.md for the one-time reset")
+		return errors.New("database predates the database-only baseline: stop Torii, archive the database and configuration, then provision a fresh database and configuration; see docs/guides/backup-and-upgrade.md for the one-time reset")
 	}
 	if version > target {
 		return errors.New("database schema is newer than this gateway; upgrade the gateway or restore its matching pre-upgrade backup")

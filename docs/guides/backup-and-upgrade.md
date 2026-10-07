@@ -1,4 +1,46 @@
-# Database baseline, updates and recovery
+# Back up, upgrade, and restore Torii
+
+Preserve your configuration, complete database storage, and original master key
+when updating. These instructions apply to one gateway process with local
+persistent storage. Keep the master-key backup separate from the data backup.
+
+## Make a stopped backup
+
+1. Record `gateway version`, your binary/image tag or digest, and Compose project
+   name and override files. Keep the previous binary/image for rollback.
+2. Stop Torii gracefully (Ctrl+C, your service manager, or Compose `down` without `-v`).
+3. Copy the entire data directory, including any `torii.db-wal` and
+   `torii.db-shm` files, and the configuration into a protected backup location.
+4. Back up the original master key separately. Confirm that both backups are readable.
+
+For the native layout, after stopping and choosing an unused backup directory:
+
+```sh
+umask 077
+mkdir -p backups/native-before-upgrade
+cp -a state config.yaml backups/native-before-upgrade/
+```
+
+For container storage, inspect the actual volume identity (Compose prefixes names
+with its project). With Podman, after stopping:
+
+```sh
+podman volume ls
+# Replace ACTUAL_VOLUME_NAME and choose an unused protected destination.
+podman volume export ACTUAL_VOLUME_NAME --output /safe/backup/torii-data.tar
+```
+
+For Docker, after stopping, replace the volume name and absolute backup path:
+
+```sh
+docker run --rm -v ACTUAL_VOLUME_NAME:/data:ro -v /safe/backup:/backup alpine:3.22 tar -C /data -cf /backup/torii-data.tar .
+```
+
+The utility image may need network access. Copy the host `config/` directory
+separately and preserve ownership. Do not copy only the main SQLite file while
+Torii is running. Advanced online backups require SQLite's backup API or `.backup`.
+
+## Supported databases
 
 Torii's database-only baseline is SQLite schema **4**; the current schema is
 **5**. Fresh installations create the baseline and apply the registered upgrade.
@@ -15,9 +57,10 @@ identity. Nonsensitive configuration remains in YAML; the master key stays
 outside the database. Sessions, live quota caches and pending login flows remain
 memory-only. There is no `state.directory` or flat-file credential/cache importer.
 
+
 ## One-time baseline reset
 
-This is the only planned reset. It deliberately does **not** preserve old
+This is the explicit reset for pre-baseline installations. It deliberately does **not** preserve old
 credentials, OAuth sessions, usage totals, benchmark caches or Codex identity.
 The previous installation remains recoverable from its archived storage and
 matching binary/key. Torii never performs this reset automatically.
@@ -61,7 +104,7 @@ source and published port are the only required environment settings; database
 path and image overrides remain optional. Credential entry and OAuth helper
 transfer remain supported normal operations, not legacy migration features.
 
-## Future manual updates
+## Upgrade an existing installation
 
 Application release versions, SQLite schema versions and encryption key versions
 are separate. `gateway version` reports the application build and supported
@@ -102,6 +145,40 @@ No automatic downloader, installer or schema downgrade is introduced.
 A failed upgrade never triggers database recreation. Lost master keys require
 their separate backup; no key replacement can decrypt existing credentials.
 
+### Source-built native binary
+
+After the stopped backup, select the source version, build a replacement, and
+validate config before replacing the binary:
+
+```sh
+git pull --ff-only
+go build -trimpath -o ./bin/gateway.new ./cmd/gateway
+./bin/gateway.new config validate --config ./config.yaml
+cp ./bin/gateway ./bin/gateway.previous
+mv ./bin/gateway.new ./bin/gateway
+./bin/gateway serve --config ./config.yaml
+```
+
+Use the same master-key source and working directory. Restart a systemd-managed
+installation with `sudo systemctl restart torii-gateway.service` instead.
+For release downloads, verify `SHA256SUMS` before replacement; see [Native installation](../installation/native.md).
+
+### Source-built Compose image
+
+After backup, pull/select the intended source version and rebuild with the same
+project, volumes, `.env`, and override files. For the file-secret Podman layout:
+
+```sh
+git pull --ff-only
+podman compose -f compose.yaml -f compose.secrets.yaml up --build -d
+podman compose -f compose.yaml -f compose.secrets.yaml ps
+podman compose -f compose.yaml -f compose.secrets.yaml logs --tail=100 torii-gateway
+```
+
+Docker users include `-f compose.docker.yaml`. Do not replace the saved config
+with an example during a normal upgrade. Rebuilding is needed for code changes;
+console config changes apply through save/reload.
+
 ## Rollback
 
 Stop Torii. Restore the complete pre-upgrade database directory/volume and
@@ -110,34 +187,11 @@ binary/image. Do not overlay a backup onto newer WAL/SHM files. Preserve the
 failed-upgrade dataset separately before restoration. Rollback restores usage,
 credentials and API keys to their backup values; update clients if necessary.
 Never manually lower `PRAGMA user_version`. See
-[credential backup and recovery](credential-storage.md#backup-recovery-and-security-boundary).
+[credential backup and recovery](credentials.md#recover-access).
 
-## Background usage persistence
-
-Requests update in-memory totals immediately. One worker flushes dirty models
-every second through an independent SQLite pool in batches of at most 250.
-Retries upsert absolute totals, avoiding double counting; concurrent updates
-remain pending. Configuration reloads share the worker.
-
-Normal crash loss is approximately one second plus flush time. Database failures
-can extend this window; pending totals are retained with rate-limited
-`usage_flush_failed` warnings. Shutdown drains HTTP requests and attempts a final
-flush with a separate ten-second deadline. Failed final writes report
-`usage_shutdown_flush_failed`. This is routing accounting, not an audit-grade
-billing ledger. Streamed responses still do not contribute usage counters.
-
-## Maintaining future releases
-
-Add one immutable migration per future schema version to the centralized
-registry in `internal/state/schema.go`; increment the current version while
-keeping baseline 4. Fresh initialization creates baseline 4 and runs the same
-upgrade path as existing installations. Add fixtures for every supported
-upgrade path, transactional failure/retry, credential preservation and restart.
-Do not reuse or silently change previously released migration versions.
-
-Tag releases with Semantic Versioning. Every release must document supported
-schemas, configuration changes, prerequisites and rollback limitations. Release
-automation gates artifacts on Go/race/console tests, vet, formatting, database
-compatibility coverage and an isolated non-root container persistence/recovery
-test. It publishes gateway/helper binaries, SHA256SUMS, and versioned images.
-Publication occurs only after all validation and artifact builds succeed.
+Restore into an empty target location after preserving the failed-upgrade data;
+never overlay the backup onto newer WAL/SHM files. Podman can import a stopped
+volume with `podman volume import ACTUAL_VOLUME_NAME /safe/backup/torii-data.tar`.
+For Docker use a utility container to extract the archive into an empty mounted
+volume, preserving UID/GID 65532. Restore the matching config and key, start the
+previous binary/image, and verify health, login, model discovery, and inference.

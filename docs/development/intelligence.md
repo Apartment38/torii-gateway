@@ -1,12 +1,4 @@
-# Benchmark ingestion and model intelligence
-
-Benchmark intelligence is optional. It updates in the background and enriches
-the existing smart selector; explicit `provider/model` requests do not change.
-No benchmark HTTP calls, disk reads, or aggregation occur during inference.
-Existing routing remains in effect when disabled, when weights are zero, or
-when no usable evidence exists.
-
-## Architecture
+# Benchmark intelligence internals
 
 `internal/intelligence` contains a registered `Source` interface, independent
 adapters, a shared identity resolver, a pure aggregation function, and a manager
@@ -23,74 +15,7 @@ Missing scores are absent, never manufactured as zero. A new adapter implements
 `Source.Fetch`, registers a factory in `Builtins`, maps categories, and adds
 fixture tests; aggregation and routing need no source-specific changes.
 
-## Sources
-
-| Type | Published interface | Notes |
-| --- | --- | --- |
-| `artificial_analysis` | [Official data API](https://artificialanalysis.ai/api-reference), `/api/v2/data/llms/models` | API key via `x-api-key`; capability indices, prices and performance. Explicit compatible endpoints remain supported. The obsolete built-in `/api/v2/language/models/free` URL is replaced with the documented endpoint. Credit Artificial Analysis and observe its data terms. |
-| `benchlm` | [Published model JSON](https://benchlm.ai/data), `https://benchlm.ai/data/models.json` | Raw benchmarks plus published composite/category scores and provenance. The leaderboard JSON export is also accepted via `url`. CC BY-NC 4.0: commercial use requires a BenchLM licence. Estimates stay raw-only unless `include_estimated: true`. |
-| `huggingface` | [Dataset Viewer rows API](https://huggingface.co/docs/dataset-viewer/rows) | Defaults to the public [Open LLM Leaderboard v2 results](https://huggingface.co/datasets/open-llm-leaderboard/contents): `default` / `train`, model ID `fullname`, six raw scores on a 0–1 scale. Explicit datasets and mappings override the preset. These are historical evaluations, not a current ranking of every model; unavailable evaluation dates stay unknown. Dataset licences remain the operator's responsibility. |
-| `lmarena` | [Arena's official leaderboard dataset](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset) as native Parquet files | Defaults to `text_style_control`, `latest`. Every Arena subset remains human-preference evidence, including coding/vision categories. Confidence bounds and vote counts are retained. |
-| `livebench` | [Official published judgments](https://huggingface.co/datasets/livebench/model_judgment) as native Parquet files | Defaults to `default`, `leaderboard`; per-question scores, tasks and evaluation timestamps are retained. No HTML scraping. The artifact can lag the current website; old evidence is excluded by `max_age`. |
-
-Sources are explicitly enabled; no vendor is contacted by default. All support
-an optional `url` for a trusted mirror or compatible published endpoint. URLs
-cannot contain embedded credentials or secret query parameters. Credentials
-are never forwarded across redirects. Use HTTPS for remote authenticated sources.
-
-## Configuration
-
-Add this top-level section to `config.yaml`, or edit the same object as JSON on
-the console's **Benchmarks** page and select **Save & reload**:
-
-```yaml
-intelligence:
-  enabled: true
-  refresh_interval: 24h
-  http_timeout: 30s
-  source_timeout: 30m
-  request_interval: 1s
-  retries: 2
-  stale_after: 168h
-  max_age: 4320h
-  freshness_half_life: 2160h
-  sources:
-    - id: aa
-      type: artificial_analysis
-      enabled: true
-      api_key: {credential: YOUR_STORED_CREDENTIAL_ID}
-    - id: arena
-      type: lmarena
-      enabled: true
-  aggregation:
-    source_weights: {aa: 1, arena: 1}
-    benchmark_weights: {aa/artificial_analysis_coding_index: 2}
-    overall_weights:
-      general_intelligence: 1
-      coding: 1
-      agentic: 1
-      reasoning: 1
-      math: 1
-      knowledge: 1
-      instruction_following: 1
-      multimodal: 1
-      preference: 0
-  routing:
-    capabilities: {overall: 1}
-    task_weights:
-      coding: {coding: 3, agentic: 1}
-      reasoning: {reasoning: 3, math: 1}
-      research: {knowledge: 3, reasoning: 1}
-    price: 0.2
-    latency: 0.1
-    ttft: 0.1
-    throughput: 0.1
-    context: 0.1
-    cost_reference_usd: 0.01
-    latency_reference_seconds: 2
-    throughput_reference: 100
-    missing_score: 0.5
-```
+## Retrieval, transport, and pacing
 
 The durations above are defaults (Go duration syntax: hours, not `7d`); retries
 default to two and are limited to five. Refreshes retry network/server errors
@@ -170,124 +95,6 @@ Startup uses a recently updated cached snapshot without repeating its imports;
 newly enabled sources still trigger an initial import, and manual refresh remains
 available regardless of cache age.
 
-Source keys use `{credential: ID}` references from the authenticated provider
-credential API, or transient `{value: "key"}` input encrypted on console save.
-The Credentials page's gateway client keys must not be used as source keys.
-In the console, check **Benchmarks → Enable benchmark intelligence** to reveal
-the individual source toggles. Enable the sources you want, enter an Artificial
-Analysis API key if using that source, and click **Save & reload** before
-**Refresh benchmarks**. The
-master toggle does not enable individual sources automatically. Unsaved source
-changes must be saved before refreshing; ingestion always uses saved settings.
-
-Each source card shows its status, observation count, last successful update and
-cache age. Artificial Analysis requires a source API key; the other built-in
-public sources do not. Hugging Face, LiveBench and LMArena show an optional **Hugging Face token**
-field; public datasets permit anonymous access. A key field is also shown for an
-existing keyed custom source. Entering a key replaces it
-on save; leaving the field blank keeps the encrypted credential reference.
-**Reveal** only reveals a newly entered value, never a previously saved key.
-Keys are held only in memory until submitted and are cleared on save/sign-out.
-
-Endpoints, datasets, columns and score mappings are preconfigured in the shared
-`internal/intelligence/presets.json` used by both backend and console. Source IDs,
-URLs, datasets, metric mappings, estimated-evidence options and timing controls
-are not displayed in the console. Advanced operators may still customize these
-in `config.yaml`; explicit custom datasets, endpoints, credentials, aliases,
-aggregation/routing weights and timing options are preserved on console saves.
-An empty Hugging Face dataset or the old `org/your-leaderboard` example placeholder
-uses the built-in preset instead. Nothing is enabled or contacted by default.
-
-The **Current model benchmark data** table loads cached data on page entry and
-always shows **one row per model**, with its available coding, agentic, knowledge
-and other capability scores together in columns. Summaries use the same weighted,
-freshness-aware aggregation as routing and combine the full dataset before
-filtering or pagination; scores for a model cannot be split across pages.
-Choose **All benchmark models** (default) to include unmatched/ambiguous imported
-models from enabled sources, or **Configured models only** for matches against
-currently configured inference providers. Exact identities and explicit aliases
-win; otherwise display-only matching normalizes case, separators, namespaces and
-`:latest`, then accepts whole-token prefix extensions in either direction.
-For example, `gemma-4-26b` matches `gemma-4-26b-128k-agent`, while different
-versions or sizes do not match. Approximate rows are labelled **Approximate** and
-list all matching provider IDs. They remain separate variants and never supply
-routing scores or verified capabilities. Associations follow catalog refreshes.
-Known aliases group under their canonical Torii ID. Display-only unmatched rows
-group identical normalized external IDs across sources; model dates, versions
-and effort suffixes stay distinct. Ambiguous identities are explicitly labelled
-and never become eligible for routing because they appear in this table.
-JSON metadata and individual observations remain stored in SQLite and inspectable
-through the management API, but are no longer fetched or rendered by the table.
-Disabled-source raw data remains accessible through those inspection APIs.
-The table also shows operational measurements, provenance dates, age and validity.
-Both scopes are filterable and paginated; choose **25, 50 or 100 models per page**
-(default 25). Missing or incomparable values are unknown, not zero, and preference
-stays separate rather than silently contributing to overall quality.
-
-**Refresh activity** streams real discovery/download/decode (or legacy dataset page counts),
-rate-limit waits, persistence, publication and failure
-milestones above the source cards, immediately after clicking Refresh benchmarks.
-The progress bar counts completed sources, including failed sources,
-plus a final **Loading results into the table** step; it is not a download-byte
-percentage. Completion is announced only after the current table page has been
-loaded, rendered and painted. Failed table loading reports an incomplete update
-instead of claiming success. Table loading does not block progress stream reads.
-When a startup, scheduled or other manual import is already running, a console
-refresh follows that worker's recent and ongoing progress rather than queuing a
-duplicate import. Disconnecting an observer does not cancel the existing worker.
-Heartbeats indicate that the worker is still active during long upstream waits.
-Each source is published only after its validated data is saved atomically,
-and the table reloads after each publication or failure without waiting for slower
-sources. Closing the connection cancels a refresh started by that request, not
-an existing worker it joined; already published results remain available. Scheduled
-refreshes also publish incrementally, but their activity is not attached to
-this manual-refresh stream.
-Authenticated direct submissions are encrypted before saving; configuration
-reads return references only. YAML value/env/file credentials are not supported.
-See [Encrypted credential storage](credential-storage.md).
-
-## Importing a Hugging Face leaderboard
-
-Choose a dataset with published per-model results and available Parquet exports
-(the Dataset Viewer requirement), not a dataset containing only test questions.
-Replace the illustrative dataset/field names below with its real schema:
-
-```yaml
-    - id: hf-code
-      type: huggingface
-      enabled: true
-      max_rows: 100000
-      datasets:
-        - dataset: organization/benchmark-results
-          config: default
-          split: train
-          model_field: model_id
-          date_field: evaluation_date
-          version: evaluation-v2
-          metrics:
-            pass_at_1: {category: coding, min: 0, max: 1}
-            math_accuracy: {category: math, min: 0, max: 100}
-            runtime_seconds:
-              category: operational
-              metric: latency
-              unit: seconds
-```
-
-Nested columns can use dot paths. Null/missing measurements are skipped;
-non-numeric values, out-of-range scores, truncated cells, missing pages, changed
-row counts, and exceeded limits reject the update instead of publishing a
-partial leaderboard. Pages use at most eight concurrent requests; `max_rows`
-defaults to 100,000 and the importer rejects larger datasets instead of silently
-truncating them. At most eight datasets and 32 sources may be configured.
-
-Operational mapping names are `input_price`, `output_price` (unit
-`USD_per_million_tokens`), `latency`, `ttft` (`seconds`), `throughput`
-(`tokens_per_second`), and `context_length` (`tokens`). Convert milliseconds or
-non-USD prices in the published dataset before importing; no exchange-rate or
-unit guessing occurs. Source-specific `metrics` can override declared score
-scales/categories for Artificial Analysis and BenchLM. BenchLM raw benchmark
-keys are `category.benchmark`, such as `coding.sweVerified`; unknown scales
-remain inspectable but do not contribute to aggregates without a mapping.
 
 ## Model identity and aliases
 
@@ -396,7 +203,7 @@ imports. Corrupt cached observations are logged and ignored so inference
 fallback remains available.
 
 The database-only baseline is schema 4. See
-[runtime state and releases](runtime-state.md) for the one-time reset, future
+[backup and upgrade](../guides/backup-and-upgrade.md) for the one-time reset, future
 database-preserving upgrades, consistent backups and rollback instructions.
 
 Cached data stays in use during refresh. Freshness is recalculated in the
@@ -407,43 +214,6 @@ new handler writes the same database. One persistent database volume belongs
 to one gateway process: do not run replicas against the same database. Staging
 coordination is process-local, not a multi-process benchmark writer protocol.
 
-Management routes use the gateway's existing API authentication:
-
-| Endpoint | Result |
-| --- | --- |
-| `GET /gateway/v1/intelligence` | Full snapshot, source observations, model scores and unmatched IDs |
-| `GET /gateway/v1/intelligence/sources` | Source status, last attempt/success, age, staleness, safe errors and metadata |
-| `GET /gateway/v1/intelligence/models` | Matched models with aggregates and operational data; optional `include_unmatched=true` adds display-only model summaries with `display_name`, `match` and `external_ids`, without changing routing eligibility; `configured_only=true` filters full summaries by exact/approximate display associations to the current provider catalog |
-| `GET /gateway/v1/intelligence/observations` | Paginated raw observations including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; `include_metadata=true` returns complete captured metadata for inspection; the console table uses model summaries instead |
-| `GET /gateway/v1/intelligence/models/{id}` | Raw observations, provenance and aggregates for a canonical or physical ID |
-| `GET /gateway/v1/intelligence/unmatched` | Unmatched/ambiguous source IDs and candidate canonical IDs |
-| `POST /gateway/v1/intelligence/refresh` | Refresh all enabled sources; summary includes `partial_failure` and per-source status |
-
-With `Accept: text/event-stream`, the refresh endpoint returns `progress` events
-(`phase`, `source`, `completed`, `total`, `failed`, `observations`, `message`),
-15-second heartbeats, and a final `result` summary. Existing JSON callers remain
-compatible. Proxies must allow streaming and sufficiently long read timeouts;
-the gateway sets `X-Accel-Buffering: no`. Source/model summaries include counts
-without transmitting every raw observation.
-
-Run a manual refresh from the console or against the running gateway:
-
-```sh
-./gateway benchmarks refresh --config ./config.yaml
-podman compose exec torii-gateway /gateway benchmarks refresh --config /config/config.yaml
-# Use a reverse-proxy origin when needed:
-./gateway benchmarks refresh --config ./config.yaml --url https://gateway.example.com
-```
-
-The CLI loads the inference API key from the credential database and calls the running gateway rather
-than creating a competing cache writer. A partial-source failure returns an
-inspectable summary; check `partial_failure`, not only the command's exit code.
-Disabled intelligence returns HTTP 503. New APIs do not add authentication to
-the existing public console; keep it behind trusted access controls.
-
-Refresh starts, successes, parsing/upstream failures, cache errors and matching
-failures are structured `slog` events. Logs/status omit arbitrary upstream error
-bodies and credentials. Upstream HTTP status and safe parsing stages are exposed.
 
 ## Limitations
 

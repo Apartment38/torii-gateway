@@ -116,7 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", type=pathlib.Path, default=pathlib.Path("/tmp") / f"jev-effort-router-{PIN}")
     parser.add_argument("--fetch", action="store_true")
-    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("docs/gauntlet/hermes-reference-results.json"))
+    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("docs/development/evaluations/smart-routing/hermes-reference-results.json"))
     args = parser.parse_args()
     modules = verify_sources(args.source_dir, args.fetch)
     # A synthetic key satisfies the real client's environment gate. No .env or

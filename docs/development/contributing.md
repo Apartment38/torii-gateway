@@ -164,9 +164,10 @@ Before introducing a dependency, determine:
 
 ## Workflow
 
-1. Read repository instructions, [Architecture](architecture.md), [Design](design.md),
-   and [Status](status.md); inspect relevant code/tests. Explicitly assigned work
-   takes precedence over backlog order.
+1. Follow repository instructions and inspect task-relevant code/tests first.
+   Read applicable sections of [Architecture](architecture.md), [Design](design.md),
+   and [Status](status.md) when needed; do not routinely load historical records.
+   Explicitly assigned work takes precedence over backlog order.
 2. Track actual active/completed work only in status. Preserve milestone IDs,
    relevant evidence, and unresolved limitations; do not create a second task ledger.
 3. Run checks appropriate to changed behavior. Full CI gates remain required for

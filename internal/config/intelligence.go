@@ -53,6 +53,12 @@ func (c IntelligenceConfig) Validate() error {
 			return errors.New("source IDs must be valid and unique")
 		}
 		seen[source.ID] = true
+		if source.Transport != "" && source.Transport != "auto" && source.Transport != "rows" && source.Transport != "parquet" {
+			return fmt.Errorf("source %q transport must be auto, rows or parquet", source.ID)
+		}
+		if source.Transport != "" && source.Type != "huggingface" && source.Type != "livebench" && source.Type != "lmarena" {
+			return fmt.Errorf("source %q does not support dataset transports", source.ID)
+		}
 		if !intelligence.Builtins().Has(source.Type) {
 			return fmt.Errorf("source %q has unsupported type", source.ID)
 		}

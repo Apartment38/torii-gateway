@@ -75,6 +75,9 @@ func (h *huggingFace) page(ctx context.Context, dataset Dataset, offset int) (hf
 	return parseHFPage(data)
 }
 func (h *huggingFace) Fetch(ctx context.Context) (Result, error) {
+	if h.useParquet() {
+		return h.fetchParquet(ctx)
+	}
 	result := Result{Metadata: map[string]any{"datasets": h.cfg.Datasets, "transport": "Hugging Face dataset-viewer rows API"}}
 	for _, dataset := range h.cfg.Datasets {
 		reportActivity(ctx, "fetching", "Loading the first dataset page")

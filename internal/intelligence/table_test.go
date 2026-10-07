@@ -2,11 +2,78 @@ package intelligence
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 )
+
+func TestConfiguredTableMatchesSuffixesMultipleProvidersAndRefreshWithoutRoutingEvidence(t *testing.T) {
+	at := time.Now().UTC()
+	m, _ := manager(t, nil, options())
+	m.UpdateModels([]catalog.Descriptor{{PublicID: "one/gemma-4-26b", UpstreamID: "gemma-4-26b"}, {PublicID: "two/google/gemma_4_26b:latest", UpstreamID: "google/gemma_4_26b:latest"}})
+	snapshot := Snapshot{Sources: map[string]SourceState{"livebench": {Enabled: true, Observations: []Observation{
+		observation("livebench", "code", Coding, "gemma-4-26b-128k-agent", .8, at),
+		observation("livebench", "code", Coding, "gemma-4-26b-64k", .7, at),
+		observation("livebench", "code", Coding, "gemma-3-26b", .9, at),
+		observation("livebench", "code", Coding, "gemma-4-27b", .9, at),
+	}}}}
+	rows := m.ConfiguredTableModels(snapshot)
+	if len(rows) != 2 {
+		t.Fatal(rows)
+	}
+	for _, row := range rows {
+		if row.Match != "approximate" || !reflect.DeepEqual(row.ProviderIDs, []string{"one/gemma-4-26b", "two/google/gemma_4_26b:latest"}) {
+			t.Fatal(row)
+		}
+	}
+	if len(m.Snapshot().Models) != 0 {
+		t.Fatal("display associations entered routing")
+	}
+	m.UpdateModels([]catalog.Descriptor{{PublicID: "one/gemma-4-27b", UpstreamID: "gemma-4-27b"}})
+	rows = m.ConfiguredTableModels(snapshot)
+	if len(rows) != 1 || rows["external/gemma-4-27b"].ProviderIDs[0] != "one/gemma-4-27b" {
+		t.Fatal("catalog refresh not reflected", rows)
+	}
+}
+
+func TestDisplayIdentityTokenBoundariesAndExactAliasPrecedence(t *testing.T) {
+	for _, item := range []struct {
+		left, right string
+		want        bool
+	}{
+		{"gemma-4-26b", "gemma-4-26b-128k-agent", true},
+		{"gemma-4-26b-128k-agent", "gemma-4-26b", true},
+		{"Google/GEMMA_4_26b:latest", "gemma-4-26b", true},
+		{"gemma-4-26b", "gemma-3-26b", false},
+		{"gemma-4-26b", "gemma-4-27b", false},
+		{"gemma-4-26b", "gemma-4-260b", false},
+		{"gpt-5.2", "gpt-5.3", false},
+		{"model", "modeling", false}, {"", "model", false},
+	} {
+		if DisplayIdentityMatch(item.left, item.right) != item.want {
+			t.Fatal(item)
+		}
+	}
+	opts := options()
+	opts.Identities = []Identity{{CanonicalID: "specific", ProviderIDs: []string{"one/exact"}, Aliases: []string{"gemma-4-26b"}}}
+	m, _ := manager(t, nil, opts)
+	m.UpdateModels([]catalog.Descriptor{{PublicID: "one/exact", UpstreamID: "exact"}, {PublicID: "two/gemma-4-26b-agent", UpstreamID: "gemma-4-26b-agent"}})
+	rows := m.ConfiguredTableModels(Snapshot{Sources: map[string]SourceState{"source": {Enabled: true, Observations: []Observation{observation("source", "code", Coding, "gemma-4-26b", .8, time.Now())}}}})
+	for _, row := range rows {
+		if !reflect.DeepEqual(row.ProviderIDs, []string{"one/exact"}) {
+			t.Fatal("approximate match overrode explicit alias", row)
+		}
+		if row.Match != "matched" {
+			t.Fatal("exact alias labelled incorrectly", row)
+		}
+	}
+	stale := Snapshot{Models: map[string]Model{"removed": {ID: "removed", ProviderIDs: []string{"old/removed"}}}}
+	if rows := m.ConfiguredTableModels(stale); len(rows) != 0 {
+		t.Fatal("removed provider association retained", rows)
+	}
+}
 
 func TestTableModelsCombinesAllCapabilitiesWithoutAddingUnmatchedRoutingModels(t *testing.T) {
 	at := time.Now().UTC()

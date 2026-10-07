@@ -140,7 +140,7 @@ The master key is required; an API key is not required at launch.
 Sign in to the console with your administrator username/password. Provider keys entered there
 are encrypted in SQLite; saved values are never returned to the browser.
 Persisted provider credentials use database references, not YAML value/env/file fields.
-Use **Server → Generate new API key** or `gateway admin api-key --config PATH`
+Use **Credentials → Generate new API key** or `gateway admin api-key --config PATH`
 to replace the default gateway key. It is shown once and immediately invalidates
 the old default key; named client keys created on **Credentials** are unaffected.
 Docker users must apply `compose.docker.yaml` because Docker does not support
@@ -251,7 +251,12 @@ Configure the top-level `intelligence` section or use the console's **Benchmarks
 page for preconfigured source toggles and encrypted API keys where required. Save
 and reload before refreshing. The page shows cached model scores and raw results,
 plus streamed refresh activity, source-count and table-loading progress, and live
-table updates. Choose 25, 50 or 100 rows per page. Shared per-host request pacing
+table updates. Choose 25, 50 or 100 rows per page. **Configured models only** automatically
+includes exact and approximate display matches to the current provider catalog;
+approximate matches do not affect smart-routing evidence. LiveBench and Arena
+download their selected official Parquet files instead of hundreds of Viewer
+pages. All three Hugging Face-backed cards accept an optional encrypted Hugging
+Face token; public data needs no separate LiveBench/Arena key. Shared per-host request pacing
 and rate-limit cooldowns protect benchmark upstreams without affecting inference.
 Source enablement, aliases, freshness thresholds, aggregation weights and
 smart-routing weights are documented in [Benchmark intelligence](docs/benchmark-intelligence.md),

@@ -87,6 +87,7 @@ type SourceSettings struct {
 	Type             string             `yaml:"type" json:"type"`
 	Enabled          bool               `yaml:"enabled" json:"enabled"`
 	URL              string             `yaml:"url,omitempty" json:"url,omitempty"`
+	Transport        string             `yaml:"transport,omitempty" json:"transport,omitempty"`
 	Datasets         []Dataset          `yaml:"datasets,omitempty" json:"datasets,omitempty"`
 	MaxRows          int                `yaml:"max_rows,omitempty" json:"max_rows,omitempty"`
 	IncludeEstimated bool               `yaml:"include_estimated,omitempty" json:"include_estimated,omitempty"`

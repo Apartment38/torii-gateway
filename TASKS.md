@@ -28,6 +28,26 @@ checks are:
 
 ## DONE
 
+### Benchmark file ingestion and console organization — 2026-10-07
+
+Completed native revision-pinned Parquet downloads for LiveBench/Arena, with
+bounded temporary storage, complete-shard publication, credential-safe redirects,
+and explicit auto/rows/parquet transport compatibility. Added optional encrypted
+Hugging Face token controls and display-only configured-model matching that
+preserves variants and follows the current provider catalog. Made the toolbar
+sticky and top-aligned; moved database path to Server, model failure policy to
+Routing, and default API-key rotation to Credentials. Added container listen
+address guidance and updated configuration/examples and source research notes.
+
+Validation: full Go tests and race suite, focused final race checks, vet/build,
+console generation and behavior tests, release checks, and headless layout checks
+across both themes and desktop/narrow screens passed. The combined anonymous live
+refresh published 60,372 LiveBench and 10,923 Arena observations using six HTTP
+requests and zero /rows calls. The final Go 1.25.1 production image built and ran
+as nonroot with its healthcheck; all Parquet fixture tests also passed inside it.
+LiveBench's public dataset remains dated 2025-04-07; expired evidence is still
+excluded from routing. Generic/custom HF sources retain rows by default.
+
 ### TASK-014 — Verify the normal OpenAI API profile
 
 Completed the origin-locked normal OpenAI API profile over the existing

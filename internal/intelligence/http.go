@@ -132,17 +132,30 @@ func ValidateURL(raw string) error {
 }
 
 func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, error) {
+	var data []byte
+	err := r.retrieve(ctx, rawURL, authHeader, r.client, func(resp *http.Response) error {
+		var err error
+		data, err = io.ReadAll(io.LimitReader(resp.Body, (16<<20)+1))
+		if err != nil || len(data) > 16<<20 {
+			return &SourceError{Stage: "response size or read"}
+		}
+		return nil
+	})
+	return data, err
+}
+
+func (r *remote) retrieve(ctx context.Context, rawURL, authHeader string, client *http.Client, consume func(*http.Response) error) error {
 	var last error
 	lane := laneFor(rawURL)
 	for attempt := 0; attempt <= r.retries; attempt++ {
 		release, err := lane.acquire(ctx, r.requestInterval)
 		if err != nil {
-			return nil, &SourceError{Stage: "upstream timeout or cancellation"}
+			return &SourceError{Stage: "upstream timeout or cancellation"}
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			release()
-			return nil, &SourceError{Stage: "request construction"}
+			return &SourceError{Stage: "request construction"}
 		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "Torii-Gateway/benchmark-intelligence")
@@ -151,7 +164,7 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 			key, err = r.resolveKey()
 			if err != nil || strings.ContainsAny(key, "\r\n") {
 				release()
-				return nil, &SourceError{Stage: "source credentials"}
+				return &SourceError{Stage: "source credentials"}
 			}
 		}
 		if key != "" {
@@ -161,26 +174,28 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 			}
 			req.Header.Set(authHeader, value)
 		}
-		resp, err := r.client.Do(req)
+		resp, err := client.Do(req)
 		delay := retryBackoff(attempt, false)
 		if err != nil {
 			last = &SourceError{Stage: "upstream request"}
 		} else {
 			lane.observeQuota(resp.Header)
-			data, readErr := io.ReadAll(io.LimitReader(resp.Body, (16<<20)+1))
-			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				lane.succeeded()
-				release()
-				if readErr != nil || len(data) > 16<<20 {
-					return nil, &SourceError{Stage: "response size or read"}
+				consumeErr := consume(resp)
+				resp.Body.Close()
+				if consumeErr == nil {
+					lane.succeeded()
 				}
-				return data, nil
+				release()
+				return consumeErr
 			}
+			// Error bodies are not useful and can contain secrets.
+			resp.Body.Close()
+
 			last = &SourceError{Stage: "upstream request", Status: resp.StatusCode}
 			if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < 500 {
 				release()
-				return nil, last
+				return last
 			}
 			throttled := resp.StatusCode == http.StatusTooManyRequests
 			if throttled {
@@ -208,10 +223,10 @@ func (r *remote) get(ctx context.Context, rawURL, authHeader string) ([]byte, er
 			break
 		}
 		if err := waitDuration(ctx, delay); err != nil {
-			return nil, &SourceError{Stage: "upstream timeout or cancellation"}
+			return &SourceError{Stage: "upstream timeout or cancellation"}
 		}
 	}
-	return nil, last
+	return last
 }
 
 func decodeObject(data []byte) (map[string]any, error) {

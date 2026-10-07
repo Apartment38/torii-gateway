@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#071a35" />
     <title>Torii Gateway Console</title>
     <link rel="icon" href="/web/torii-gateway-icon.png" />
-    <link rel="stylesheet" href="/web/styles.css?v=11" />
+    <link rel="stylesheet" href="/web/styles.css?v=12" />
   </head>
   <body>
     <dialog id="login-dialog"><form id="login-form"><h2>Sign in to Torii Gateway</h2><p>Use your administrator account. Login stays in memory only.</p><label>Username<input id="login-username" autocomplete="off" required /></label><label>Password<input id="login-password" type="password" autocomplete="off" required /></label><p id="login-error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form></dialog>
@@ -60,13 +60,15 @@
             <p>Create a named API key for each client connecting to Torii. Keys are displayed only once; deleting a key immediately blocks subsequent requests using it. Provider credentials are configured on the Providers page.</p>
             <div id="credential-list" class="grid credential-list"></div>
             <button id="create-credential" class="button secondary" type="button">Add credential</button>
+            <div class="subcard"><p>Rotate the default gateway API key. The previous default key stops working immediately; named client keys are unaffected.</p><div><p>Gateway API key</p><button id="generate-api-key" class="button secondary" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Generate new API key</button></div></div>
           </section>
           <section id="server" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">01 / Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
             <div class="grid two">
-              <label data-tooltip="The address and port where Torii listens for HTTP requests. Use 0.0.0.0:8080 inside a container.">Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
-              <div><p>Gateway API key</p><button id="generate-api-key" class="button secondary" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Generate new API key</button></div>
+              <label data-tooltip="The address and port where Torii listens for HTTP requests. In a container, retain 0.0.0.0:8080 and change the published host port through TORII_PORT or Compose.">Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
+              <label data-tooltip="The SQLite database for credentials, usage, Codex identity and benchmarks, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
             </div>
+            <div class="notice"><span>◎</span><span><strong>Running in a container?</strong> Keep the listen address at <code>0.0.0.0:8080</code>. Change the published host port using <code>TORII_PORT</code> or Compose instead.</span></div>
             <div class="notice"><span>◎</span><span>Sign in with your administrator username and password to manage settings. API keys are for inference clients, not console login. Use HTTPS when accessing this console over a network.</span></div>
           </section>
 
@@ -84,6 +86,7 @@
               <label data-tooltip="The virtual model name clients use to invoke smart routing. Keep this as smart unless your client contract requires another name.">Virtual model name<input name="router.model_name" value="smart" /></label>
               <label data-tooltip="Optional JSON catalog overrides used by deterministic model selection. Leave empty to use the built-in catalog.">Catalog override file<input name="router.catalog_file" placeholder="./catalog-overrides.json" /></label>
               <label data-tooltip="Classifier models are discovered from connected TypeSafe Jev or Jev-compatible providers. Connection URLs and credentials are configured on the Providers page.">Classifier model<select id="classifier-model"><option value="">Discovering classifier models…</option></select></label>
+              <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
               <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="capability_fallback">Fallback</option><option value="fail">Fail</option></select></label>
             </div>
             <div class="grid three compact-fields">
@@ -112,7 +115,7 @@
             <section id="benchmark-data" hidden>
               <div class="section-heading"><h3>Current model benchmark data</h3><span id="benchmark-data-count" class="section-note"></span></div>
               <div class="grid three compact-fields">
-                <label data-tooltip="Show all imported models from enabled sources or only models matched to configured providers. Both views combine scores into one row per model.">View<select id="benchmark-table-view"><option value="models">All benchmark models</option><option value="routable">Configured models only</option></select></label>
+                <label data-tooltip="Show all imported models from enabled sources or only models matched to configured providers. Approximate matches are display-only and do not supply smart-routing scores. Both views combine scores into one row per model.">View<select id="benchmark-table-view"><option value="models">All benchmark models</option><option value="routable">Configured models only</option></select></label>
                 <label data-tooltip="Filter the model summaries by model name, alias, provider or benchmark source. This does not change routing or stored data.">Filter<input id="benchmark-table-filter" type="search" maxlength="256" placeholder="Model, provider, or source" /></label>
                 <label data-tooltip="Choose how many model summaries appear on each page. Scores are combined before pagination, so a model's capabilities stay together.">Rows per page<select id="benchmark-page-size"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
               </div>
@@ -125,10 +128,8 @@
           <section id="state" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
             <div class="grid two">
-              <label data-tooltip="The SQLite database for credentials, usage, Codex identity and benchmarks, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
               <label data-tooltip="How long quota results remain cached before being refreshed. Use a Go duration such as 1m or 30s.">Quota cache TTL<input name="router.quota.cache_ttl" value="1m" placeholder="1m" /></label>
               <label data-tooltip="How long an inactive routing session remains associated with its model. Use a Go duration such as 30m.">Session inactivity timeout<input name="router.sessions.inactivity_timeout" placeholder="30m" /></label>
-              <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
             </div>
             <div class="subcard"><label class="quota-field" data-tooltip="Optional estimated cost limits keyed by provider/model. Enter one model = amount pair per line."><span class="subcard-title">Local quota allowances</span><span class="muted">Optional model-to-cost limits, one entry per line.</span><textarea name="router.quota.allowances" rows="4" placeholder="provider/model = 10.00"></textarea></label></div>
           </section>
@@ -137,6 +138,6 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=11"></script>
+    <script type="module" src="/web/app.js?v=12"></script>
   </body>
 </html>

@@ -66,12 +66,13 @@ function renderBenchmarkSources(): void {
   const list = document.querySelector<HTMLDivElement>("#benchmark-sources-list")!;
   list.innerHTML = benchmarkSources.map((source, index) => {
     const definition = benchmarkDefinitions.find(item => item.settings.type === source.type);
-    const needsKey = definition?.requires_api_key || source.api_key;
+    const huggingFaceToken = ["huggingface", "livebench", "lmarena"].includes(source.type);
+    const needsKey = definition?.requires_api_key || source.api_key || huggingFaceToken;
     return `<article class="provider-card"><div class="provider-card-head"><h3>${escapeHTML(definition?.name || source.type)}${source._new ? "" : ` · ${escapeHTML(source.id)}`}</h3><label class="checkbox" data-tooltip="Enable this preconfigured source for background and manual refreshes. Save and reload before ingestion starts."><input type="checkbox" ${benchmarkAttributes(index, "enabled")} ${source.enabled ? "checked" : ""} /> Enabled</label></div>
       <div class="provider-result" data-benchmark-status="${index}" role="status" aria-live="polite"></div>
       <div class="benchmark-source-options" ${source.enabled ? "" : "hidden"}>
       <p>${escapeHTML(definition?.note || "Uses your saved source configuration.")}</p>
-      ${needsKey ? `<label data-tooltip="Enter a source API key; saved values cannot be revealed. Save encrypts new values in SQLite and keeps only a reference in YAML.">API key<span class="password-field"><input type="password" autocomplete="new-password" ${benchmarkAttributes(index, "api_key_input")} placeholder="${source.api_key?.credential ? "Configured · leave blank to keep" : "Enter source API key"}" /><button type="button" class="reveal-button" data-benchmark-action="reveal-key" ${benchmarkAttributes(index, "")}>Reveal</button></span></label>` : ""}
+      ${needsKey ? `<label data-tooltip="Save encrypts new values in SQLite; saved credentials cannot be revealed. Public Hugging Face datasets allow anonymous access; an optional token authenticates requests to Hugging Face.">${huggingFaceToken ? "Hugging Face token (optional)" : "API key"}<span class="password-field"><input type="password" autocomplete="new-password" ${benchmarkAttributes(index, "api_key_input")} placeholder="${source.api_key?.credential ? "Configured · leave blank to keep" : huggingFaceToken ? "Optional Hugging Face token" : "Enter source API key"}" /><button type="button" class="reveal-button" data-benchmark-action="reveal-key" ${benchmarkAttributes(index, "")}>Reveal</button></span></label>` : ""}
       </div></article>`;
   }).join("");
   list.querySelectorAll<HTMLInputElement>('[data-benchmark-field="api_key_input"]').forEach(input => { input.value = benchmarkSources[Number(input.dataset.benchmarkSource)].api_key_input || ""; });
@@ -137,7 +138,7 @@ function renderBenchmarkTable(): void {
   const rows = models.slice(benchmarkPage * benchmarkPageSize, (benchmarkPage + 1) * benchmarkPageSize).map(([id, model]) => ({...model,id}));
   document.querySelector("#benchmark-table-head")!.innerHTML = `<tr>${headers.map(header => `<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
   document.querySelector("#benchmark-table-body")!.innerHTML = rows.length ? rows.map(row => {
-    const match = row.match === "ambiguous" ? "Ambiguous" : row.match === "unmatched" ? "Unmatched" : "Matched";
+    const match = row.match === "approximate" ? "Approximate" : row.match === "ambiguous" ? "Ambiguous" : row.match === "unmatched" ? "Unmatched" : "Matched";
     const values = [row.display_name || row.id, ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), (row.provider_ids || []).join(", "), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), match, row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
     return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}</tr>`;
   }).join("") : `<tr><td colspan="${headers.length}">No cached benchmark data matches this view. Enable sources, save, and refresh to import results.</td></tr>`;
@@ -156,7 +157,7 @@ async function loadBenchmarkData(): Promise<boolean> {
     const headers = await authProvider.headers();
     // Request full model summaries, not a page of per-score observations.
     // Grouping happens on the backend before filtering or client pagination.
-    const paths = ["sources", benchmarkTableView === "routable" ? "models" : "models?include_unmatched=true"];
+    const paths = ["sources", benchmarkTableView === "routable" ? "models?configured_only=true" : "models?include_unmatched=true"];
     const replies = await Promise.all(paths.map(async path => {
       const response = await gatewayFetch(`/gateway/v1/intelligence/${path}`, {headers});
       const body = await response.json();
@@ -172,7 +173,7 @@ async function loadBenchmarkData(): Promise<boolean> {
 }
 function benchmarkProgress(event: Record<string, any>): void {
   if (event.source) {
-    const labels: Record<string, string> = {fetching:"Fetching and parsing",parsing:"Parsing dataset rows",rate_limited:"Waiting for upstream rate limit",persisting:"Saving validated data",failed:"Update failed; previous cache retained"};
+    const labels: Record<string, string> = {discovering:"Discovering dataset files",downloading:"Downloading dataset files",fetching:"Fetching and parsing",parsing:"Parsing dataset rows",rate_limited:"Waiting for upstream rate limit",persisting:"Saving validated data",failed:"Update failed; previous cache retained"};
     if (labels[event.phase]) benchmarkSourceActivity[event.source] = event.phase === "failed" ? labels.failed : String(event.message || labels[event.phase]);
     if (event.phase === "published") delete benchmarkSourceActivity[event.source];
     renderBenchmarkSourceStatus();

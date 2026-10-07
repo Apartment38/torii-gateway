@@ -86,6 +86,22 @@ func TestPresetSourcesValidateWithOnlyEnablementAndRequiredKey(t *testing.T) {
 	}
 }
 
+func TestBenchmarkDatasetTransportsValidate(t *testing.T) {
+	for _, transport := range []string{"", "auto", "rows", "parquet", "invalid"} {
+		cfg := config.IntelligenceConfig{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "livebench", Type: "livebench", Transport: transport}}}}
+		err := cfg.Validate()
+		if (err != nil) != (transport == "invalid") {
+			t.Fatalf("transport %q: %v", transport, err)
+		}
+		if err == nil && cfg.Options().Sources[0].Transport != transport {
+			t.Fatal("transport lost")
+		}
+	}
+	if err := (config.IntelligenceConfig{Sources: []config.BenchmarkSourceConfig{{SourceSettings: intelligence.SourceSettings{ID: "benchlm", Type: "benchlm", Transport: "parquet"}}}}).Validate(); err == nil {
+		t.Fatal("non-dataset transport accepted")
+	}
+}
+
 func TestIntelligenceConfigurationRejectsUnsafeOrAmbiguousSettings(t *testing.T) {
 	ptr := func(value float64) *float64 { return &value }
 	cases := []config.IntelligenceConfig{

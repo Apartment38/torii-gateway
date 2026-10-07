@@ -719,7 +719,7 @@ test("sources only need enablement and required keys; shared presets supply vali
   assert.equal(hf.datasets[0].model_field,"fullname");
   assert.equal(hf.datasets[0].metrics["IFEval Raw"].max,1);
   const html=app.run('document.querySelector("#benchmark-sources-list").innerHTML');
-  assert.equal([...html.matchAll(/data-benchmark-field="api_key_input"/g)].length,1);
+  assert.equal([...html.matchAll(/data-benchmark-field="api_key_input"/g)].length,4);
   assert.doesNotMatch(html,/data-benchmark-field="(?:id|url|metric|dataset|max_rows|include_estimated)"|Metric mapping|Add dataset/);
   assert.doesNotMatch(readFileSync(new URL("./static/index.html",import.meta.url),"utf8"),/data-benchmark-global/);
   app.run('updateBenchmarkSource({target:{dataset:{benchmarkSource:"2",benchmarkField:"enabled"},type:"checkbox",checked:false}})');
@@ -835,7 +835,7 @@ test("refresh button shows activity immediately and table requests cannot block 
 });
 
 test("unmatched model summaries populate the table and scopes never fall back to score rows",async()=>{
-  const app=consoleFixture(url=>url.endsWith("/sources")?response({benchlm:{enabled:true,observation_count:3}}):url.endsWith("/models")?response({}):response({"external/model":{display_name:"external-model",match:"unmatched",sources:["benchlm"],scores:{coding:.8,agentic:.7,knowledge:.9},observation_count:3}}));
+  const app=consoleFixture(url=>url.endsWith("/sources")?response({benchlm:{enabled:true,observation_count:3}}):url.endsWith("/models?configured_only=true")?response({}):response({"external/model":{display_name:"external-model",match:"unmatched",sources:["benchlm"],scores:{coding:.8,agentic:.7,knowledge:.9},observation_count:3}}));
   app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('loadBenchmarkData()');
   assert.equal(app.run('benchmarkTableView'),"models");

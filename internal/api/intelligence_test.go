@@ -71,6 +71,70 @@ func consoleBenchmarkObservation(model string) intelligence.Observation {
 	return intelligence.Observation{ExternalModelID: model, Benchmark: "code", Category: intelligence.Coding, Score: 90, Normalized: benchmarkPtr(.9), Metadata: map[string]any{"large_upstream_row": "not needed in table"}}
 }
 
+type configuredBenchmarkProvider struct{ models []string }
+
+func (p *configuredBenchmarkProvider) ID() string { return "local" }
+func (p *configuredBenchmarkProvider) Models(context.Context) ([]provider.Model, error) {
+	var models []provider.Model
+	for _, model := range p.models {
+		models = append(models, provider.Model{ID: "local/" + model, Object: "model"})
+	}
+	return models, nil
+}
+func (p *configuredBenchmarkProvider) Forward(context.Context, string, []byte, string) (*http.Response, error) {
+	return nil, nil
+}
+
+func TestConfiguredBenchmarkAPIUsesCurrentProvidersAndDoesNotChangeRouting(t *testing.T) {
+	source := consoleBenchmarkSource{id: "source", fetch: func(context.Context) (intelligence.Result, error) {
+		return intelligence.Result{Observations: []intelligence.Observation{consoleBenchmarkObservation("gemma-4-26b-128k-agent")}}, nil
+	}}
+	_, m := consoleBenchmarkManager(t, []intelligence.Source{source})
+	p := &configuredBenchmarkProvider{models: []string{"gemma-4-26b"}}
+	h, err := api.NewOpenAIHandler([]provider.OpenAIProvider{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetIntelligence(m)
+	if err := h.RefreshCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	get := func(query string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/gateway/v1/intelligence/models"+query, nil))
+		return w
+	}
+	w := get("?configured_only=true")
+	var rows map[string]intelligence.TableModel
+	if err := json.Unmarshal(w.Body.Bytes(), &rows); err != nil || w.Code != 200 || len(rows) != 1 {
+		t.Fatalf("%d %s %v", w.Code, w.Body.String(), err)
+	}
+	for _, row := range rows {
+		if row.Match != "approximate" || len(row.ProviderIDs) != 1 || row.ProviderIDs[0] != "local/gemma-4-26b" {
+			t.Fatal(row)
+		}
+	}
+	if len(m.Snapshot().Models) != 0 {
+		t.Fatal("display data became routing evidence")
+	}
+	if w := get("?configured_only=invalid"); w.Code != 400 {
+		t.Fatal("invalid scope accepted")
+	}
+	if w := get(""); strings.TrimSpace(w.Body.String()) != "{}" {
+		t.Fatal("legacy endpoint changed", w.Body.String())
+	}
+	p.models = []string{"gemma-4-27b"}
+	if err := h.RefreshCatalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if w := get("?configured_only=true"); strings.TrimSpace(w.Body.String()) != "{}" {
+		t.Fatal("provider refresh did not remove association", w.Body.String())
+	}
+}
+
 func TestBenchmarkRefreshStreamsPublicationBeforeSlowSourceFinishes(t *testing.T) {
 	release := make(chan struct{})
 	fast := consoleBenchmarkSource{id: "fast", fetch: func(context.Context) (intelligence.Result, error) {

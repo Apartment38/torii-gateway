@@ -24,7 +24,7 @@
   {
     "name": "Hugging Face leaderboards",
     "requires_api_key": false,
-    "note": "Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models.",
+    "note": "Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required.",
     "settings": {
       "id": "huggingface",
       "type": "huggingface",
@@ -38,12 +38,30 @@
           "model_field": "fullname",
           "version": "Open LLM Leaderboard v2",
           "metrics": {
-            "IFEval Raw": {"category": "instruction_following", "max": 1},
-            "BBH Raw": {"category": "reasoning", "max": 1},
-            "MATH Lvl 5 Raw": {"category": "math", "max": 1},
-            "GPQA Raw": {"category": "knowledge", "max": 1},
-            "MUSR Raw": {"category": "reasoning", "max": 1},
-            "MMLU-PRO Raw": {"category": "knowledge", "max": 1}
+            "IFEval Raw": {
+              "category": "instruction_following",
+              "max": 1
+            },
+            "BBH Raw": {
+              "category": "reasoning",
+              "max": 1
+            },
+            "MATH Lvl 5 Raw": {
+              "category": "math",
+              "max": 1
+            },
+            "GPQA Raw": {
+              "category": "knowledge",
+              "max": 1
+            },
+            "MUSR Raw": {
+              "category": "reasoning",
+              "max": 1
+            },
+            "MMLU-PRO Raw": {
+              "category": "knowledge",
+              "max": 1
+            }
           }
         }
       ]
@@ -52,28 +70,40 @@
   {
     "name": "LMArena",
     "requires_api_key": false,
-    "note": "Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks.",
+    "note": "Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.",
     "settings": {
       "id": "lmarena",
       "type": "lmarena",
       "enabled": false,
       "url": "https://datasets-server.huggingface.co/rows",
       "datasets": [
-        {"dataset": "lmarena-ai/leaderboard-dataset", "config": "text_style_control", "split": "latest", "model_field": "model_name", "date_field": "leaderboard_publish_date"}
+        {
+          "dataset": "lmarena-ai/leaderboard-dataset",
+          "config": "text_style_control",
+          "split": "latest",
+          "model_field": "model_name",
+          "date_field": "leaderboard_publish_date"
+        }
       ]
     }
   },
   {
     "name": "LiveBench",
     "requires_api_key": false,
-    "note": "Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing.",
+    "note": "Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.",
     "settings": {
       "id": "livebench",
       "type": "livebench",
       "enabled": false,
       "url": "https://datasets-server.huggingface.co/rows",
       "datasets": [
-        {"dataset": "livebench/model_judgment", "config": "default", "split": "leaderboard", "model_field": "model", "date_field": "tstamp"}
+        {
+          "dataset": "livebench/model_judgment",
+          "config": "default",
+          "split": "leaderboard",
+          "model_field": "model",
+          "date_field": "tstamp"
+        }
       ]
     }
   }

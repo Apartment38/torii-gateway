@@ -4,7 +4,7 @@
 # Persisted credentials use database references; enter secrets in the console.
 server:
   # Use 0.0.0.0:8080 when the gateway must listen outside the local machine or
-  # container. Set this to 0.0.0.0:8080 for container access.
+  # container. In containers retain 0.0.0.0:8080; change the host port via TORII_PORT.
   listen: 127.0.0.1:8080
 
 # All durable application state is stored in SQLite.
@@ -37,12 +37,18 @@ intelligence:
       enabled: false
       # Preconfigured Open LLM Leaderboard v2 dataset and raw score mappings.
       # Optional explicit datasets override this preset; see the documentation.
+      # Optional token: api_key: {credential: YOUR_STORED_HF_TOKEN_ID}
+      # Explicit transport: parquet requires native files; default auto uses rows.
     - id: arena
       type: lmarena
       enabled: false
+      transport: auto # Downloads native text_style_control/latest Parquet files.
+      # Optional token: api_key: {credential: YOUR_STORED_HF_TOKEN_ID}
     - id: livebench
       type: livebench
       enabled: false
+      transport: auto # Downloads native default/leaderboard Parquet files.
+      # Use transport: rows only to explicitly retain legacy pagination.
   aggregation:
     overall_weights:
       preference: 0 # Human preference is not an objective benchmark.

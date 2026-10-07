@@ -30,8 +30,8 @@ fixture tests; aggregation and routing need no source-specific changes.
 | `artificial_analysis` | [Official data API](https://artificialanalysis.ai/api-reference), `/api/v2/data/llms/models` | API key via `x-api-key`; capability indices, prices and performance. Explicit compatible endpoints remain supported. The obsolete built-in `/api/v2/language/models/free` URL is replaced with the documented endpoint. Credit Artificial Analysis and observe its data terms. |
 | `benchlm` | [Published model JSON](https://benchlm.ai/data), `https://benchlm.ai/data/models.json` | Raw benchmarks plus published composite/category scores and provenance. The leaderboard JSON export is also accepted via `url`. CC BY-NC 4.0: commercial use requires a BenchLM licence. Estimates stay raw-only unless `include_estimated: true`. |
 | `huggingface` | [Dataset Viewer rows API](https://huggingface.co/docs/dataset-viewer/rows) | Defaults to the public [Open LLM Leaderboard v2 results](https://huggingface.co/datasets/open-llm-leaderboard/contents): `default` / `train`, model ID `fullname`, six raw scores on a 0–1 scale. Explicit datasets and mappings override the preset. These are historical evaluations, not a current ranking of every model; unavailable evaluation dates stay unknown. Dataset licences remain the operator's responsibility. |
-| `lmarena` | [Arena's official leaderboard dataset](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset) through Dataset Viewer | Defaults to `text_style_control`, `latest`. Every Arena subset remains human-preference evidence, including coding/vision categories. Confidence bounds and vote counts are retained. |
-| `livebench` | [Official published judgments](https://huggingface.co/datasets/livebench/model_judgment) through Dataset Viewer | Defaults to `default`, `leaderboard`; per-question scores, tasks and evaluation timestamps are retained. No HTML scraping. The artifact can lag the current website; old evidence is excluded by `max_age`. |
+| `lmarena` | [Arena's official leaderboard dataset](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset) as native Parquet files | Defaults to `text_style_control`, `latest`. Every Arena subset remains human-preference evidence, including coding/vision categories. Confidence bounds and vote counts are retained. |
+| `livebench` | [Official published judgments](https://huggingface.co/datasets/livebench/model_judgment) as native Parquet files | Defaults to `default`, `leaderboard`; per-question scores, tasks and evaluation timestamps are retained. No HTML scraping. The artifact can lag the current website; old evidence is excluded by `max_age`. |
 
 Sources are explicitly enabled; no vendor is contacted by default. All support
 an optional `url` for a trusted mirror or compatible published endpoint. URLs
@@ -99,22 +99,65 @@ HTTP requests time out separately from the complete source import. Sources run
 independently and concurrently. A failed source retains its previous successful
 dataset, with a failure status; successful sources still update.
 
-Benchmark requests share one in-flight request lane per host/port, with at least
-`request_interval` between request starts (default **1 second**). Hugging Face,
-Arena and LiveBench therefore share a budget rather than each bursting through
-their pagination workers. Different hosts proceed independently. A 429 pauses
-all sources using that host, honors the full `Retry-After` delay (seconds or HTTP
-date), and temporarily slows subsequent requests. Torii also reads structured
-`RateLimit` remaining/reset fields (including Hugging Face's `r` and `t` fields),
-spaces successful requests across the advertised remaining budget and waits for
-exhausted windows to reset. Without a valid header, 429
-retries back off from 30 seconds to 5 minutes with jitter. Repeated throttles
-increase that backoff across pages and sources, rather than resetting it on each
-new page. Dataset adapters request one page at a time, so new pages cannot jump
-ahead of that source's throttled retry. Network/server failures
-use shorter exponential backoff. All waits are cancellable and bounded by the
-source deadline; exhausted retries preserve the cached dataset. Cooldowns survive
-configuration reloads in the running process, not gateway restarts.
+LiveBench and Arena default to downloading the official native Parquet files,
+not Dataset Viewer `/rows` pagination. Torii discovers the selected config/split
+in the Hub repository manifest, pins its commit revision, and downloads every
+matching shard before publishing any results. It never downloads Arena's complete
+repository or historical `full` split when `latest` is selected. Downloads follow
+at most five HTTPS redirects to trusted Hugging Face CDN hosts; bearer tokens
+are stripped when leaving the Hub origin. Signed download URLs are never logged.
+
+`transport` accepts `auto` (the default), `rows`, or `parquet` for dataset sources.
+`auto` selects file downloads for the built-in LiveBench/Arena `/rows` URL,
+including existing saved configurations. Custom URLs and generic Hugging Face
+sources retain rows ingestion. Explicit `rows` preserves the legacy transport;
+explicit `parquet` uses the Hub dataset manifest, independently of `url`, and
+requires native Parquet files with declared config/split paths (or the standard
+`data/<split>-*.parquet` layout for a default config). It does not depend on
+Viewer-generated conversions. A file failure never triggers a pagination fallback.
+
+File imports use temporary storage, a **64 MiB total download limit per source**,
+the existing `max_rows` limit across its selected files, and batched decoding.
+Each row group's declared uncompressed size is also limited to 64 MiB. Temporary
+files are removed after success, failure or cancellation. Malformed/incomplete
+files retain the previous SQLite observations; raw files are not durable state.
+A Go Parquet decoder is included in the gateway, with no Python runtime or sidecar.
+
+Benchmark requests share one in-flight lane per host/port with at least
+`request_interval` between starts (default **1 second**). Discovery, file
+requests and legacy rows ingestion use the same retry and quota handling.
+A 429 pauses sources using that host, honors full `Retry-After` seconds or HTTP
+dates, and temporarily slows subsequent requests. Torii reads structured
+`RateLimit` remaining/reset fields, spaces requests across the advertised budget,
+and waits for exhausted windows to reset. Without headers, 429 retries back off
+from 30 seconds to 5 minutes with jitter; network/server failures use shorter
+backoff. All waits are cancellable and bounded by the source deadline. Cooldowns
+survive configuration reloads in the running process, not gateway restarts.
+
+### Published-interface verification — 2026-10-07
+
+The public native files were downloaded without authentication and decoded in Go:
+LiveBench `default/leaderboard` contains 60,372 rows in a 737,444-byte file;
+Arena `text_style_control/latest` contains 10,923 rows in a 606,130-byte file.
+This replaces 604 and 110 Viewer page requests respectively with one file each,
+plus manifest discovery and CDN redirects. See the official
+[LiveBench metadata](https://huggingface.co/datasets/livebench/model_judgment/blob/main/README.md)
+and [Arena metadata](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset/blob/main/README.md).
+
+Hugging Face publishes [Hub rate limits](https://huggingface.co/docs/hub/rate-limits)
+in five-minute windows (currently 500 anonymous API requests per IP and 3,000
+resolver requests; free authenticated users have 1,000 and 5,000 respectively).
+These are Hub quotas, **not a verified fixed Dataset Viewer ceiling**; anonymous
+and free quotas may change with platform health. No fixed Viewer request limit
+was found in the reviewed official documentation. Tokens are optional for these
+public datasets, not a guarantee of unlimited requests. No separate LiveBench
+or Arena API key is required for their published Hugging Face files.
+
+The LiveBench repository reports its last update as **2025-04-07**; Arena's
+repository was updated on **2026-10-07**. File downloads improve retrieval, not
+freshness. Preserve actual evaluation dates; expired evidence remains inspectable
+but cannot influence routing. Verify publication dates when comparing the dataset
+with the current benchmark website.
 
 The default complete-source timeout is **30 minutes** to allow large datasets
 to import politely. Previously saved explicit `source_timeout` values remain
@@ -139,8 +182,9 @@ changes must be saved before refreshing; ingestion always uses saved settings.
 
 Each source card shows its status, observation count, last successful update and
 cache age. Artificial Analysis requires a source API key; the other built-in
-public sources do not. A key field is also shown for an existing keyed custom
-source. Entering a key replaces it
+public sources do not. Hugging Face, LiveBench and LMArena show an optional **Hugging Face token**
+field; public datasets permit anonymous access. A key field is also shown for an
+existing keyed custom source. Entering a key replaces it
 on save; leaving the field blank keeps the encrypted credential reference.
 **Reveal** only reveals a newly entered value, never a previously saved key.
 Keys are held only in memory until submitted and are cleared on save/sign-out.
@@ -160,7 +204,14 @@ and other capability scores together in columns. Summaries use the same weighted
 freshness-aware aggregation as routing and combine the full dataset before
 filtering or pagination; scores for a model cannot be split across pages.
 Choose **All benchmark models** (default) to include unmatched/ambiguous imported
-models from enabled sources, or **Configured models only** for matched models.
+models from enabled sources, or **Configured models only** for matches against
+currently configured inference providers. Exact identities and explicit aliases
+win; otherwise display-only matching normalizes case, separators, namespaces and
+`:latest`, then accepts whole-token prefix extensions in either direction.
+For example, `gemma-4-26b` matches `gemma-4-26b-128k-agent`, while different
+versions or sizes do not match. Approximate rows are labelled **Approximate** and
+list all matching provider IDs. They remain separate variants and never supply
+routing scores or verified capabilities. Associations follow catalog refreshes.
 Known aliases group under their canonical Torii ID. Display-only unmatched rows
 group identical normalized external IDs across sources; model dates, versions
 and effort suffixes stay distinct. Ambiguous identities are explicitly labelled
@@ -173,7 +224,7 @@ Both scopes are filterable and paginated; choose **25, 50 or 100 models per page
 (default 25). Missing or incomparable values are unknown, not zero, and preference
 stays separate rather than silently contributing to overall quality.
 
-**Refresh activity** streams real fetch/parse (including dataset page counts),
+**Refresh activity** streams real discovery/download/decode (or legacy dataset page counts),
 rate-limit waits, persistence, publication and failure
 milestones above the source cards, immediately after clicking Refresh benchmarks.
 The progress bar counts completed sources, including failed sources,
@@ -362,7 +413,7 @@ Management routes use the gateway's existing API authentication:
 | --- | --- |
 | `GET /gateway/v1/intelligence` | Full snapshot, source observations, model scores and unmatched IDs |
 | `GET /gateway/v1/intelligence/sources` | Source status, last attempt/success, age, staleness, safe errors and metadata |
-| `GET /gateway/v1/intelligence/models` | Matched models with aggregates and operational data; optional `include_unmatched=true` adds display-only model summaries with `display_name`, `match` and `external_ids`, without changing routing eligibility |
+| `GET /gateway/v1/intelligence/models` | Matched models with aggregates and operational data; optional `include_unmatched=true` adds display-only model summaries with `display_name`, `match` and `external_ids`, without changing routing eligibility; `configured_only=true` filters full summaries by exact/approximate display associations to the current provider catalog |
 | `GET /gateway/v1/intelligence/observations` | Paginated raw observations including unmatched IDs; `offset`, `limit` (1–500, default 100), optional `q` filter; `include_metadata=true` returns complete captured metadata for inspection; the console table uses model summaries instead |
 | `GET /gateway/v1/intelligence/models/{id}` | Raw observations, provenance and aggregates for a canonical or physical ID |
 | `GET /gateway/v1/intelligence/unmatched` | Unmatched/ambiguous source IDs and candidate canonical IDs |
@@ -416,3 +467,12 @@ bodies and credentials. Upstream HTTP status and safe parsing stages are exposed
 - Unresolved variants and aliases require explicit operator mapping; the API
   reports the actual unmatched list for that installation. No model aliases were
   asserted against a live subscription as part of this implementation.
+
+To run the opt-in combined public-file smoke test:
+
+```sh
+TORII_LIVE_BENCHMARK_SMOKE=1 go test ./internal/intelligence -run '^TestLivePublishedParquetBenchmarks$' -v
+```
+
+The test refreshes both sources through the manager, reports observation counts
+and request counts, and rejects `/rows` requests. It uses no provider credentials.

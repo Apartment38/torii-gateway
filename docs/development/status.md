@@ -6,7 +6,10 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-No implementation milestone is currently in progress. Configuration revision
+The model-picker catalog repair is in progress: `smart` now precedes physical
+models so client list truncation does not hide it. Provider-prefixed display
+labels and Fast controls are governed by Hermes; permission to expand the
+earlier no-Hermes-code boundary is pending. Configuration revision
 protection and the combined Podman provider catalog are deployed and validated.
 Hermes's saved-endpoint connection test still omits the stored key; Hermes code
 changes remain outside scope. Re-entering the key for each test is the workaround.

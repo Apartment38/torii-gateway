@@ -58,6 +58,10 @@ JSON response and no cross-model retry is attempted.
 
 ## Health, setup, configuration, and providers
 
+`GET /v1/models` lists `smart` first, followed by the deterministically sorted
+physical `provider/model` IDs. `smart` stays visible in clients that truncate a
+provider's initial model list; the endpoint returns the complete catalog.
+
 | Method/path | Request | Response / limits |
 | --- | --- | --- |
 | `GET /healthz` | None | HTTP 200, `status: ok`; server liveness, not all-provider readiness |

@@ -23,6 +23,13 @@ the actual key again: a credential preview such as `${KEY_ENV}` is not a bearer
 token. Verify the same URL/key with `/v1/models` below to distinguish client
 credential resolution from gateway authentication.
 
+Torii lists `smart` first so it remains visible when a client limits the initial
+model list. Hermes shows 50 models per provider by default; search the picker to
+find later entries, or adjust its model visibility settings. After an update,
+use Hermes's **Refresh Models** to replace its cached catalog. Hermes formats
+model labels itself and removes provider prefixes before `/`; the API IDs remain
+provider-qualified. Its built-in Fast control excludes custom proxy endpoints.
+
 A cold local model may take longer to load than the client's inference timeout.
 Torii allows Ollama requests 5 minutes by default; the provider's **Request
 timeout** can extend this (see [Providers](providers.md)). Client and proxy

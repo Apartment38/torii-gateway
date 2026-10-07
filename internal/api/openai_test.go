@@ -142,8 +142,41 @@ func TestOpenAIHandlerReturnsPartialDeterministicCatalog(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Data) != 3 || envelope.Data[0].ID != "working/a" || envelope.Data[1].ID != "working/z" || envelope.Data[2].ID != "smart" {
+	if len(envelope.Data) != 3 || envelope.Data[0].ID != "smart" || envelope.Data[1].ID != "working/a" || envelope.Data[2].ID != "working/z" {
 		t.Fatalf("models = %#v", envelope.Data)
+	}
+}
+
+func TestSmartRemainsVisibleInClientFirstFiftyModels(t *testing.T) {
+	ids := make([]string, 60)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("model-%02d", i)
+	}
+	upstream, err := provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{
+		ID: "ziz", BaseURL: "http://unused.example", StaticModels: ids,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := api.NewOpenAIHandler([]provider.OpenAIProvider{upstream})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	var envelope struct {
+		Data []provider.Model `json:"data"`
+	}
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &envelope) != nil {
+		t.Fatal("invalid model list", response.Code, response.Body.String())
+	}
+	if len(envelope.Data) != 61 || envelope.Data[0].ID != "smart" || envelope.Data[0].OwnedBy != "torii" {
+		t.Fatal("routing model is missing from first page", envelope.Data)
+	}
+	for i, id := range ids {
+		if envelope.Data[i+1].ID != "ziz/"+id {
+			t.Fatal("physical names or ordering changed", envelope.Data[i+1])
+		}
 	}
 }
 

@@ -168,10 +168,12 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 	}
 	descriptors := h.catalog.Models()
 	models := make([]provider.Model, 0, len(descriptors)+1)
+	// Clients may show only the first page of a provider's catalog. Keep the
+	// gateway routing choice visible before the sorted physical models.
+	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
 	for _, descriptor := range descriptors {
 		models = append(models, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
 	}
-	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
 	writeJSON(w, http.StatusOK, struct {
 		Object string           `json:"object"`
 		Data   []provider.Model `json:"data"`

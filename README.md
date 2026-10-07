@@ -541,6 +541,12 @@ provider as well for `smart` to return chat responses. Laya's example model
 must be loaded and advertised by your server. For local, non-container builds,
 use the reachable server hostname (often `localhost`) instead.
 
+Classifier setup needs only a provider, a discovered model, and Save & reload.
+The optional **Classifier tuning** panel adjusts the 10-second timeout,
+minimum confidence, question instructions and option rubrics, and per-question
+yes thresholds. See [routing customization](docs/routing-customization.md) for
+defaults, limits, and YAML examples. Edits retain the supported routing labels.
+
 Optional catalog metadata overrides can be supplied with
 `router.catalog_file: ./catalog-overrides.json`. The file is a strict JSON
 array of catalog descriptors and is applied after bundled and live provider

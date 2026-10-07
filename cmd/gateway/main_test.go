@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/config"
 	"github.com/Apartment38/torii-gateway/internal/state"
 	"github.com/Apartment38/torii-gateway/internal/usage"
@@ -133,6 +134,17 @@ func TestConsoleBootstrapWithoutProvidersCanServeAndReload(t *testing.T) {
 	}
 }
 
+const testTypedDecision = `{"model":"english","answers":{"task_type":{"type":"choice","choice":"general","confidence":0.9,"probabilities":{"general":1,"conversation":0,"coding":0,"sysadmin":0,"reasoning":0,"math":0,"research":0,"summarization":0,"extraction":0,"creative":0,"translation":0}},"complexity":{"type":"choice","choice":"low","confidence":0.9,"probabilities":{"low":1,"medium":0,"high":0}},"tools":{"type":"noul","noul":0},"vision":{"type":"noul","noul":0},"reasoning":{"type":"noul","noul":0},"structured_output":{"type":"noul","noul":0},"latency_sensitive":{"type":"noul","noul":0}},"usage":{"input_tokens":100,"output_tokens":0}}`
+
+func typedFixtureChatCatalog(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fixture-catalog.json")
+	if err := os.WriteFile(path, []byte(`[{"id":"chat/chat-model","provider_id":"chat","upstream_id":"chat-model","endpoints":{"chat_completions":"supported"},"modalities":{"text_input":"supported","text_output":"supported"},"context_window":8192,"pricing":{"input_per_million":0,"output_per_million":0},"quality":{"general":0.9},"metadata":{"catalog_source":"test fixture","capability_source":"fixture Chat Completions handler"}}]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
 	var decisions, chats int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +156,7 @@ func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
 			if body["model"] != "english" || body["state"] != "hello" || r.Header.Get("Authorization") != "Bearer laya-key" {
 				t.Errorf("wrong decision request: %+v", body)
 			}
-			_, _ = io.WriteString(w, `{"answers":{"task_type":{"type":"choice","choice":"general","confidence":0.9},"complexity":{"type":"choice","choice":"low","confidence":0.9}}}`)
+			_, _ = io.WriteString(w, testTypedDecision)
 		case "/v1/chat/completions":
 			chats++
 			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"hello back"}}]}`)
@@ -158,7 +170,7 @@ func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
 	cfg := &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{
 		{ID: "chat", Type: "openai_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"chat-model"}},
 		{ID: "laya", Type: "jev_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"english"}, BearerToken: &config.SecretRef{Value: "laya-key"}},
-	}, Router: config.RouterConfig{Classifier: config.ClassifierConfig{Type: "jev", Transport: "provider", Provider: "laya", Model: "english", OnFailure: "fail"}}}
+	}, Router: config.RouterConfig{CatalogFile: typedFixtureChatCatalog(t), Classifier: config.ClassifierConfig{Type: "jev", Transport: "provider", Provider: "laya", Model: "english", OnFailure: "fail"}}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +183,64 @@ func TestSmartRoutingUsesConfiguredJevCompatibleProvider(t *testing.T) {
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"smart","messages":[{"role":"user","content":"hello"}]}`)))
 	if w.Code != http.StatusOK || decisions != 1 || chats != 1 {
 		t.Fatalf("smart did not use decision provider: HTTP %d %s, decisions=%d chats=%d", w.Code, w.Body.String(), decisions, chats)
+	}
+}
+
+func TestClassifierTuningReachesRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		minimum float64
+		timeout string
+		failure string
+		delay   time.Duration
+		status  int
+	}{
+		{"custom rubric", .5, "1s", "fail", 0, http.StatusOK},
+		{"confidence fail", .95, "1s", "fail", 0, http.StatusBadGateway},
+		{"confidence fallback", .95, "1s", "capability_fallback", 0, http.StatusOK},
+		{"timeout fail", 0, "1ms", "fail", 30 * time.Millisecond, http.StatusBadGateway},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/systemone" {
+					var body struct {
+						Questions map[string]struct {
+							Instructions string
+							Criteria     map[string]string
+						}
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+						return
+					}
+					if body.Questions["task_type"].Instructions != "Treat code reviews as coding" || body.Questions["task_type"].Criteria["coding"] != "Software development and review" {
+						t.Errorf("custom questions were not sent: %+v", body.Questions)
+					}
+					time.Sleep(tc.delay)
+					_, _ = io.WriteString(w, testTypedDecision)
+					return
+				}
+				_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"hello back"}}]}`)
+			}))
+			defer server.Close()
+			discover := false
+			cfg := &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{
+				{ID: "chat", Type: "openai_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"chat-model"}},
+				{ID: "laya", Type: "jev_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"english"}},
+			}, Router: config.RouterConfig{CatalogFile: typedFixtureChatCatalog(t), Classifier: config.ClassifierConfig{Type: "jev", Transport: "provider", Provider: "laya", Model: "english", OnFailure: tc.failure, Timeout: tc.timeout, MinimumConfidence: tc.minimum, Questions: map[string]classifier.QuestionOverride{"task_type": {Instructions: "Treat code reviews as coding", Criteria: map[string]string{"coding": "Software development and review"}}}}}}
+			if err := cfg.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			handler, err := buildHandlerWithRuntime(cfg, "", &handlerRuntime{usageStore: testUsage(t)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"smart","messages":[{"role":"user","content":"hello"}]}`)))
+			if w.Code != tc.status {
+				t.Fatalf("status = %d, want %d: %s", w.Code, tc.status, w.Body.String())
+			}
+		})
 	}
 }
 

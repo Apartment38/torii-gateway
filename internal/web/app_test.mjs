@@ -626,6 +626,91 @@ test("legacy classifier conversion preserves encrypted credential references",()
   const app=consoleFixture(()=>response({}));app.context.config={providers:[],router:{classifier:{type:"jev",base_url:"https://api.typesafe.ai",model:"jev-latest",api_key:{credential:"classifier-ref"}}}};app.run("applyConfig(config)");assert.equal(app.run('readProviderConfig(providers[0]).bearer_token.credential'),"classifier-ref");
 });
 
+test("classifier tuning keeps defaults optional and panel collapsed", () => {
+  const app = consoleFixture(() => response({}));
+  app.context.config = { providers:[], router:{ classifier:{ type:"disabled" } } };
+  app.run("applyConfig(config)");
+  const classifier = app.run("readConfig().router.classifier");
+  for (const name of ["timeout", "minimum_confidence", "questions", "noul_thresholds"]) assert.equal(classifier[name], undefined);
+  const html = readFileSync(new URL("./static/index.html", import.meta.url), "utf8");
+  assert.match(html, /<details id="classifier-tuning" class="advanced-fields">/);
+  assert.doesNotMatch(html, /<details[^>]*id="classifier-tuning"[^>]*\bopen\b/);
+});
+
+test("saved classifier tuning survives model replacement and disabled selection", () => {
+  const app = consoleFixture(() => response({}));
+  app.context.config = { providers:[], router:{ classifier:{ type:"jev", transport:"provider", provider:"laya", model:"english", timeout:"750ms", minimum_confidence:.4, on_failure:"fail", questions:{ task_type:{ instructions:"Review source code", criteria:{ coding:"Software development" } } }, noul_thresholds:{ tools:0, reasoning:1 } } } };
+  app.run("applyConfig(config)");
+  app.run('classifierSelect.value="other/multilingual"; classifierSelect.listeners.change()');
+  let saved = app.run("readConfig().router.classifier");
+  assert.equal(saved.provider, "other");
+  assert.equal(saved.timeout, "750ms");
+  assert.equal(saved.minimum_confidence, .4);
+  assert.equal(saved.on_failure, "fail");
+  assert.equal(saved.questions.task_type.criteria.coding, "Software development");
+  assert.equal(saved.noul_thresholds.tools, 0);
+  app.run('classifierSelect.value="disabled"; classifierSelect.listeners.change()');
+  saved = app.run("readConfig().router.classifier");
+  assert.equal(saved.type, "disabled");
+  assert.equal(saved.questions.task_type.instructions, "Review source code");
+  assert.equal(saved.noul_thresholds.reasoning, 1);
+});
+
+test("unsaved question edits survive question changes and provider discovery", async () => {
+  const app = consoleFixture(() => response({ok:true, models:[{id:"laya/english"}]}));
+  app.context.config = { providers:[{ id:"laya", type:"jev_compatible", base_url:"http://localhost:8000" }], router:{ classifier:{ type:"jev", transport:"provider", provider:"laya", model:"english" } } };
+  app.run("applyConfig(config)");
+  app.run('classifierInstructions.value="Classify code reviews as coding"; classifierInstructions.listeners.input(); classifierOption.value="coding"; classifierOption.listeners.change(); classifierRubric.value="Developing and reviewing software"; classifierRubric.listeners.input()');
+  app.run('classifierQuestion.value="tools"; classifierQuestion.listeners.change(); classifierThreshold.value="0.8"; classifierThreshold.listeners.input(); classifierRubric.value="Needs external actions"; classifierRubric.listeners.input()');
+  await app.run("testAllProviders()");
+  app.run('classifierQuestion.value="task_type"; classifierQuestion.listeners.change(); classifierOption.value="coding"; classifierOption.listeners.change()');
+  assert.equal(app.run("classifierInstructions.value"), "Classify code reviews as coding");
+  assert.equal(app.run("classifierRubric.value"), "Developing and reviewing software");
+  const saved = app.run("readConfig().router.classifier");
+  assert.equal(saved.questions.task_type.criteria.coding, "Developing and reviewing software");
+  assert.equal(saved.questions.tools.criteria.true, "Needs external actions");
+  assert.equal(saved.noul_thresholds.tools, .8);
+});
+
+test("clearing tuning restores defaults and loading another config clears prior controls", () => {
+  const app = consoleFixture(() => response({}));
+  app.context.config = { providers:[], router:{ classifier:{ type:"disabled", timeout:"2s", minimum_confidence:.4, questions:{ task_type:{ instructions:"Custom" } }, noul_thresholds:{ tools:.8 } } } };
+  app.run("applyConfig(config)");
+  app.run('classifierInstructions.value=""; classifierInstructions.listeners.input(); classifierQuestion.value="tools"; classifierQuestion.listeners.change(); classifierThreshold.value=""; classifierThreshold.listeners.input(); form.elements.namedItem("router.classifier.timeout").value=""; form.elements.namedItem("router.classifier.minimum_confidence").value=""');
+  const cleared = app.run("readConfig().router.classifier");
+  for (const name of ["timeout", "minimum_confidence", "questions", "noul_thresholds"]) assert.equal(cleared[name], undefined);
+  app.run("applyConfig(config); applyConfig({ providers:[], router:{ classifier:{ type:'disabled' } } })");
+  assert.equal(app.run('form.elements.namedItem("router.classifier.timeout").value'), "");
+  assert.equal(app.run('form.elements.namedItem("router.classifier.minimum_confidence").value'), "");
+  assert.equal(app.run("readConfig().router.classifier.questions"), undefined);
+});
+
+test("invalid confidence draft cannot silently save as null", async () => {
+  const app = consoleFixture(() => response({}));
+  app.run('form.elements.namedItem("router.classifier.minimum_confidence").value="invalid"');
+  await app.run("saveConfig()");
+  assert.equal(app.calls.filter(call => call.options?.method === "PUT").length, 0);
+  assert.match(app.run('document.querySelector("#toast").textContent'), /Minimum confidence/);
+});
+
+test("saving an unchecked paid-model policy preserves false after reload", async () => {
+  let persisted = { providers:[], router:{ allow_paid_models:false, classifier:{ type:"disabled" } } };
+  const app = consoleFixture((_url, options) => {
+    if (options?.method === "PUT") persisted = JSON.parse(options.body);
+    return response(persisted);
+  });
+  app.context.config = persisted;
+  app.run("applyConfig(config)");
+  assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'), false);
+  await app.run("saveConfig()");
+  assert.equal(persisted.router.allow_paid_models, false);
+  assert.equal(app.run("readConfig().router.allow_paid_models"), false);
+  app.run("applyConfig({providers:[], router:{classifier:{type:'disabled'}}})");
+  assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'), true);
+  app.run('form.elements.namedItem("router.allow_paid_models").checked=false');
+  assert.equal(app.run("readConfig().router.allow_paid_models"), false);
+});
+
 test("setup status selects initial administrator setup or existing-account login",async()=>{
   const app=consoleFixture(()=>response({setup_required:true}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#setup-dialog").open'),true);
   app.setFetch(()=>response({setup_required:false}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);

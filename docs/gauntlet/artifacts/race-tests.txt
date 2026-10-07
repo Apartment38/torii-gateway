@@ -1,0 +1,7 @@
+ok  	github.com/Apartment38/torii-gateway/internal/api	4.080s
+ok  	github.com/Apartment38/torii-gateway/internal/catalog	1.030s
+ok  	github.com/Apartment38/torii-gateway/internal/classifier	1.130s
+ok  	github.com/Apartment38/torii-gateway/internal/provider	3.950s
+ok  	github.com/Apartment38/torii-gateway/internal/router	1.031s
+ok  	github.com/Apartment38/torii-gateway/internal/config	1.133s
+ok  	github.com/Apartment38/torii-gateway/internal/session	1.032s

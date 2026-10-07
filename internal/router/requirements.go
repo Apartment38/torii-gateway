@@ -26,6 +26,7 @@ type RequestRequirements struct {
 	StructuredOutput      bool
 	Reasoning             bool
 	Streaming             bool
+	LatencySensitive      bool
 	EstimatedInputTokens  int64
 	RequestedOutputTokens int64
 }
@@ -67,7 +68,14 @@ func ExtractRequirements(endpoint Endpoint, body []byte) (RequestRequirements, e
 	if tools, ok := root["tools"].([]any); ok && len(tools) > 0 {
 		r.Tools = true
 	}
-	_, r.StructuredOutput = firstPresent(root, "response_format", "text")
+	if functions, ok := root["functions"].([]any); ok && len(functions) > 0 {
+		r.Tools = true
+	}
+	r.Tools = r.Tools || containsTool(root["messages"]) || containsTool(root["input"])
+	r.StructuredOutput = structuredFormat(root["response_format"])
+	if text, ok := root["text"].(map[string]any); ok {
+		r.StructuredOutput = r.StructuredOutput || structuredFormat(text["format"])
+	}
 	_, r.Reasoning = firstPresent(root, "reasoning", "reasoning_effort")
 	r.Vision = containsImage(root["messages"]) || containsImage(root["input"])
 	for _, key := range []string{"max_output_tokens", "max_completion_tokens", "max_tokens"} {
@@ -77,6 +85,41 @@ func ExtractRequirements(endpoint Endpoint, body []byte) (RequestRequirements, e
 		}
 	}
 	return r, nil
+}
+
+func structuredFormat(v any) bool {
+	format, _ := v.(map[string]any)
+	kind, _ := format["type"].(string)
+	return kind == "json_schema" || kind == "json_object"
+}
+
+func containsTool(v any) bool {
+	switch value := v.(type) {
+	case []any:
+		for _, item := range value {
+			if containsTool(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		role, _ := value["role"].(string)
+		kind, _ := value["type"].(string)
+		if role == "tool" || role == "function" || kind == "function_call" || kind == "function_call_output" {
+			return true
+		}
+		if calls, ok := value["tool_calls"].([]any); ok && len(calls) > 0 {
+			return true
+		}
+		if call, ok := value["function_call"].(map[string]any); ok && len(call) > 0 {
+			return true
+		}
+		for _, nested := range value {
+			if containsTool(nested) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validEndpoint(e Endpoint) bool {

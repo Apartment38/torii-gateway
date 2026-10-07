@@ -113,3 +113,25 @@ func TestJevProviderUsesTypedDecisionTransportOnly(t *testing.T) {
 		t.Fatal("classifier served an inference request")
 	}
 }
+
+func TestJevProviderNeverFollowsRedirectsWithSuppliedClient(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Redirect(w, r, "/capture-secret", http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+	client := &http.Client{}
+	p, err := NewJevProvider(OpenAICompatibleConfig{ID: "laya", BaseURL: server.URL, Client: client, StaticModels: []string{"english"}, Headers: http.Header{"Authorization": {"Bearer private-key"}, "X-Private": {"private-value"}}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.ForwardDecision(context.Background(), []byte(`{"model":"english","state":"private request","questions":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusTemporaryRedirect || calls != 1 || client.CheckRedirect != nil {
+		t.Fatalf("status = %d, calls = %d, client mutated = %t", resp.StatusCode, calls, client.CheckRedirect != nil)
+	}
+}

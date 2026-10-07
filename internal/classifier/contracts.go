@@ -57,6 +57,26 @@ type Classification struct {
 	Confidence   float64             `json:"confidence"`
 	Requirements FeatureRequirements `json:"requirements"`
 	Preferences  Preferences         `json:"preferences"`
+	Decision     *DecisionMetadata   `json:"-"`
+}
+
+// DecisionMetadata retains protocol evidence for routing observability. It
+// never contains the request state or instructions sent to a classifier.
+type DecisionMetadata struct {
+	Model   string
+	Usage   *DecisionUsage
+	Choices map[string]ChoiceDecision
+}
+
+type DecisionUsage struct {
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+}
+
+type ChoiceDecision struct {
+	Choice        string
+	Confidence    float64
+	Probabilities map[string]float64
 }
 type ClassificationRequest struct {
 	Model        string
@@ -92,9 +112,10 @@ func Fallback(r router.RequestRequirements) Classification {
 }
 
 type Runner struct {
-	Classifier Classifier
-	Timeout    time.Duration
-	OnFailure  FailurePolicy
+	Classifier        Classifier
+	Timeout           time.Duration
+	OnFailure         FailurePolicy
+	MinimumConfidence float64
 }
 
 func (r Runner) Classify(ctx context.Context, request ClassificationRequest) (Classification, error) {
@@ -116,6 +137,11 @@ func (r Runner) Classify(ctx context.Context, request ClassificationRequest) (Cl
 	}
 	if err != nil {
 		return r.failed(request.Requirements, err)
+	}
+	if result.Confidence < r.MinimumConfidence {
+		fallback, err := r.failed(request.Requirements, errors.New("classifier confidence is below the configured minimum"))
+		fallback.Decision = result.Decision
+		return fallback, err
 	}
 	return ApplyObjective(result, request.Requirements), nil
 }

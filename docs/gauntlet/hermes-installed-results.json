@@ -1,0 +1,1115 @@
+{
+  "reference_pin": "562dc2a27aa22977e0795809a17fbbbb1819f0ab",
+  "repository": "https://github.com/AlphaPerseii3000/jev-effort-router",
+  "host_version": "v0.21.4+canary.20260930T070235Z-6-g6ec05205a9",
+  "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+  "isolation": {
+    "home_write": false,
+    "user_configuration_or_keys_read": false,
+    "synthetic_key_only": true,
+    "profile_source_runtime_cache": "/tmp/hermes-observed-setup",
+    "public_dependency_preparation_allowed_only_for_cli_install_enable": true,
+    "inference_and_account_calls": 0,
+    "native_PM_workers_use_sanitized_environment_and_tmp_scoped_source_profile_store_cache": true
+  },
+  "operator_observations": [
+    "Pinned local Git install without force blocked by CAUTION scan; four docs/CI/README findings reviewed.",
+    "After review, actual --force --enable install succeeds but reports noninteractive Python dependency consent skipped and leaves disabled.",
+    "Actual separate plugins enable succeeds and saves enabled profile setting.",
+    "Default loaded plugin has six built-in models, 2s timeout, 0.5 confidence and recent context 4.",
+    "Supported host settings writer saves three-model grid and default model; force reload observes both.",
+    "Actual registered middleware dispatch executes the same six matched routing fixtures plus contextual followup."
+  ],
+  "excluded_from_product_judgment": [
+    "Initial offline guard-induced dependency download failures are test-environment limitations, not Hermes defects.",
+    "Temporary manual tree staging was replaced by successful actual CLI publication; it is not counted as an operator install step.",
+    "Source/runtime/profile isolation scaffolding is harness setup, not normal operator setup.",
+    "Local-source warnings and copy unknown-managed warnings do not establish normal remote install friction."
+  ],
+  "source_hashes": {
+    "router.py": "7e6ac69dfea05c7ed4487e03a4d4ff699c04af05ee3cc61d373cb1af34b42c29",
+    "client.py": "4aea2421d549c54152ff0734f6963d011d18cd866f239a2d06817fd80488ca25",
+    "config.py": "16e727ed2d7215d098d29634035f1dce8b36c0ef1802e5baa4a97d84ed34cdf9",
+    "state.py": "a1e3559a46d63f53858e636226d0423ac58cedca7ee702790ef28d458b77e85d",
+    "grid.py": "9a527188a115f77b1d5ba9fca0bf4b987dd1c6262ceb6417354f48fc9a8d47ab",
+    "effort.py": "58883bec41adb2929ad1f93964ad2dc699a9528a68e50f489f04d3ea0b15a52b",
+    "memo.py": "49a8a074d34ecaae08fc16df7ca9ca187b0ea01a528ef4394404b0dd9f198928",
+    "audit.py": "f49c5b8dc49a70cb911eac8f480adab3588c97261e401f69a358a4a3ff3a67bb",
+    "catalog.py": "32bd4898ef7a2983c8aec5bafb6580c05138ba406bdf31f38205fed93e7aff7b",
+    "README.md": "d1a0f15739d81b1aec5752886071549c55edc0b59ca3eb1b7bb16323bab82dde"
+  },
+  "additional_package_hashes": {
+    "plugin.yaml": "6787172a4f1e2579064645901fca5e606996c8624f32be5a7643cbf82dc2af18",
+    "__init__.py": "287e150651686213d32fe7bbd0ae3b17bf1075dce1f148c6b0cbb0520d83986d",
+    "commands.py": "14c90767cd50028594d98f9cb6296a7fdffade4aca26cf8cc73d9eaacf30b080",
+    "tools.py": "b2898622afa7e9aa0101853e990b42830c34a4a42376bbd55501ddb5e8364ffb",
+    "pyproject.toml": "cb79d9ae52f5a2450417b001f477a1158d21b977b74ec5e92d79f5b8ac90b0a3"
+  },
+  "install_metadata": {
+    "jev-effort-router": {
+      "pinned": true,
+      "revision": "562dc2a27aa22977e0795809a17fbbbb1819f0ab",
+      "source": "file:///tmp/hermes-observed-setup/pinned-git"
+    }
+  },
+  "cli_transcripts": [
+    {
+      "artifact": "host-plugins---help.json",
+      "command": [
+        "hermes",
+        "plugins",
+        "--help"
+      ],
+      "source_mode": "installed",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 0,
+      "stdout": "usage: hermes plugins [-h]\n                      {install,search,browse,validate,update,adopt,trust-update-url,check-updates,check,remove,rm,uninstall,list,ls,enable,disable,capabilities,doctor,pack,show,info} ...\n\nInstall, update, remove, list, or validate native Hermes plugins and portable\nAgent Plugins v1 packages. Portable packages install disabled.\n\npositional arguments:\n  {install,search,browse,validate,update,adopt,trust-update-url,check-updates,check,remove,rm,uninstall,list,ls,enable,disable,capabilities,doctor,pack,show,info}\n    install             Install a plugin from the curated catalog, a Git URL,\n                        or owner/repo\n    search              Search the curated Hermes plugin catalog\n    browse              List every curated plugin catalog entry\n    validate            Validate a plugin directory for catalog admission (CI\n                        gate)\n    update              Pull latest changes for an installed plugin\n    adopt               Adopt a self-cloned plugin dir into provenance\n                        tracking\n    trust-update-url    Confirm a changed plugin update_url into the saved tag\n    check-updates (check)\n                        Check whether installed plugins have updates (read-\n                        only)\n    remove (rm, uninstall)\n                        Remove an installed plugin\n    list (ls)           List installed plugins\n    enable              Enable a disabled plugin\n    disable             Disable a plugin without removing it\n    capabilities        Show declared vs granted capabilities per plugin\n    doctor              Validate a plugin with the real runtime contracts\n    pack                Declarative, shareable plugin sets (hermes-pack.yaml)\n    show (info)         Show details for a single plugin (including\n                        emits/listens)\n\noptions:\n  -h, --help            show this help message and exit\n",
+      "stderr": "",
+      "guard_events": [
+        {
+          "event": "subprocess.Popen",
+          "detail": "Git cwd outside isolated tree"
+        },
+        {
+          "event": "subprocess.Popen",
+          "detail": "Git cwd outside isolated tree"
+        }
+      ],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false
+    },
+    {
+      "artifact": "host-plugins-enable-6ae86a23bb.json",
+      "command": [
+        "hermes",
+        "plugins",
+        "enable",
+        "jev-effort-router"
+      ],
+      "source_mode": "installed",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 1,
+      "stdout": "\u2717 Enable 'jev-effort-router' refused: python: install failed: download failed \nfrom \nhttps://github.com/astral-sh/python-build-standalone/releases/download/20260901/\ncpython-3.14.7+20260901-x86_64-unknown-linux-gnu-install_only.tar.gz: <urlopen \nerror offline isolation guard: socket.getaddrinfo: network disabled> \u2014 retry, or\nrun `hermes pm doctor`\nconfig.yaml and the active environment are unchanged. Run `hermes pm install` to\nresolve dependencies, then retry.\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/urllib/request.py\", line 1320, in do_open\n    h.request(req.get_method(), req.selector, req.data, headers,\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n              encode_chunked=req.has_header('Transfer-encoding'))\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1386, in request\n    self._send_request(method, url, body, headers, encode_chunked)\n    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1432, in _send_request\n    self.endheaders(body, encode_chunked=encode_chunked)\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1381, in endheaders\n    self._send_output(message_body, encode_chunked=encode_chunked)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1141, in _send_output\n    self.send(msg)\n    ~~~~~~~~~^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1085, in send\n    self.connect()\n    ~~~~~~~~~~~~^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1520, in connect\n    super().connect()\n    ~~~~~~~~~~~~~~~^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/http/client.py\", line 1051, in connect\n    self.sock = self._create_connection(\n                ~~~~~~~~~~~~~~~~~~~~~~~^\n        (self.host,self.port), self.timeout, self.source_address)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_bootstrap.py\", line 215, in _socket_racer\n    return _happy_eyeballs_create_connection(address, effective, source_address=source_address)\n  File \"/home/erick/.hermes/hermes-agent/hermes_bootstrap.py\", line 63, in _happy_eyeballs_create_connection\n    addrinfos = _interleave_addrinfos(socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))\n                                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/socket.py\", line 989, in getaddrinfo\n    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):\n               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/mnt/data/containers/torii-gateway/scripts/test-hermes-installed-reference.py\", line 64, in audit\n    block(event, 'network disabled')\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/mnt/data/containers/torii-gateway/scripts/test-hermes-installed-reference.py\", line 46, in block\n    raise PermissionError('offline isolation guard: ' + event + ': ' + str(detail))\nPermissionError: offline isolation guard: socket.getaddrinfo: network disabled\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/erick/.hermes/hermes-agent/pm/downloader.py\", line 410, in _probe\n    return retry_network(request, wait=self._wait_retry)\n  File \"/home/erick/.hermes/hermes-agent/pm/network.py\", line 73, in retry_network\n    return operation()\n  File \"/home/erick/.hermes/hermes-agent/pm/downloader.py\", line 396, in request\n    with _OPENER.open(req, timeout=60) as response:\n         ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/urllib/request.py\", line 487, in open\n    response = self._open(req, data)\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/urllib/request.py\", line 504, in _open\n    result = self._call_chain(self.handle_open, protocol, protocol +\n                              '_open', req)\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/urllib/request.py\", line 464, in _call_chain\n    result = func(*args)\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/urllib/request.py\", line 1368, in https_open\n    return self.do_open(http.client.HTTPSConnection, req,\n           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                        context=self._context)\n                        ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/urllib/request.py\", line 1323, in do_open\n    raise URLError(err)\nurllib.error.URLError: <urlopen error offline isolation guard: socket.getaddrinfo: network disabled>\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/erick/.hermes/hermes-agent/pm/install.py\", line 400, in _install\n    staged = _prepare_artifacts(package, store, scratch, artifacts, version, target,\n                                progress=progress, pause_event=pause_event,\n                                download_progress=download_progress)\n  File \"/home/erick/.hermes/hermes-agent/pm/install.py\", line 42, in _prepare_artifacts\n    archives = store.fetch_many(artifacts, scratch, progress=tick, pause_event=pause_event)\n  File \"/home/erick/.hermes/hermes-agent/pm/store.py\", line 397, in fetch_many\n    Download(sources, pause_event=pause_event).run(progress=tick)\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/downloader.py\", line 297, in run\n    source, remote = self._try_sources(source, lambda candidate: self._probe(candidate.url), failures[key])\n                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/downloader.py\", line 337, in _try_sources\n    return candidate, operation(candidate)\n                      ~~~~~~~~~^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/downloader.py\", line 297, in <lambda>\n    source, remote = self._try_sources(source, lambda candidate: self._probe(candidate.url), failures[key])\n                                                                 ~~~~~~~~~~~^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/downloader.py\", line 412, in _probe\n    raise DownloadTransportError(url, exc) from exc\npm.downloader.DownloadTransportError: download failed from https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.14.7+20260901-x86_64-unknown-linux-gnu-install_only.tar.gz: <urlopen error offline isolation guard: socket.getaddrinfo: network disabled>\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_admission.py\", line 70, in admit_plugin_set_change\n    sync_venv(explicit=True, plugins=Selection({\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        \"home\": str(home.resolve()), \"enabled\": sorted(candidate_enabled),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        \"disabled\": sorted(candidate_disabled), \"extra_dirs\": [str(Path(d).resolve()) for d in extra_dirs],\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        **({\"expected_config\": expected_config} if expected_config is not None else {}),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    }))\n    ^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/client.py\", line 230, in sync_venv\n    _request(\"sync_venv\", {\"extras\": extras, \"explicit\": explicit, \"repair\": repair,\n    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                          \"plugins\": plugin_inputs.encode(plugins),\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                          \"evict_incompatible_plugins\": evict_incompatible_plugins}, project_root=project_root)\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/client.py\", line 111, in _request\n    command = _worker_command(spec, arguments, worker, environment)\n  File \"/home/erick/.hermes/hermes-agent/pm/client.py\", line 71, in _worker_command\n    return runtime_command(worker, cache=cache)\n  File \"/home/erick/.hermes/hermes-agent/pm/runtime.py\", line 261, in runtime_command\n    python = runtime_python(bootstrap=bootstrap, cache=cache)\n  File \"/home/erick/.hermes/hermes-agent/pm/runtime.py\", line 248, in runtime_python\n    tools = _toolchain(explicit=True)\n  File \"/home/erick/.hermes/hermes-agent/pm/_uv.py\", line 25, in _toolchain\n    ensure(\"uv\", explicit=explicit)\n    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/install.py\", line 523, in ensure\n    _install(package, lockfile, facts, store, target, progress=progress,\n    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n             pause_event=pause_event, download_progress=download_progress,\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n             _lock_held=_operation is not None)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/pm/install.py\", line 423, in _install\n    raise InstallError(package.name, f\"install failed: {e}\") from e\npm.package.InstallError: python: install failed: download failed from https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.14.7+20260901-x86_64-unknown-linux-gnu-install_only.tar.gz: <urlopen error offline isolation guard: socket.getaddrinfo: network disabled> \u2014 retry, or run `hermes pm doctor`\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/mnt/data/containers/torii-gateway/scripts/test-hermes-installed-reference.py\", line 194, in <module>\n    main()\n    ~~~~^^\n  File \"/mnt/data/containers/torii-gateway/scripts/test-hermes-installed-reference.py\", line 141, in main\n    guarded_child(sys.argv[2], sys.argv[3:])\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/mnt/data/containers/torii-gateway/scripts/test-hermes-installed-reference.py\", line 83, in guarded_child\n    runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen runpy>\", line 231, in run_module\n  File \"<frozen runpy>\", line 98, in _run_module_code\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/main.py\", line 3719, in <module>\n    main()\n    ~~~~^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/main.py\", line 3711, in main\n    rc = args.func(args)\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/main.py\", line 1952, in _cmd\n    result = getattr(importlib.import_module(module), attr)(args)\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_cmd.py\", line 1006, in plugins_command\n    handler(args)\n    ~~~~~~~^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_cmd.py\", line 985, in <lambda>\n    \"enable\": lambda args: cmd_enable(\n                           ~~~~~~~~~~^\n        args.name,\n        ^^^^^^^^^^\n        allow_tool_override=_tri_state_flag(args, \"allow_tool_override\", \"no_allow_tool_override\")),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_cmd.py\", line 667, in cmd_enable\n    if _activate_key(key, enable=True, console=console):\n       ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_cmd.py\", line 552, in _activate_key\n    _set_plugin_enabled(key, enable=enable, aliases=aliases, console=console)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_cmd.py\", line 598, in _set_plugin_enabled\n    _admit_and_save_plugin_sets(enabled, disabled, console=console,\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                               action=f\"{'Enable' if enable else 'Disable'} '{name}'\",\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                               expected_config=expected_config, plugin=name if enable else None)\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_cmd.py\", line 485, in _admit_and_save_plugin_sets\n    admit_plugin_set_change(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        enabled, disabled, active_plugins_dir=_plugins_dir(), extra_dirs=extra_dirs, expected_config=expected_config,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        plugin=plugin,\n        ^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/erick/.hermes/hermes-agent/hermes_cli/plugins_admission.py\", line 80, in admit_plugin_set_change\n    raise AdmissionRefused(str(exc)) from exc\nhermes_cli.plugins_admission.AdmissionRefused: python: install failed: download failed from https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.14.7+20260901-x86_64-unknown-linux-gnu-install_only.tar.gz: <urlopen error offline isolation guard: socket.getaddrinfo: network disabled> \u2014 retry, or run `hermes pm doctor`\n",
+      "guard_events": [
+        {
+          "event": "subprocess.Popen",
+          "detail": "Git cwd outside isolated tree"
+        },
+        {
+          "event": "subprocess.Popen",
+          "detail": "Git cwd outside isolated tree"
+        },
+        {
+          "event": "socket.getaddrinfo",
+          "detail": "network disabled"
+        }
+      ],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false
+    },
+    {
+      "artifact": "host-plugins-install-file:___tmp_hermes-observed-setup_pinned-git.json",
+      "command": [
+        "hermes",
+        "plugins",
+        "install",
+        "file:///tmp/hermes-observed-setup/pinned-git",
+        "--ref",
+        "562dc2a27aa22977e0795809a17fbbbb1819f0ab",
+        "--force",
+        "--no-deps"
+      ],
+      "source_mode": "installed",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 1,
+      "stdout": "Warning: custom (unreviewed) source \u2014 not from the Hermes catalog.\nWarning: Using insecure/local URL scheme. Consider using https:// or git@ for \nproduction installs.\nCloning file:///tmp/hermes-observed-setup/pinned-git...\nError: Plugin 'jev-effort-router' was not published: python: install failed: \ndownload failed from \nhttps://github.com/astral-sh/python-build-standalone/releases/download/20260901/\ncpython-3.14.7+20260901-x86_64-unknown-linux-gnu-install_only.tar.gz: <urlopen \nerror offline isolation guard: socket.getaddrinfo: network disabled> \u2014 retry, or\nrun `hermes pm doctor`\n",
+      "stderr": "",
+      "guard_events": [
+        {
+          "event": "subprocess.Popen",
+          "detail": "Git cwd outside isolated tree"
+        },
+        {
+          "event": "subprocess.Popen",
+          "detail": "Git cwd outside isolated tree"
+        },
+        {
+          "event": "socket.getaddrinfo",
+          "detail": "network disabled"
+        },
+        {
+          "event": "socket.getaddrinfo",
+          "detail": "network disabled"
+        }
+      ],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false
+    },
+    {
+      "artifact": "isolated-__registry_fixture__-a4b7723ca1.json",
+      "command": [
+        "hermes",
+        "__registry_fixture__"
+      ],
+      "source_mode": "isolated byte-for-byte source copy",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 0,
+      "stdout": "{\"registration\": {\"jev-effort-router\": {\"error\": null, \"deferred\": false}}, \"middleware_count\": 1, \"cases\": [{\"case\": \"simple\", \"model\": \"cheap\", \"decision_calls\": 1}, {\"case\": \"complex\", \"model\": \"strong\", \"decision_calls\": 1}, {\"case\": \"objective_tools\", \"model\": \"cheap\", \"decision_calls\": 1}, {\"case\": \"affinity_first\", \"model\": \"cheap\", \"decision_calls\": 1}, {\"case\": \"affinity_new_requirement\", \"model\": \"strong\", \"decision_calls\": 1}, {\"case\": \"malformed_safe_fallback\", \"model\": \"cheap\", \"decision_calls\": 1}, {\"case\": \"contextual_followup\", \"model\": \"strong\", \"decision_calls\": 1}]}\n",
+      "stderr": "Plugin jev-effort-router: unknown manifest field(s) ignored: provides_middleware (newer manifest schema or typo; plugin still loads)\nPlugin jev-effort-router: unknown manifest field(s) ignored: provides_middleware (newer manifest schema or typo; plugin still loads)\n",
+      "guard_events": [],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false,
+      "dependency_downloads_allowed": false
+    },
+    {
+      "artifact": "isolated-plugins-enable-6ae86a23bb.json",
+      "command": [
+        "hermes",
+        "plugins",
+        "enable",
+        "jev-effort-router"
+      ],
+      "source_mode": "isolated byte-for-byte source copy",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 0,
+      "stdout": "\u2713 Plugin jev-effort-router enabled. Takes effect on next session.\nRestart the gateway for the plugin to take effect:\n  hermes gateway restart\n",
+      "stderr": "\u26a0 install out of sync (ffmpeg: not installed or outdated; node: not installed or outdated; npm: not installed or outdated; ripgrep: not installed or outdated) \u2014 this unknown-managed install must rebuild the artifact to fix\n  \u2192 Resolving Python dependencies\u2026\n  \u2713 Resolving Python dependencies\n  \u2192 Installing Python dependencies\u2026\n  \u2713 Installing Python dependencies\n",
+      "guard_events": [
+        {
+          "event": "socket.bind",
+          "detail": "network disabled"
+        }
+      ],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false,
+      "dependency_downloads_allowed": true
+    },
+    {
+      "artifact": "isolated-plugins-install-334cf08066.json",
+      "command": [
+        "hermes",
+        "plugins",
+        "install",
+        "file:///tmp/hermes-observed-setup/pinned-git",
+        "--ref",
+        "562dc2a27aa22977e0795809a17fbbbb1819f0ab",
+        "--enable"
+      ],
+      "source_mode": "isolated byte-for-byte source copy",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 1,
+      "stdout": "Warning: custom (unreviewed) source \u2014 not from the Hermes catalog.\nWarning: Using insecure/local URL scheme. Consider using https:// or git@ for \nproduction installs.\nCloning file:///tmp/hermes-observed-setup/pinned-git...\n\n\u26a0 Security scan flagged this plugin:\nScan: plugin (file:///tmp/hermes-observed-setup/pinned-git/community)  Verdict: \nCAUTION\n  HIGH     exfiltration   docs/jev-decisions-api.md:46   \"pattern is to send \nonly the narrow context each question nee\"\n  MEDIUM   supply_chain   .github/workflows/tests.yml:27 \"python -m pip install \n--upgrade pip\"\n  MEDIUM   supply_chain   .github/workflows/tests.yml:28 \"pip install pytest \npyyaml httpx\"\n  MEDIUM   supply_chain   README.md:247                  \"pip install -e \".\"\"\n\nDecision: BLOCKED \u2014 Blocked (community source + caution verdict, 4 findings). \nUse --force to override.\nBlocked: Security scan blocked plugin install: Requires confirmation (caution \nverdict, 4 findings)\n\nScan: plugin (file:///tmp/hermes-observed-setup/pinned-git/community)  Verdict: \nCAUTION\n  HIGH     exfiltration   docs/jev-decisions-api.md:46   \"pattern is to send \nonly the narrow context each question nee\"\n  MEDIUM   supply_chain   .github/workflows/tests.yml:27 \"python -m pip install \n--upgrade pip\"\n  MEDIUM   supply_chain   .github/workflows/tests.yml:28 \"pip install pytest \npyyaml httpx\"\n  MEDIUM   supply_chain   README.md:247                  \"pip install -e \".\"\"\n\nDecision: BLOCKED \u2014 Blocked (community source + caution verdict, 4 findings). \nUse --force to override.\nReview the findings above. Install only plugins from sources you trust. \n(Scanning can be configured via plugins.scan_on_install in config.yaml.)\n",
+      "stderr": "\u26a0 install out of sync (ffmpeg: not installed or outdated; node: not installed or outdated; npm: not installed or outdated; ripgrep: not installed or outdated) \u2014 this unknown-managed install must rebuild the artifact to fix\n",
+      "guard_events": [
+        {
+          "event": "socket.getaddrinfo",
+          "detail": "network disabled"
+        }
+      ],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false,
+      "dependency_downloads_allowed": false
+    },
+    {
+      "artifact": "isolated-plugins-install-a9b7c81c4d.json",
+      "command": [
+        "hermes",
+        "plugins",
+        "install",
+        "file:///tmp/hermes-observed-setup/pinned-git",
+        "--ref",
+        "562dc2a27aa22977e0795809a17fbbbb1819f0ab",
+        "--enable",
+        "--force"
+      ],
+      "source_mode": "isolated byte-for-byte source copy",
+      "host_commit": "6ec05205a943cf813bd56c3c79d64bcf922dac67",
+      "host_selected_dependency_environment": "/home/erick/.hermes/installs/618af23db65255f1/environments/973e8a2742c1439bacd23b469e9b8cb4/venv",
+      "host_python": "/home/erick/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3",
+      "profile": "/tmp/hermes-observed-setup/profile",
+      "exit_code": 0,
+      "stdout": "Warning: custom (unreviewed) source \u2014 not from the Hermes catalog.\nWarning: Using insecure/local URL scheme. Consider using https:// or git@ for \nproduction installs.\nCloning file:///tmp/hermes-observed-setup/pinned-git...\n  Created .env from .env.example\n\njev-effort-router declares Python dependencies:\n  - httpx>=0.27\nNon-interactive install \u2014 skipping dependency install. Run `hermes plugins \nenable` when ready to prepare them.\n\n\n\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 \u2713 Installed \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502 Plugin installed: file:///tmp/hermes-observed-setup/pinned-git         \u2502\n\u2502 Location: /tmp/hermes-observed-setup/profile/plugins/jev-effort-router \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n\u2717 Cannot enable jev-effort-router: dependency install skipped (non-interactive)\nThe plugin stays installed but disabled; re-enable after resolving the conflict.\nPlugin installed but not enabled. Run `hermes plugins enable jev-effort-router` \nto activate.\nRestart the gateway for the plugin to take effect:\n  hermes gateway restart\n\n",
+      "stderr": "\u26a0 install out of sync (ffmpeg: not installed or outdated; node: not installed or outdated; npm: not installed or outdated; ripgrep: not installed or outdated) \u2014 this unknown-managed install must rebuild the artifact to fix\nPreparing the isolated Hermes runtime\u2026\n  \u2192 Installing Python dependencies\u2026\n  \u2713 Installing Python dependencies\n",
+      "guard_events": [
+        {
+          "event": "socket.bind",
+          "detail": "network disabled"
+        },
+        {
+          "event": "socket.getaddrinfo",
+          "detail": "network disabled"
+        }
+      ],
+      "fresh_host_install": false,
+      "inference_or_account_calls": false,
+      "dependency_downloads_allowed": true
+    }
+  ],
+  "actual_registry": {
+    "registration": {
+      "jev-effort-router": {
+        "error": null,
+        "deferred": false
+      }
+    },
+    "middleware_count": 1,
+    "immutable_fixture_source": "docs/gauntlet/hermes-reference-results.json",
+    "immutable_fixture_source_sha256": "fe36dfc6d5e526f1031d765ea56daf184c9e239f10994e26d6eb1993581bd369",
+    "byte_identical_matched_host_inputs": 6,
+    "registered_tools": [
+      "jev_effort_router_route",
+      "jev_effort_router_status"
+    ],
+    "registered_hooks": [
+      "on_session_end",
+      "post_llm_call"
+    ],
+    "settings": {
+      "enabled": true,
+      "jev_model": "typesafe/jev-1.13",
+      "endpoint": "https://openrouter.ai/api/alpha/decisions",
+      "confidence_threshold": 0.5,
+      "timeout_s": 2.0,
+      "default_model": "cheap",
+      "default_effort": "medium",
+      "context_turns": 4,
+      "route_per_turn": true,
+      "audit_enabled": true,
+      "log_skips": true,
+      "include_user_message_in_audit": false,
+      "grid": [
+        {
+          "model_id": "cheap",
+          "description": "quality 0.6; tools False; reasoning False; cost 0.1 per million"
+        },
+        {
+          "model_id": "strong",
+          "description": "quality 0.99; tools True; reasoning True; cost 2 per million"
+        },
+        {
+          "model_id": "backup",
+          "description": "quality 0.99; tools True; reasoning True; cost 4 per million"
+        }
+      ]
+    },
+    "catalog_models": [
+      "cheap",
+      "strong",
+      "backup"
+    ],
+    "cases": [
+      {
+        "case": "simple",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "opaque": {
+            "preserve": true
+          }
+        },
+        "request_output": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "opaque": {
+            "preserve": true
+          },
+          "reasoning_effort": "low"
+        },
+        "scope": "matched_routing",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "a830b01edfc6593ee8eb19b6d437433bcb7b02ac6151211e944ca8401450ac71",
+        "turn_id": "registered-simple",
+        "session_id": "registered-simple",
+        "expected_model": "cheap",
+        "matches_expected_model": true,
+        "changed": true,
+        "trace": [
+          {
+            "source": "jev-effort-router",
+            "reason": "cheap"
+          }
+        ],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "hello",
+                "recent_context": "",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": false,
+            "response": {
+              "model": "fixture-decision",
+              "answers": {
+                "model_route": {
+                  "type": "choice",
+                  "choice": "1",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "1": 1.0,
+                    "2": 0.0,
+                    "3": 0.0
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "choice": "low",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "low": 1.0,
+                    "medium": 0.0,
+                    "high": 0.0
+                  }
+                }
+              },
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 20
+              }
+            }
+          }
+        ]
+      },
+      {
+        "case": "complex",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ]
+        },
+        "request_output": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ],
+          "reasoning_effort": "high"
+        },
+        "scope": "matched_routing",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "6f3dee2052d8e2d195389eb54190a2af811bda5830401c798bfe30293f416dce",
+        "turn_id": "registered-complex",
+        "session_id": "registered-complex",
+        "expected_model": "strong",
+        "matches_expected_model": true,
+        "changed": true,
+        "trace": [
+          {
+            "source": "jev-effort-router",
+            "reason": "strong"
+          }
+        ],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "complex reasoning",
+                "recent_context": "",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": true,
+            "response": {
+              "model": "fixture-decision",
+              "answers": {
+                "model_route": {
+                  "type": "choice",
+                  "choice": "2",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "1": 0.0,
+                    "2": 1.0,
+                    "3": 0.0
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "choice": "high",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "low": 0.0,
+                    "medium": 0.0,
+                    "high": 1.0
+                  }
+                }
+              },
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 20
+              }
+            }
+          }
+        ]
+      },
+      {
+        "case": "objective_tools",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "request_output": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ],
+          "reasoning_effort": "low"
+        },
+        "scope": "matched_routing",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "30f5291da719a91498a4d6e6587ab00ff204854e48ca1fb3538cada519f53fbc",
+        "turn_id": "registered-objective_tools",
+        "session_id": "registered-objective_tools",
+        "expected_model": "strong",
+        "matches_expected_model": false,
+        "changed": true,
+        "trace": [
+          {
+            "source": "jev-effort-router",
+            "reason": "cheap"
+          }
+        ],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "tools",
+                "recent_context": "",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": false,
+            "response": {
+              "model": "fixture-decision",
+              "answers": {
+                "model_route": {
+                  "type": "choice",
+                  "choice": "1",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "1": 1.0,
+                    "2": 0.0,
+                    "3": 0.0
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "choice": "low",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "low": 1.0,
+                    "medium": 0.0,
+                    "high": 0.0
+                  }
+                }
+              },
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 20
+              }
+            }
+          }
+        ]
+      },
+      {
+        "case": "affinity_first",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        },
+        "request_output": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "reasoning_effort": "low"
+        },
+        "scope": "matched_routing",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "af775ea4293510165744c2196a5aa95f5d08b8c34e4dbafcef340530f374ef68",
+        "turn_id": "registered-affinity_first",
+        "session_id": "registered-affinity",
+        "expected_model": "cheap",
+        "matches_expected_model": true,
+        "changed": true,
+        "trace": [
+          {
+            "source": "jev-effort-router",
+            "reason": "cheap"
+          }
+        ],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "hello",
+                "recent_context": "",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": false,
+            "response": {
+              "model": "fixture-decision",
+              "answers": {
+                "model_route": {
+                  "type": "choice",
+                  "choice": "1",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "1": 1.0,
+                    "2": 0.0,
+                    "3": 0.0
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "choice": "low",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "low": 1.0,
+                    "medium": 0.0,
+                    "high": 0.0
+                  }
+                }
+              },
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 20
+              }
+            }
+          }
+        ]
+      },
+      {
+        "case": "affinity_new_requirement",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "assistant",
+              "content": "hello"
+            },
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ],
+          "reasoning_effort": "high"
+        },
+        "request_output": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "assistant",
+              "content": "hello"
+            },
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ],
+          "reasoning_effort": "high"
+        },
+        "scope": "matched_routing",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "4cad8f773ee6848d05a800e840ff84077c8312d18eb5709ebbd87694ea4ea6b2",
+        "turn_id": "registered-affinity_new_requirement",
+        "session_id": "registered-affinity",
+        "expected_model": "strong",
+        "matches_expected_model": true,
+        "changed": true,
+        "trace": [
+          {
+            "source": "jev-effort-router",
+            "reason": "strong"
+          }
+        ],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "complex reasoning",
+                "recent_context": "user: hello\nassistant: hello",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": true,
+            "response": {
+              "model": "fixture-decision",
+              "answers": {
+                "model_route": {
+                  "type": "choice",
+                  "choice": "2",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "1": 0.0,
+                    "2": 1.0,
+                    "3": 0.0
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "choice": "high",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "low": 0.0,
+                    "medium": 0.0,
+                    "high": 1.0
+                  }
+                }
+              },
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 20
+              }
+            }
+          }
+        ]
+      },
+      {
+        "case": "malformed_safe_fallback",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "malformed"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "request_output": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "malformed"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "scope": "matched_routing",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "70f4fe9102583a958c7d548e865b498d1e2dd2bff43524aeb2e39d8874f2afa1",
+        "turn_id": "registered-malformed_safe_fallback",
+        "session_id": "registered-malformed_safe_fallback",
+        "expected_model": "strong",
+        "matches_expected_model": false,
+        "changed": false,
+        "trace": [],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "malformed",
+                "recent_context": "",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": false,
+            "response": {
+              "answers": {
+                "task_type": null
+              }
+            }
+          }
+        ]
+      },
+      {
+        "case": "contextual_followup",
+        "host_input": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning about a proof"
+            },
+            {
+              "role": "assistant",
+              "content": "We need a proof."
+            },
+            {
+              "role": "user",
+              "content": "Continue that proof."
+            }
+          ]
+        },
+        "request_output": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning about a proof"
+            },
+            {
+              "role": "assistant",
+              "content": "We need a proof."
+            },
+            {
+              "role": "user",
+              "content": "Continue that proof."
+            }
+          ],
+          "reasoning_effort": "high"
+        },
+        "scope": "supplemental_context_or_tool_replay",
+        "mapped_host_input_byte_identical_to_frozen_reference": true,
+        "mapped_host_input_sha256": "d6108f7aeced5c2f907bce86b54681aa53cb30517cea946e552c4013611fc35f",
+        "turn_id": "registered-contextual_followup",
+        "session_id": "registered-contextual_followup",
+        "expected_model": "strong",
+        "matches_expected_model": true,
+        "changed": true,
+        "trace": [
+          {
+            "source": "jev-effort-router",
+            "reason": "strong"
+          }
+        ],
+        "decision_records": [
+          {
+            "payload": {
+              "model": "typesafe/jev-1.13",
+              "state": {
+                "user_message": "Continue that proof.",
+                "recent_context": "user: complex reasoning about a proof\nassistant: We need a proof.",
+                "provider": "ollama-cloud"
+              },
+              "questions": {
+                "model_route": {
+                  "type": "choice",
+                  "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                  "criteria": {
+                    "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                    "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                    "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                  "criteria": {
+                    "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                    "medium": "Ordinary request needing a little reasoning or synthesis.",
+                    "high": "Complex request: deep analysis, hard debugging, design or planning."
+                  }
+                }
+              }
+            },
+            "timeout_s": 2.0,
+            "semantic_hard": true,
+            "response": {
+              "model": "fixture-decision",
+              "answers": {
+                "model_route": {
+                  "type": "choice",
+                  "choice": "2",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "1": 0.0,
+                    "2": 1.0,
+                    "3": 0.0
+                  }
+                },
+                "reasoning_effort": {
+                  "type": "choice",
+                  "choice": "high",
+                  "confidence": 0.99,
+                  "probabilities": {
+                    "low": 0.0,
+                    "medium": 0.0,
+                    "high": 1.0
+                  }
+                }
+              },
+              "usage": {
+                "input_tokens": 120,
+                "output_tokens": 20
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "default_settings_before_customization": {
+      "enabled": true,
+      "jev_model": "typesafe/jev-1.13",
+      "endpoint": "https://openrouter.ai/api/alpha/decisions",
+      "confidence_threshold": 0.5,
+      "timeout_s": 2.0,
+      "default_model": "deepseek-v4.1-flash",
+      "default_effort": "medium",
+      "context_turns": 4,
+      "route_per_turn": true,
+      "audit_enabled": true,
+      "log_skips": true,
+      "include_user_message_in_audit": false,
+      "grid": [
+        {
+          "model_id": "deepseek-v4.1-flash",
+          "description": "the usual choice for general work: everyday writing, explanation, summarising, ordinary coding and tool use; 1M context; cheap for its size"
+        },
+        {
+          "model_id": "kimi-k3",
+          "description": "strongest at complex code and long agentic tasks: multi-file refactors, deep debugging, large repositories; slow and the most expensive"
+        },
+        {
+          "model_id": "glm-5.3",
+          "description": "strongest at rigorous reasoning: mathematics, logic, science, quantitative and financial analysis, where a wrong answer is costly"
+        },
+        {
+          "model_id": "glm-5.3-flash",
+          "description": "best reasoning-per-cost on large text: drafting, summarising, translating and structured extraction over long documents; fast"
+        },
+        {
+          "model_id": "minimax-m3",
+          "description": "fast tool calling: long sequences of API/CLI actions, repetitive automation, high throughput"
+        },
+        {
+          "model_id": "nemotron-3-nano:30b",
+          "description": "highest throughput and lowest cost: trivial single-step requests only; weak at reasoning and at long context"
+        }
+      ]
+    },
+    "customization": "actual host save_plugin_setting grid/default_model, then force reload and assert persisted values",
+    "installation_method": "actual CLI --force pinned installation and separate CLI enable in isolated source copy; initial manual staging was replaced by successful CLI publication",
+    "real_host_registry_and_middleware_dispatch": true,
+    "production_calls": 0
+  },
+  "summary": {
+    "actual_cli_install_exit": 0,
+    "actual_cli_enable_exit": 0,
+    "real_registry_loaded": true,
+    "matched_model_cases": 6,
+    "matched_model_cases_expected": 4,
+    "contextualfollowup_expected": true,
+    "byte_identical_matched_host_inputs": 6,
+    "production_calls": 0
+  },
+  "limits": [
+    "No chat/gateway process or real provider account configured; synthetic key and injected typed decision transport only.",
+    "No end-to-end real inference, Hermes latency/cost comparison, or completed account provisioning.",
+    "Observed isolated commands do not prove Torii needs fewer/faster setup steps."
+  ]
+}

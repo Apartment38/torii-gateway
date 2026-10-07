@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "case": "simple",
+      "expected": "cheap",
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "complex",
+      "expected": "strong",
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "objective_tools",
+      "expected": "strong",
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "affinity_first",
+      "expected": "cheap",
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "affinity_new_requirement",
+      "expected": "strong",
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "semantic_retry",
+      "expected": "backup",
+      "status": 200,
+      "models_called": [
+        "strong",
+        "backup"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "sse_bytes",
+      "expected": "cheap",
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "malformed_safe_fallback",
+      "expected": "strong",
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1
+    },
+    {
+      "case": "malformed_fail",
+      "expected": "502",
+      "status": 502,
+      "models_called": [],
+      "decision_calls": 1
+    },
+    {
+      "case": "paid_policy",
+      "expected": "503",
+      "status": 503,
+      "models_called": [],
+      "decision_calls": 1
+    },
+    {
+      "case": "explicit_bypasses_classifier",
+      "expected": "cheap",
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 0
+    }
+  ]
+}

@@ -16,6 +16,10 @@ import (
 
 func TestOllamaDiscoversNamespacedModels(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/show" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
@@ -203,5 +207,59 @@ func TestOllamaRejectsUnsupportedEndpoint(t *testing.T) {
 	}
 	if _, err := ollama.Forward(context.Background(), "/v1/files", []byte(`{"model":"local/qwen3"}`), "qwen3"); err == nil {
 		t.Fatal("Forward() error = nil")
+	}
+}
+
+func TestOllamaNativeDiscoveryPreservesUnknownAndCloudPolicy(t *testing.T) {
+	for _, f := range []struct {
+		name, show   string
+		status       int
+		known, local bool
+	}{
+		{"local", `{"capabilities":["completion","tools","vision","thinking"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":32768}}`, 200, true, true},
+		{"cloud", `{"capabilities":["completion","tools"],"remote_host":"https://ollama.com","remote_model":"qwen3-cloud","model_info":{}}`, 200, true, false},
+		{"names_only", `{"model_info":{}}`, 200, false, false},
+		{"failed_show", `{}`, 404, false, false},
+		{"malformed_show", `{"capabilities":["completion"]} {}`, 200, false, false},
+	} {
+		t.Run(f.name, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				body, status := `{"data":[{"id":"custom-name"}]}`, 200
+				if r.URL.Path == "/api/show" {
+					var payload map[string]string
+					if r.Method != "POST" || json.NewDecoder(r.Body).Decode(&payload) != nil || payload["model"] != "custom-name" {
+						t.Error("invalid native show request")
+					}
+					body, status = f.show, f.status
+				}
+				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})}
+			o, err := provider.NewOllama("local", "http://ollama.test", client)
+			if err != nil {
+				t.Fatal(err)
+			}
+			models, err := o.Models(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadata := models[0].Discovery
+			if (metadata != nil) != f.known {
+				t.Fatalf("unknown capability promoted: %#v", metadata)
+			}
+			if f.known {
+				if metadata.Local == nil || *metadata.Local != f.local || !metadata.Endpoints["chat_completions"] || !metadata.Capabilities["tools"] {
+					t.Fatalf("wrong native facts: %#v", metadata)
+				}
+				if _, known := metadata.Endpoints["responses"]; known {
+					t.Fatal("unverified Responses support advertised")
+				}
+				if _, known := metadata.Capabilities["structured_output"]; known {
+					t.Fatal("unverified structured support advertised")
+				}
+				if f.local && (models[0].ContextWindow == nil || *models[0].ContextWindow != 32768) {
+					t.Fatal("native context absent")
+				}
+			}
+		})
 	}
 }

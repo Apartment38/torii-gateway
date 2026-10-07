@@ -153,6 +153,10 @@ func TestOpenAIHandlerSmartRoutesAndSessionDeletion(t *testing.T) {
 			_, _ = io.WriteString(w, `{"data":[{"id":"model"}]}`)
 			return
 		}
+		if r.URL.Path == "/api/show" {
+			_, _ = io.WriteString(w, `{"capabilities":["completion"],"model_info":{"general.architecture":"llama","llama.context_length":8192}}`)
+			return
+		}
 		if r.URL.Path == "/v1/chat/completions" {
 			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"smart"}}]}`)
 			return

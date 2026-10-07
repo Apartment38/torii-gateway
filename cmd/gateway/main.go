@@ -589,6 +589,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
 	}
 	var configuredClassifier classifier.Classifier
+	decisionOptions := classifier.DecisionOptions{Questions: cfg.Router.Classifier.Questions, NoulThresholds: cfg.Router.Classifier.NoulThresholds}
 	if cfg.Router.Classifier.Type == "jev" {
 		if cfg.Router.Classifier.Transport == "provider" {
 			var selected provider.OpenAIProvider
@@ -602,7 +603,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			if !ok {
 				return nil, fmt.Errorf("initialize Jev classifier: provider %q does not support decision transport", cfg.Router.Classifier.Provider)
 			}
-			configuredClassifier, err = classifier.NewJevTransport(decisionProvider, cfg.Router.Classifier.Model)
+			configuredClassifier, err = classifier.NewJevTransportWithOptions(decisionProvider, cfg.Router.Classifier.Model, decisionOptions)
 			if err != nil {
 				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
 			}
@@ -616,7 +617,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 				apiKey = "database-managed"
 				client.Transport = &secretTransport{base: http.DefaultTransport, headers: map[string]config.SecretRef{"Authorization": *cfg.Router.Classifier.APIKey}, bearer: true}
 			}
-			configuredClassifier, err = classifier.NewJev(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, client)
+			configuredClassifier, err = classifier.NewJevWithOptions(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, client, decisionOptions)
 			if err != nil {
 				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
 			}
@@ -652,7 +653,14 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		if cfg.Router.Classifier.OnFailure == string(classifier.FailureFail) {
 			failure = classifier.FailureFail
 		}
-		openAI.SetClassifier(classifier.Runner{Classifier: configuredClassifier, Timeout: 10 * time.Second, OnFailure: failure})
+		timeout := 10 * time.Second
+		if configured := cfg.Router.Classifier.Timeout; configured != "" {
+			timeout, err = time.ParseDuration(configured)
+			if err != nil {
+				return nil, fmt.Errorf("initialize classifier timeout: %w", err)
+			}
+		}
+		openAI.SetClassifier(classifier.Runner{Classifier: configuredClassifier, Timeout: timeout, MinimumConfidence: cfg.Router.Classifier.MinimumConfidence, OnFailure: failure})
 	}
 	selection := router.DefaultSelectionPolicy()
 	if cfg.Router.AllowPaidModels != nil {

@@ -313,6 +313,9 @@ function signOutConsole()       {
   document.querySelector                  ("#client-key-name") .value = "";
   providers = [];
   configurationLoaded = false;
+  classifierQuestionOverrides = {};
+  classifierNoulThresholds = {};
+  renderClassifierQuestion();
   form.reset();
   clearBenchmarkConsole();
   benchmarksEnabledSaved = false;
@@ -337,6 +340,56 @@ let configurationLoaded = false;
 let requestedClassifier = "";
 let legacyClassifier                             = null;
 const classifierSelect = document.querySelector                   ("#classifier-model") ;
+// Mirrors the typed protocol's defaults. Only edited entries are saved.
+const classifierQuestionDefaults                                                                          = {
+  task_type: { instructions:"Which task type best describes this request?", criteria:{ general:"General knowledge or other task", conversation:"Open-ended conversation", coding:"Writing or debugging code", sysadmin:"Operating systems, infrastructure, or deployment", reasoning:"Multi-step logical reasoning", math:"Mathematics or quantitative calculation", research:"Research or source synthesis", summarization:"Summarizing provided content", extraction:"Extracting structured facts", creative:"Creative writing or ideation", translation:"Translating between languages" } },
+  complexity: { instructions:"How complex is this request?", criteria:{ low:"Simple and direct", medium:"Requires several steps or moderate judgment", high:"Requires deep reasoning, extensive context, or difficult execution" } },
+  tools: { instructions:"Does this request require tool or function calling?", criteria:{ true:"", false:"" } },
+  vision: { instructions:"Does this request require understanding image content?", criteria:{ true:"", false:"" } },
+  reasoning: { instructions:"Does this request require a reasoning-capable model?", criteria:{ true:"", false:"" } },
+  structured_output: { instructions:"Does this request require structured or schema-constrained output?", criteria:{ true:"", false:"" } },
+  latency_sensitive: { instructions:"Is low latency especially important for this request?", criteria:{ true:"", false:"" } },
+};
+let classifierQuestionOverrides                                                                          = {};
+let classifierNoulThresholds                         = {};
+const classifierQuestion = document.querySelector                   ("#classifier-question") ;
+const classifierInstructions = document.querySelector                     ("#classifier-question-instructions") ;
+const classifierOption = document.querySelector                   ("#classifier-question-option") ;
+const classifierRubric = document.querySelector                     ("#classifier-question-rubric") ;
+const classifierThreshold = document.querySelector                  ("#classifier-question-threshold") ;
+function renderClassifierRubric()       {
+  const name = classifierQuestion.value || "task_type";
+  classifierRubric.value = classifierQuestionOverrides[name]?.criteria?.[classifierOption.value] ?? classifierQuestionDefaults[name].criteria[classifierOption.value] ?? "";
+  classifierRubric.placeholder = "Use the built-in rubric";
+}
+function renderClassifierQuestion()       {
+  const name = classifierQuestion.value || "task_type";
+  const defaults = classifierQuestionDefaults[name];
+  classifierInstructions.value = classifierQuestionOverrides[name]?.instructions ?? defaults.instructions;
+  classifierOption.innerHTML = Object.keys(defaults.criteria).map(option => `<option value="${option}">${option}</option>`).join("");
+  classifierOption.value = Object.keys(defaults.criteria)[0];
+  const isNoul = name !== "task_type" && name !== "complexity";
+  document.querySelector                  ("#classifier-threshold-label") .hidden = !isNoul;
+  classifierThreshold.value = name in classifierNoulThresholds ? String(classifierNoulThresholds[name]) : "";
+  renderClassifierRubric();
+}
+function editClassifierQuestion(field                          , value       )       {
+  const name = classifierQuestion.value || "task_type";
+  const override = classifierQuestionOverrides[name] ||= {};
+  const defaults = classifierQuestionDefaults[name];
+  if (field === "instructions") {
+    if (!value || value === defaults.instructions) delete override.instructions;
+    else override.instructions = value;
+  } else {
+    const option = classifierOption.value;
+    const criteria = override.criteria ||= {};
+    if (!value || value === defaults.criteria[option]) delete criteria[option];
+    else criteria[option] = value;
+    if (!Object.keys(criteria).length) delete override.criteria;
+  }
+  if (!Object.keys(override).length) delete classifierQuestionOverrides[name];
+  markDirty();
+}
 
 function classifierProvider(provider                                  )          {
   return provider.type === "jev" || provider.type === "jev_compatible";
@@ -557,6 +610,13 @@ function applyConfig(config                     )       {
   configurationLoaded = true;
   legacyClassifier = null;
   const classifier = config.router?.classifier || {};
+  (form.elements.namedItem("router.allow_paid_models")                    ).checked = config.router?.allow_paid_models !== false;
+  classifierQuestionOverrides = structuredClone(classifier.questions || {});
+  classifierNoulThresholds = { ...(classifier.noul_thresholds || {}) };
+  (form.elements.namedItem("router.classifier.timeout")                    ).value = "";
+  (form.elements.namedItem("router.classifier.minimum_confidence")                    ).value = "";
+  (form.elements.namedItem("router.classifier.on_failure")                     ).value = "";
+  renderClassifierQuestion();
   requestedClassifier = classifier.type === "disabled" ? "disabled" : classifier.type === "jev" && classifier.transport === "provider"
     ? `${classifier.provider}/${classifier.model}` : "";
   applyBenchmarkConfig(config.intelligence || {});
@@ -702,8 +762,22 @@ function readConfig()                      {
   const config                      = { server: {}, state: {}, providers: [], router: { classifier: {}, sessions: {}, quota: {}, selection: {} } };
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
   config.providers = providers.map(readProviderConfig);
+  // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
+  // so saving "false" cannot restore the backend's default of allowing paid models.
+  config.router.allow_paid_models = Boolean((form.elements.namedItem("router.allow_paid_models")                    )?.checked);
   const selected = classifierSelect.value;
-  const onFailure = config.router.classifier.on_failure;
+  const onFailure = String((form.elements.namedItem("router.classifier.on_failure")                     )?.value || "");
+  const controls                      = {};
+  const timeout = String((form.elements.namedItem("router.classifier.timeout")                    )?.value || "").trim();
+  const minimumConfidence = String((form.elements.namedItem("router.classifier.minimum_confidence")                    )?.value || "").trim();
+  if (timeout) controls.timeout = timeout;
+  if (minimumConfidence) {
+    const value = Number(minimumConfidence);
+    if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error("Minimum confidence must be between 0 and 1");
+    controls.minimum_confidence = value;
+  }
+  if (Object.keys(classifierQuestionOverrides).length) controls.questions = structuredClone(classifierQuestionOverrides);
+  if (Object.keys(classifierNoulThresholds).length) controls.noul_thresholds = { ...classifierNoulThresholds };
   if (legacyClassifier && selected === requestedClassifier) {
     config.router.classifier = { ...legacyClassifier, ...(onFailure ? { on_failure:onFailure } : {}) };
   } else if (selected && selected !== "disabled") {
@@ -714,6 +788,8 @@ function readConfig()                      {
   } else {
     config.router.classifier = onFailure ? { on_failure:onFailure } : {};
   }
+  for (const name of ["timeout", "minimum_confidence", "questions", "noul_thresholds"]) delete config.router.classifier[name];
+  config.router.classifier = { ...config.router.classifier, ...controls };
   const allowances = String((form.elements.namedItem("router.quota.allowances")                       )?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {}                          );
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
   config.intelligence = readBenchmarkConfiguration();
@@ -850,6 +926,17 @@ form.addEventListener("input", markDirty);
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });
+classifierQuestion.addEventListener("change", renderClassifierQuestion);
+classifierOption.addEventListener("change", renderClassifierRubric);
+classifierInstructions.addEventListener("input", () => editClassifierQuestion("instructions", classifierInstructions.value));
+classifierRubric.addEventListener("input", () => editClassifierQuestion("criteria", classifierRubric.value));
+classifierThreshold.addEventListener("input", () => {
+  const name = classifierQuestion.value;
+  if (classifierThreshold.value === "") delete classifierNoulThresholds[name];
+  else classifierNoulThresholds[name] = Number(classifierThreshold.value);
+  markDirty();
+});
+renderClassifierQuestion();
 document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
 initializeBenchmarks(); renderProviders(); updateConsoleIdentity(); updateBenchmarkControls(); navigate(); void checkSetup();
 

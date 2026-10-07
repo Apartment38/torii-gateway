@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/transport"
@@ -123,6 +124,30 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 		}
 		models = append(models, model)
 	}
+	// /v1/models supplies names only. Native show metadata verifies each
+	// model's actual capabilities, including custom names and cloud aliases.
+	// Failure enriches nothing; it never promotes an unknown capability.
+	var wg sync.WaitGroup
+	jobs := make(chan int)
+	for range min(4, len(models)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				o.enrichModel(discoveryCtx, &models[i])
+			}
+		}()
+	}
+discover:
+	for i := range models {
+		select {
+		case jobs <- i:
+		case <-discoveryCtx.Done():
+			break discover
+		}
+	}
+	close(jobs)
+	wg.Wait()
 	return models, nil
 }
 

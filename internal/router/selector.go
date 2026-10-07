@@ -86,7 +86,9 @@ func Select(candidates []Candidate, requirements RequestRequirements, complexity
 		return Decision{Reasons: reasons}, errors.New("no model satisfies request requirements")
 	}
 	benchmarkRanked := intelligenceRank(eligible, requirements, policy.Intelligence)
-	sort.SliceStable(eligible, func(i, j int) bool { return less(eligible[i], eligible[j], policy.LocationPreference) })
+	sort.SliceStable(eligible, func(i, j int) bool {
+		return less(eligible[i], eligible[j], policy.LocationPreference, requirements.LatencySensitive)
+	})
 	winner := eligible[0]
 	sort.Slice(reasons, func(i, j int) bool { return reasons[i].Model < reasons[j].Model })
 	reason := "selected by deterministic cost, quota, location, latency, context, and ID ordering"
@@ -135,10 +137,14 @@ func evaluate(candidate Candidate, req RequestRequirements, complexity string, p
 	headroom := int64(math.MaxInt64)
 	if m.ContextWindow != nil {
 		limit := int64(float64(*m.ContextWindow) * policy.MaxContextFraction)
-		needed := req.EstimatedInputTokens + req.RequestedOutputTokens
-		if needed > limit {
+		output := req.RequestedOutputTokens
+		if output == 0 && req.Endpoint != EndpointEmbeddings {
+			output = policy.DefaultExpectedOutputTokens
+		}
+		if req.EstimatedInputTokens < 0 || output < 0 || req.EstimatedInputTokens > limit || output > limit-req.EstimatedInputTokens {
 			return ranked{}, "context headroom is insufficient", false
 		}
+		needed := req.EstimatedInputTokens + output
 		headroom = *m.ContextWindow - needed
 	}
 	if !policy.AllowPaidModels && !knownFree(m) {
@@ -186,13 +192,22 @@ func estimateCost(m catalog.Descriptor, r RequestRequirements, p SelectionPolicy
 		return nil
 	}
 	output := r.RequestedOutputTokens
-	if output == 0 {
+	if output == 0 && r.Endpoint != EndpointEmbeddings {
 		output = p.DefaultExpectedOutputTokens
 	}
 	v := (float64(r.EstimatedInputTokens)*(*m.Pricing.InputPerMillion) + float64(output)*(*m.Pricing.OutputPerMillion)) / 1_000_000
 	return &v
 }
-func less(a, b ranked, preference LocationPreference) bool {
+func less(a, b ranked, preference LocationPreference, latencySensitive bool) bool {
+	if latencySensitive && a.candidate.LatencyEWMA != b.candidate.LatencyEWMA {
+		if a.candidate.LatencyEWMA == 0 {
+			return false
+		}
+		if b.candidate.LatencyEWMA == 0 {
+			return true
+		}
+		return a.candidate.LatencyEWMA < b.candidate.LatencyEWMA
+	}
 	if a.intelligenceScore != nil && b.intelligenceScore != nil && *a.intelligenceScore != *b.intelligenceScore {
 		return *a.intelligenceScore > *b.intelligenceScore
 	}

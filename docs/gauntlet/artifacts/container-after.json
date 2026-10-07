@@ -1,0 +1,1774 @@
+{
+  "synthetic_upstreams": true,
+  "production_quality_or_savings_proven": false,
+  "configuration_restored": true,
+  "temporary_key_revoked": true,
+  "cases": [
+    {
+      "case": "simple",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.64,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "hello"
+        }
+      ],
+      "actual_output": {
+        "model": "cheap",
+        "echo": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "opaque": {
+            "preserve": true
+          }
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.147",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.0001047",
+        "X-Torii-Model": "gauntlet/cheap",
+        "X-Torii-Routing-Ms": "1.202",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "complex",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.687,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "complex reasoning"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.066",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "high",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.002086",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "1.111",
+        "X-Torii-Task": "reasoning"
+      }
+    },
+    {
+      "case": "objective_tools",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.829,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "tools"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.688",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.00211",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "0.732",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "affinity_first",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.511,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "hello"
+        }
+      ],
+      "actual_output": {
+        "model": "cheap",
+        "echo": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.373",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.000104",
+        "X-Torii-Model": "gauntlet/cheap",
+        "X-Torii-Routing-Ms": "1.423",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "affinity_new_requirement",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.827,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "Current user request:\ncomplex reasoning\n\nRecent conversation (oldest first):\nuser: hello\nassistant: hello"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "assistant",
+              "content": "hello"
+            },
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ],
+          "reasoning_effort": "high"
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.891",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "high",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.002136",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "0.951",
+        "X-Torii-Task": "reasoning"
+      }
+    },
+    {
+      "case": "semantic_retry",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong",
+        "backup"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.91,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "complex reasoning"
+        }
+      ],
+      "actual_output": {
+        "model": "backup",
+        "echo": {
+          "model": "backup",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ],
+          "fixture_fail": true
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.656",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "high",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.004192",
+        "X-Torii-Model": "gauntlet/backup",
+        "X-Torii-Routing-Ms": "0.706",
+        "X-Torii-Task": "reasoning"
+      }
+    },
+    {
+      "case": "sse_bytes",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.617,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "stream test"
+        }
+      ],
+      "actual_output": "data: {\"delta\":\"fixture\",\"opaque\":true}\n\ndata: [DONE]\n\n",
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.796",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.0001045",
+        "X-Torii-Model": "gauntlet/cheap",
+        "X-Torii-Routing-Ms": "0.848",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "malformed_safe_fallback",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.213,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "malformed"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "malformed"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Ms": "0.606",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "medium",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.002112",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "0.652",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "malformed_fail",
+      "pass": true,
+      "status": 502,
+      "models_called": [],
+      "decision_calls": 1,
+      "elapsed_ms": 3.995,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "malformed"
+        }
+      ],
+      "actual_output": {
+        "error": {
+          "message": "Request classification failed",
+          "type": "api_error",
+          "param": null,
+          "code": "classifier_failure"
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Ms": "1.571",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Estimated-Inference-Cost-Usd": "unknown",
+        "X-Torii-Routing-Ms": "1.626"
+      }
+    },
+    {
+      "case": "paid_policy",
+      "pass": true,
+      "status": 503,
+      "models_called": [],
+      "decision_calls": 1,
+      "elapsed_ms": 2.985,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "hello"
+        }
+      ],
+      "actual_output": {
+        "error": {
+          "message": "The model is unavailable",
+          "type": "api_error",
+          "param": null,
+          "code": "model_unavailable"
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.960",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "unknown",
+        "X-Torii-Routing-Ms": "1.007",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "explicit_bypasses_classifier",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 0,
+      "elapsed_ms": 2.046,
+      "decision_requests": [],
+      "actual_output": {
+        "model": "cheap",
+        "echo": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "complex reasoning"
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {}
+    },
+    {
+      "case": "contextual_followup",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 5.472,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "Current user request:\nYes, do that.\n\nTask instructions:\nsystem: Help with complex reasoning\n\nRecent conversation (oldest first):\nuser: Explain a complex mathematical proof\nassistant: Shall I give the complete reasoning?"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Help with complex reasoning"
+            },
+            {
+              "role": "user",
+              "content": "Explain a complex mathematical proof"
+            },
+            {
+              "role": "assistant",
+              "content": "Shall I give the complete reasoning?"
+            },
+            {
+              "role": "user",
+              "content": "Yes, do that."
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.597",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "high",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.002182",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "1.685",
+        "X-Torii-Task": "reasoning"
+      }
+    },
+    {
+      "case": "incomplete_usage_unknown",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.651,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "missing-usage"
+        }
+      ],
+      "actual_output": {
+        "model": "cheap",
+        "echo": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "missing-usage"
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.278",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.0001042",
+        "X-Torii-Model": "gauntlet/cheap",
+        "X-Torii-Routing-Ms": "1.317",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "unbound_tool_continuation",
+      "pass": true,
+      "status": 503,
+      "models_called": [],
+      "decision_calls": 0,
+      "elapsed_ms": 1.611,
+      "decision_requests": [],
+      "actual_output": {
+        "error": {
+          "message": "The model is unavailable",
+          "type": "api_error",
+          "param": "smart",
+          "code": "model_unavailable"
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Ms": "0.000",
+        "X-Torii-Classifier-Source": "not_configured",
+        "X-Torii-Estimated-Inference-Cost-Usd": "unknown",
+        "X-Torii-Routing-Ms": "0.056"
+      }
+    },
+    {
+      "case": "tool_affinity_first",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.091,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "tools"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.788",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.00211",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "0.833",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "tool_affinity_continuation",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 0,
+      "elapsed_ms": 2.963,
+      "decision_requests": [],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            },
+            {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "id": "fixture_call",
+                  "type": "function",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{}"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "tool_call_id": "fixture_call",
+              "content": "fixture result"
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "0.000",
+        "X-Torii-Classifier-Source": "cached_tool_task",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.002178",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "0.147",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "expiring_tool_first",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.575,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "tools"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.217",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.00211",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "1.291",
+        "X-Torii-Task": "general"
+      }
+    },
+    {
+      "case": "expired_tool_continuation",
+      "pass": true,
+      "status": 503,
+      "models_called": [],
+      "decision_calls": 0,
+      "elapsed_ms": 1.676,
+      "decision_requests": [],
+      "actual_output": {
+        "error": {
+          "message": "The model is unavailable",
+          "type": "api_error",
+          "param": "smart",
+          "code": "model_unavailable"
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Ms": "0.000",
+        "X-Torii-Classifier-Source": "not_configured",
+        "X-Torii-Estimated-Inference-Cost-Usd": "unknown",
+        "X-Torii-Routing-Ms": "0.056"
+      }
+    },
+    {
+      "case": "live_jev_simple",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 0,
+      "elapsed_ms": 353.565,
+      "decision_requests": [],
+      "actual_output": {
+        "model": "cheap",
+        "echo": {
+          "model": "cheap",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with a short friendly greeting."
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "633",
+        "X-Torii-Classifier-Model": "jev-1.13.0",
+        "X-Torii-Classifier-Ms": "349.715",
+        "X-Torii-Classifier-Output-Tokens": "227",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.00010480000000000001",
+        "X-Torii-Model": "gauntlet/cheap",
+        "X-Torii-Routing-Ms": "349.793",
+        "X-Torii-Task": "conversation"
+      }
+    },
+    {
+      "case": "live_jev_context",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 0,
+      "elapsed_ms": 171.819,
+      "decision_requests": [],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "reasoning_effort": "high",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You help prove mathematical theorems"
+            },
+            {
+              "role": "user",
+              "content": "Prove the spectral theorem with all intermediate lemmas"
+            },
+            {
+              "role": "assistant",
+              "content": "I can develop a complete rigorous proof. Shall I proceed?"
+            },
+            {
+              "role": "user",
+              "content": "Yes, do that."
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "683",
+        "X-Torii-Classifier-Model": "jev-1.13.0",
+        "X-Torii-Classifier-Ms": "167.435",
+        "X-Torii-Classifier-Output-Tokens": "227",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "high",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0.002218",
+        "X-Torii-Model": "gauntlet/strong",
+        "X-Torii-Routing-Ms": "167.569",
+        "X-Torii-Task": "math"
+      }
+    },
+    {
+      "case": "minimal_setup_discovery",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 5.283,
+      "decision_requests": [
+        {
+          "model": "decision",
+          "questions": {
+            "complexity": {
+              "type": "choice",
+              "instructions": "How complex is this request?",
+              "criteria": {
+                "high": "Requires deep reasoning, extensive context, or difficult execution",
+                "low": "Simple and direct",
+                "medium": "Requires several steps or moderate judgment"
+              }
+            },
+            "latency_sensitive": {
+              "type": "noul",
+              "instructions": "Is low latency especially important for this request?"
+            },
+            "reasoning": {
+              "type": "noul",
+              "instructions": "Does this request require a reasoning-capable model?"
+            },
+            "structured_output": {
+              "type": "noul",
+              "instructions": "Does this request require structured or schema-constrained output?"
+            },
+            "task_type": {
+              "type": "choice",
+              "instructions": "Which task type best describes this request?",
+              "criteria": {
+                "coding": "Writing or debugging code",
+                "conversation": "Open-ended conversation",
+                "creative": "Creative writing or ideation",
+                "extraction": "Extracting structured facts",
+                "general": "General knowledge or other task",
+                "math": "Mathematics or quantitative calculation",
+                "reasoning": "Multi-step logical reasoning",
+                "research": "Research or source synthesis",
+                "summarization": "Summarizing provided content",
+                "sysadmin": "Operating systems, infrastructure, or deployment",
+                "translation": "Translating between languages"
+              }
+            },
+            "tools": {
+              "type": "noul",
+              "instructions": "Does this request require tool or function calling?"
+            },
+            "vision": {
+              "type": "noul",
+              "instructions": "Does this request require understanding image content?"
+            }
+          },
+          "state": "tools"
+        }
+      ],
+      "actual_output": {
+        "model": "strong",
+        "echo": {
+          "model": "strong",
+          "messages": [
+            {
+              "role": "user",
+              "content": "tools"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "lookup"
+              }
+            }
+          ]
+        },
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic test output"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 10,
+          "completion_tokens": 5
+        }
+      },
+      "routing_headers": {
+        "X-Torii-Classifier-Cost-Usd": "unknown",
+        "X-Torii-Classifier-Input-Tokens": "120",
+        "X-Torii-Classifier-Model": "fixture-decision",
+        "X-Torii-Classifier-Ms": "1.550",
+        "X-Torii-Classifier-Output-Tokens": "20",
+        "X-Torii-Classifier-Source": "called",
+        "X-Torii-Complexity": "low",
+        "X-Torii-Estimated-Inference-Cost-Usd": "0",
+        "X-Torii-Model": "gauntlet-ollama/strong",
+        "X-Torii-Routing-Ms": "1.640",
+        "X-Torii-Task": "general"
+      }
+    }
+  ],
+  "minimal_setup_observed": {
+    "provider_definitions": 2,
+    "configuration_save_reload_calls": 1,
+    "catalog_file_required": false,
+    "model_overrides_required": false,
+    "fixture_metadata": true,
+    "credentials_preexisting": true
+  },
+  "passed": 21,
+  "total": 21,
+  "request_latency_ms": {
+    "p50": 3.091,
+    "p95": 171.819
+  },
+  "decision_calls_note": "decision_calls counts the local fixture endpoint only; live Jev calls are evidenced by classifier_source=called, model/version and measured token headers."
+}

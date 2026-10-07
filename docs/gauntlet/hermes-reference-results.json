@@ -1,0 +1,2076 @@
+{
+  "reference": {
+    "repository": "https://github.com/AlphaPerseii3000/jev-effort-router",
+    "pin": "562dc2a27aa22977e0795809a17fbbbb1819f0ab",
+    "source_sha256": {
+      "router.py": "7e6ac69dfea05c7ed4487e03a4d4ff699c04af05ee3cc61d373cb1af34b42c29",
+      "client.py": "4aea2421d549c54152ff0734f6963d011d18cd866f239a2d06817fd80488ca25",
+      "config.py": "16e727ed2d7215d098d29634035f1dce8b36c0ef1802e5baa4a97d84ed34cdf9",
+      "state.py": "a1e3559a46d63f53858e636226d0423ac58cedca7ee702790ef28d458b77e85d",
+      "grid.py": "9a527188a115f77b1d5ba9fca0bf4b987dd1c6262ceb6417354f48fc9a8d47ab",
+      "effort.py": "58883bec41adb2929ad1f93964ad2dc699a9528a68e50f489f04d3ea0b15a52b",
+      "memo.py": "49a8a074d34ecaae08fc16df7ca9ca187b0ea01a528ef4394404b0dd9f198928",
+      "audit.py": "f49c5b8dc49a70cb911eac8f480adab3588c97261e401f69a358a4a3ff3a67bb",
+      "catalog.py": "32bd4898ef7a2983c8aec5bafb6580c05138ba406bdf31f38205fed93e7aff7b",
+      "README.md": "d1a0f15739d81b1aec5752886071549c55edc0b59ca3eb1b7bb16323bab82dde"
+    },
+    "executed_unmodified_modules": [
+      "router.py",
+      "client.py",
+      "config.py",
+      "state.py",
+      "grid.py",
+      "effort.py",
+      "memo.py",
+      "audit.py",
+      "catalog.py"
+    ],
+    "registration_adapter": "namespace package; host callback arguments; supported injected HTTP transport; actual cached ModelCatalog"
+  },
+  "synthetic_upstreams": true,
+  "production_calls": 0,
+  "production_quality_or_savings_proven": false,
+  "host_adapter": {
+    "provider": "ollama-cloud",
+    "api_mode": "chat_completions",
+    "virtual_model_mapping": "smart -> host configured cheap; gauntlet/name -> name",
+    "real_host_install_executed": false
+  },
+  "fairness": {
+    "pool_matches_torii_container_fixture": [
+      {
+        "id": "cheap",
+        "context_window": 100000,
+        "local": false,
+        "endpoints": [
+          "chat_completions",
+          "responses",
+          "completions"
+        ],
+        "streaming": true,
+        "tools": false,
+        "vision": true,
+        "structured_output": true,
+        "reasoning": false,
+        "quality": 0.6,
+        "input_per_million": 0.1,
+        "output_per_million": 0.1
+      },
+      {
+        "id": "strong",
+        "context_window": 100000,
+        "local": false,
+        "endpoints": [
+          "chat_completions",
+          "responses",
+          "completions"
+        ],
+        "streaming": true,
+        "tools": true,
+        "vision": true,
+        "structured_output": true,
+        "reasoning": true,
+        "quality": 0.99,
+        "input_per_million": 2,
+        "output_per_million": 2
+      },
+      {
+        "id": "backup",
+        "context_window": 100000,
+        "local": false,
+        "endpoints": [
+          "chat_completions",
+          "responses",
+          "completions"
+        ],
+        "streaming": true,
+        "tools": true,
+        "vision": true,
+        "structured_output": true,
+        "reasoning": true,
+        "quality": 0.99,
+        "input_per_million": 4,
+        "output_per_million": 4
+      }
+    ],
+    "catalog": [
+      "cheap",
+      "strong",
+      "backup"
+    ],
+    "all_grid_models_verified_present": true,
+    "protocol_translation": "Same hard=(complex|reasoning) oracle; plugin model/effort choices differ from Torii task/complexity/features. All raw requests/responses recorded.",
+    "adversarial_classifier_case": "Objective tools are intentionally absent from the weak semantic oracle, exactly as in Torii's frozen fixture. This measures constraint enforcement, not Jev routing quality.",
+    "timing": "Hook CPU time with instantaneous injected transport; not comparable to Torii HTTP request latency or live Jev latency."
+  },
+  "setup": {
+    "observed_adapter_steps": [
+      "verify ten pinned source hashes",
+      "create cached provider catalog listing the three matched models",
+      "load supported custom grid/default_model via load_settings",
+      "inject deterministic decision transport and host turn/session IDs",
+      "execute real Router.on_llm_request"
+    ],
+    "operator_steps_from_pinned_readme_not_observed": [
+      "install plugin (scan may require operator force override)",
+      "enable plugin",
+      "supply OpenRouter key",
+      "restart Hermes session"
+    ],
+    "default_settings_observed": {
+      "models": [
+        "deepseek-v4.1-flash",
+        "kimi-k3",
+        "glm-5.3",
+        "glm-5.3-flash",
+        "minimax-m3",
+        "nemotron-3-nano:30b"
+      ],
+      "timeout_s": 2.0,
+      "minimum_confidence": 0.5,
+      "context_turns": 4,
+      "route_per_turn": true
+    },
+    "matched_configuration_overrides": {
+      "grid": [
+        "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+        "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+        "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+      ],
+      "default_model": "cheap"
+    },
+    "observed_full_setup_parity_established": false
+  },
+  "cost": {
+    "actual_classifier_dollars": null,
+    "actual_inference_dollars": null,
+    "synthetic_response_usage_per_valid_decision": {
+      "input_tokens": 120,
+      "output_tokens": 20
+    },
+    "plugin_audit_exports_usage": false,
+    "estimated_live_savings": null
+  },
+  "cases": [
+    {
+      "case": "simple",
+      "scope": "matched_routing",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "opaque": {
+          "preserve": true
+        }
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "opaque": {
+          "preserve": true
+        }
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "opaque": {
+          "preserve": true
+        },
+        "reasoning_effort": "low"
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.392071,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [
+        "outgoing_reasoning_effort_added_to_verified_reasoning_unsupported_model"
+      ],
+      "expected_model": "cheap",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "hello",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "1",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 1.0,
+                  "2": 0.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "low",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 1.0,
+                  "medium": 0.0,
+                  "high": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "cheap",
+        "effort": "low",
+        "effort_requested": "low",
+        "model_choice": "1",
+        "effort_choice": "low",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 1.0,
+          "medium": 0.0,
+          "high": 0.0
+        },
+        "alternatives": [
+          "strong",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "simple",
+        "session_id": "simple",
+        "api_call_count": 1
+      }
+    },
+    {
+      "case": "complex",
+      "scope": "matched_routing",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.319784,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": "strong",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "complex reasoning",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": true,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "2",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 0.0,
+                  "2": 1.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "high",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 0.0,
+                  "medium": 0.0,
+                  "high": 1.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": "high",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 0.0,
+          "medium": 0.0,
+          "high": 1.0
+        },
+        "alternatives": [
+          "cheap",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "complex",
+        "session_id": "complex",
+        "api_call_count": 1
+      }
+    },
+    {
+      "case": "objective_tools",
+      "scope": "matched_routing",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "tools"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "tools"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "tools"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ],
+        "reasoning_effort": "low"
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.278024,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [
+        "selected_model_has_verified_tools_unsupported",
+        "outgoing_reasoning_effort_added_to_verified_reasoning_unsupported_model"
+      ],
+      "expected_model": "strong",
+      "matches_expected_model": false,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "tools",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "1",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 1.0,
+                  "2": 0.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "low",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 1.0,
+                  "medium": 0.0,
+                  "high": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "cheap",
+        "effort": "low",
+        "effort_requested": "low",
+        "model_choice": "1",
+        "effort_choice": "low",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 1.0,
+          "medium": 0.0,
+          "high": 0.0
+        },
+        "alternatives": [
+          "strong",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "objective_tools",
+        "session_id": "objective_tools",
+        "api_call_count": 1
+      }
+    },
+    {
+      "case": "affinity_first",
+      "scope": "matched_routing",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "reasoning_effort": "low"
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.271986,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [
+        "outgoing_reasoning_effort_added_to_verified_reasoning_unsupported_model"
+      ],
+      "expected_model": "cheap",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "hello",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "1",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 1.0,
+                  "2": 0.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "low",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 1.0,
+                  "medium": 0.0,
+                  "high": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "cheap",
+        "effort": "low",
+        "effort_requested": "low",
+        "model_choice": "1",
+        "effort_choice": "low",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 1.0,
+          "medium": 0.0,
+          "high": 0.0
+        },
+        "alternatives": [
+          "strong",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "affinity_first",
+        "session_id": "gauntlet-affinity",
+        "api_call_count": 1
+      }
+    },
+    {
+      "case": "affinity_new_requirement",
+      "scope": "matched_routing",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "content": "hello"
+          },
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "content": "hello"
+          },
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "content": "hello"
+          },
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.285066,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": "strong",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "complex reasoning",
+              "recent_context": "user: hello\nassistant: hello",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": true,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "2",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 0.0,
+                  "2": 1.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "high",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 0.0,
+                  "medium": 0.0,
+                  "high": 1.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": "high",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 0.0,
+          "medium": 0.0,
+          "high": 1.0
+        },
+        "alternatives": [
+          "cheap",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "affinity_new_requirement",
+        "session_id": "gauntlet-affinity",
+        "api_call_count": 1
+      }
+    },
+    {
+      "case": "semantic_retry",
+      "scope": "gateway_retry_outside_plugin_hook",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "fixture_fail": true
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "fixture_fail": true
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "fixture_fail": true,
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.260171,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": null,
+      "matches_expected_model": null,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "complex reasoning",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": true,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "2",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 0.0,
+                  "2": 1.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "high",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 0.0,
+                  "medium": 0.0,
+                  "high": 1.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": "high",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 0.0,
+          "medium": 0.0,
+          "high": 1.0
+        },
+        "alternatives": [
+          "cheap",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "semantic_retry",
+        "session_id": "semantic_retry",
+        "api_call_count": 1
+      },
+      "comparison_note": "Hook chooses strong; only a gateway/host sees upstream 503. No Hermes host retry behavior is asserted.",
+      "synthetic_first_upstream_status": 503,
+      "inference_retry_performed_by_plugin": false
+    },
+    {
+      "case": "sse_bytes",
+      "scope": "request_stream_flag_matched_response_relay_outside_plugin",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "stream test"
+          }
+        ],
+        "stream": true
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "stream test"
+          }
+        ],
+        "stream": true
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "stream test"
+          }
+        ],
+        "stream": true,
+        "reasoning_effort": "low"
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.286189,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [
+        "outgoing_reasoning_effort_added_to_verified_reasoning_unsupported_model"
+      ],
+      "expected_model": "cheap",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "stream test",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "1",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 1.0,
+                  "2": 0.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "low",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 1.0,
+                  "medium": 0.0,
+                  "high": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "cheap",
+        "effort": "low",
+        "effort_requested": "low",
+        "model_choice": "1",
+        "effort_choice": "low",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 1.0,
+          "medium": 0.0,
+          "high": 0.0
+        },
+        "alternatives": [
+          "strong",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "sse_bytes",
+        "session_id": "sse_bytes",
+        "api_call_count": 1
+      },
+      "comparison_note": "Stream request survives. Hook never receives response/SSE bytes; byte relay cannot be judged here."
+    },
+    {
+      "case": "malformed_safe_fallback",
+      "scope": "matched_routing",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.199377,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [
+        "selected_model_has_verified_tools_unsupported"
+      ],
+      "expected_model": "strong",
+      "matches_expected_model": false,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "malformed",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "answers": {
+              "task_type": null
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "skip",
+        "reason": "malformed_answer",
+        "provider": "ollama-cloud",
+        "configured_model": "cheap",
+        "turn_id": "malformed_safe_fallback",
+        "session_id": "malformed_safe_fallback"
+      }
+    },
+    {
+      "case": "malformed_fail",
+      "scope": "configurable_fail_policy_not_offered_by_plugin",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ]
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.196511,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": null,
+      "matches_expected_model": null,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "malformed",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "answers": {
+              "task_type": null
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "skip",
+        "reason": "malformed_answer",
+        "provider": "ollama-cloud",
+        "configured_model": "cheap",
+        "turn_id": "malformed_fail",
+        "session_id": "malformed_fail"
+      },
+      "comparison_note": "Plugin fail-open retains configured cheap; it has no counterpart to Torii on_failure=fail."
+    },
+    {
+      "case": "paid_policy",
+      "scope": "paid_model_policy_not_offered_by_plugin",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "reasoning_effort": "low"
+      },
+      "selected_model": "cheap",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.262384,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [
+        "outgoing_reasoning_effort_added_to_verified_reasoning_unsupported_model",
+        "acceptance_constraint_not_enforced_by_plugin"
+      ],
+      "expected_model": null,
+      "matches_expected_model": null,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "hello",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": false,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "1",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 1.0,
+                  "2": 0.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "low",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 1.0,
+                  "medium": 0.0,
+                  "high": 0.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "cheap",
+        "effort": "low",
+        "effort_requested": "low",
+        "model_choice": "1",
+        "effort_choice": "low",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 1.0,
+          "medium": 0.0,
+          "high": 0.0
+        },
+        "alternatives": [
+          "strong",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "paid_policy",
+        "session_id": "paid_policy",
+        "api_call_count": 1
+      },
+      "comparison_note": "All matched models are paid/cloud. Plugin has no allow_paid_models control; its output cannot satisfy external free-only constraint."
+    },
+    {
+      "case": "explicit_bypasses_classifier",
+      "scope": "virtual_selector_semantics_not_offered_by_plugin",
+      "input": {
+        "model": "gauntlet/cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.261799,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": null,
+      "matches_expected_model": null,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "complex reasoning",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": true,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "2",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 0.0,
+                  "2": 1.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "high",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 0.0,
+                  "medium": 0.0,
+                  "high": 1.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": "high",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 0.0,
+          "medium": 0.0,
+          "high": 1.0
+        },
+        "alternatives": [
+          "cheap",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "explicit_bypasses_classifier",
+        "session_id": "explicit_bypasses_classifier",
+        "api_call_count": 1
+      },
+      "comparison_note": "Plugin owns configured grid models; Torii explicit physical model bypass has no exact counterpart. Off-grid host requests are tested separately."
+    },
+    {
+      "case": "contextual_first",
+      "scope": "supplemental_context_or_tool_replay",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.260302,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": "strong",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "complex reasoning about a proof",
+              "recent_context": "",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": true,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "2",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 0.0,
+                  "2": 1.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "high",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 0.0,
+                  "medium": 0.0,
+                  "high": 1.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": "high",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 0.0,
+          "medium": 0.0,
+          "high": 1.0
+        },
+        "alternatives": [
+          "cheap",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "contextual_first",
+        "session_id": "contextual",
+        "api_call_count": 1
+      }
+    },
+    {
+      "case": "contextual_followup",
+      "scope": "supplemental_context_or_tool_replay",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          },
+          {
+            "role": "assistant",
+            "content": "We need a proof."
+          },
+          {
+            "role": "user",
+            "content": "Continue that proof."
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          },
+          {
+            "role": "assistant",
+            "content": "We need a proof."
+          },
+          {
+            "role": "user",
+            "content": "Continue that proof."
+          }
+        ]
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          },
+          {
+            "role": "assistant",
+            "content": "We need a proof."
+          },
+          {
+            "role": "user",
+            "content": "Continue that proof."
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 1,
+      "hook_elapsed_ms": 0.288313,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": "strong",
+      "matches_expected_model": true,
+      "typed_decision_records": [
+        {
+          "payload": {
+            "model": "typesafe/jev-1.13",
+            "state": {
+              "user_message": "Continue that proof.",
+              "recent_context": "user: complex reasoning about a proof\nassistant: We need a proof.",
+              "provider": "ollama-cloud"
+            },
+            "questions": {
+              "model_route": {
+                "type": "choice",
+                "instructions": "Which model is best suited to handle the user's request in `user_message`, given `recent_context`? Compare every option on the same axes \u2014 what the task actually needs, how much it costs, and how fast it is \u2014 and pick the single best fit.",
+                "criteria": {
+                  "1": "cheap: quality 0.6; tools False; reasoning False; cost 0.1 per million",
+                  "2": "strong: quality 0.99; tools True; reasoning True; cost 2 per million",
+                  "3": "backup: quality 0.99; tools True; reasoning True; cost 4 per million"
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "instructions": "Which level of reasoning effort does the request in `user_message` require? A high effort is slower and more expensive: pick it only when the request genuinely needs deep analysis.",
+                "criteria": {
+                  "low": "Simple, factual or mechanical request: a short answer, no analysis needed.",
+                  "medium": "Ordinary request needing a little reasoning or synthesis.",
+                  "high": "Complex request: deep analysis, hard debugging, design or planning."
+                }
+              }
+            }
+          },
+          "timeout_s": 2.0,
+          "semantic_hard": true,
+          "response": {
+            "model": "fixture-decision",
+            "answers": {
+              "model_route": {
+                "type": "choice",
+                "choice": "2",
+                "confidence": 0.99,
+                "probabilities": {
+                  "1": 0.0,
+                  "2": 1.0,
+                  "3": 0.0
+                }
+              },
+              "reasoning_effort": {
+                "type": "choice",
+                "choice": "high",
+                "confidence": 0.99,
+                "probabilities": {
+                  "low": 0.0,
+                  "medium": 0.0,
+                  "high": 1.0
+                }
+              }
+            },
+            "usage": {
+              "input_tokens": 120,
+              "output_tokens": 20
+            }
+          }
+        }
+      ],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": "high",
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": {
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0
+        },
+        "effort_probabilities": {
+          "low": 0.0,
+          "medium": 0.0,
+          "high": 1.0
+        },
+        "alternatives": [
+          "cheap",
+          "backup"
+        ],
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": false,
+        "turn_id": "contextual_followup",
+        "session_id": "contextual",
+        "api_call_count": 1
+      },
+      "comparison_note": "Additional inspection case, not scored one-to-one until Torii counterpart runs. Same oracle can see bounded recent_context in actual plugin wire state."
+    },
+    {
+      "case": "tool_loop_replay",
+      "scope": "supplemental_context_or_tool_replay",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "id": "call-a",
+                "type": "function",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call-a",
+            "content": "result"
+          }
+        ]
+      },
+      "host_input": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "id": "call-a",
+                "type": "function",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call-a",
+            "content": "result"
+          }
+        ]
+      },
+      "request_output": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning about a proof"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "id": "call-a",
+                "type": "function",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call-a",
+            "content": "result"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "decision_calls": 0,
+      "hook_elapsed_ms": 0.165728,
+      "request_fields_preserved_except_model_effort": true,
+      "violations_against_external_acceptance_bar": [],
+      "expected_model": "strong",
+      "matches_expected_model": true,
+      "typed_decision_records": [],
+      "audit": {
+        "ts": "2026-10-07T10:23:33+00:00",
+        "event": "route",
+        "model": "strong",
+        "effort": "high",
+        "effort_requested": "high",
+        "model_choice": "2",
+        "effort_choice": null,
+        "model_confidence": 0.99,
+        "effort_confidence": 0.99,
+        "model_probabilities": null,
+        "effort_probabilities": null,
+        "alternatives": null,
+        "latency_ms": 0,
+        "fallback_reasons": [],
+        "jev_model": "typesafe/jev-1.13",
+        "replayed": true,
+        "turn_id": "contextual_followup",
+        "session_id": "contextual",
+        "api_call_count": 1
+      }
+    }
+  ],
+  "gate_checks": [
+    {
+      "case": "other_provider",
+      "unchanged": true,
+      "decision_calls": 0
+    },
+    {
+      "case": "other_endpoint",
+      "unchanged": true,
+      "decision_calls": 0
+    },
+    {
+      "case": "off_grid_explicit",
+      "unchanged": true,
+      "decision_calls": 0
+    }
+  ],
+  "matched_routing_cases": 6,
+  "matched_expected_model_count": 4,
+  "matched_model_mismatches": [
+    "objective_tools",
+    "malformed_safe_fallback"
+  ],
+  "hook_latency_ms_p50": 0.267185
+}

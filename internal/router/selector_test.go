@@ -109,3 +109,40 @@ func FuzzSelectOrderIndependent(f *testing.F) {
 		}
 	})
 }
+
+func TestSelectReservesDefaultOutputAndAvoidsTokenOverflow(t *testing.T) {
+	small := model("a/small")
+	small.ContextWindow = ptr(int64(100))
+	large := model("b/large")
+	for _, req := range []router.RequestRequirements{
+		{Endpoint: router.EndpointChat},
+		{Endpoint: router.EndpointChat, EstimatedInputTokens: 1<<63 - 2, RequestedOutputTokens: 100},
+	} {
+		decision, err := router.Select([]router.Candidate{{Model: small}, {Model: large}}, req, "medium", router.DefaultSelectionPolicy())
+		if req.EstimatedInputTokens == 0 {
+			if err != nil || decision.Model.PublicID != "b/large" {
+				t.Fatalf("default output ignored: %#v %v", decision, err)
+			}
+		} else if err == nil {
+			t.Fatal("token arithmetic overflow bypassed context check")
+		}
+	}
+}
+
+func TestSelectLatencyPreferenceStaysWithinHardConstraints(t *testing.T) {
+	cheap, quick, unsupported := model("a/cheap"), model("b/quick"), model("c/unsupported")
+	cheap.Pricing = catalog.Pricing{InputPerMillion: ptr(0.0), OutputPerMillion: ptr(0.0)}
+	unsupported.Capabilities.Tools = catalog.Unsupported
+	candidates := []router.Candidate{{Model: cheap, LatencyEWMA: time.Second}, {Model: quick, LatencyEWMA: 100 * time.Millisecond}, {Model: unsupported, LatencyEWMA: time.Millisecond}}
+	for _, sensitive := range []bool{false, true} {
+		req := router.RequestRequirements{Endpoint: router.EndpointChat, Tools: true, LatencySensitive: sensitive, RequestedOutputTokens: 100}
+		decision, err := router.Select(candidates, req, "medium", router.DefaultSelectionPolicy())
+		want := "a/cheap"
+		if sensitive {
+			want = "b/quick"
+		}
+		if err != nil || decision.Model.PublicID != want {
+			t.Fatalf("sensitive=%v decision=%#v err=%v", sensitive, decision, err)
+		}
+	}
+}

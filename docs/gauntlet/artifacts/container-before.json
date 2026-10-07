@@ -1,0 +1,134 @@
+{
+  "synthetic_upstreams": true,
+  "production_quality_or_savings_proven": false,
+  "configuration_restored": true,
+  "temporary_key_revoked": true,
+  "cases": [
+    {
+      "case": "simple",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 4.283,
+      "routing_headers": {}
+    },
+    {
+      "case": "complex",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.56,
+      "routing_headers": {}
+    },
+    {
+      "case": "objective_tools",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.361,
+      "routing_headers": {}
+    },
+    {
+      "case": "affinity_first",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.128,
+      "routing_headers": {}
+    },
+    {
+      "case": "affinity_new_requirement",
+      "pass": false,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 0,
+      "elapsed_ms": 1.442,
+      "routing_headers": {}
+    },
+    {
+      "case": "semantic_retry",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong",
+        "backup"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.86,
+      "routing_headers": {}
+    },
+    {
+      "case": "sse_bytes",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 2.111,
+      "routing_headers": {}
+    },
+    {
+      "case": "malformed_safe_fallback",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "strong"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 1.942,
+      "routing_headers": {}
+    },
+    {
+      "case": "malformed_fail",
+      "pass": true,
+      "status": 502,
+      "models_called": [],
+      "decision_calls": 1,
+      "elapsed_ms": 3.66,
+      "routing_headers": {}
+    },
+    {
+      "case": "paid_policy",
+      "pass": false,
+      "status": 200,
+      "models_called": [
+        "backup"
+      ],
+      "decision_calls": 1,
+      "elapsed_ms": 3.778,
+      "routing_headers": {}
+    },
+    {
+      "case": "explicit_bypasses_classifier",
+      "pass": true,
+      "status": 200,
+      "models_called": [
+        "cheap"
+      ],
+      "decision_calls": 0,
+      "elapsed_ms": 1.92,
+      "routing_headers": {}
+    }
+  ],
+  "passed": 9,
+  "total": 11,
+  "request_latency_ms": {
+    "p50": 2.361,
+    "p95": 3.778
+  }
+}

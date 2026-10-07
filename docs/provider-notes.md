@@ -54,28 +54,40 @@ Catalog sources:
 - https://docs.x.ai/developers/models
 - https://docs.x.ai/developers/pricing
 
-The Version 1 router may use a self-hosted Laya model through an already
-configured local physical provider. Laya protocol and schema findings belong in
-this document; no dedicated hosted-Laya provider
-or credential flow is in scope. Jev classifier transports are Version 2 work.
+The smart router can use a configured Jev-compatible physical provider for
+self-hosted Laya typed decisions. These models are classifier-only and are not
+advertised as chat inference models.
 
 ## Self-hosted Laya classifier
 
 ### Status
 
-Implementation status: complete through the standard OpenAI-compatible
-transport. The classifier is a configured physical `provider/model` selected by
-`router.classifier.type: laya`; it does not introduce a hosted Laya endpoint,
-credential flow, or provider-specific wire protocol. Its response is required
-to match the shared strict classification schema, and `smart` recursion is
-rejected.
+Research status: verified from the Laya System One server and agent source
+Last verified: 2026-10-07
 
-Last verified: 2026-09-30
+The current `laya-system-one` server exposes `POST /v1/systemone`, with an
+optional `LAYA_API_KEY` bearer check, and `GET /health`. It does not implement
+Chat Completions or model discovery. Configure its physical provider with the
+`jev_compatible` profile. Discovery tries `/v1/models`, then uses the health
+response's `loaded` checkpoint names only on HTTP 404 or 405; authentication
+failures and malformed catalogs remain errors. Explicit static models are also
+supported when discovery is disabled.
 
-This deliberately documents the supported gateway contract rather than
-claiming a particular self-hosted Laya distribution's private prompt or model
-behavior. The configured local server remains responsible for serving the
-standard Chat Completions contract.
+Laya accepts named checkpoints such as `english`, `multilingual`, and
+`typed-decisions`; unknown Jev model names permit server-side auto-selection.
+Torii sends the same seven typed questions as Jev and validates every returned
+answer. Laya's `action` and `routing` metadata remains compatible; choice
+probability validation allows the aggregate error from rounding each option to
+four decimal places. `output_tokens: 0` is valid for these decisions.
+
+This describes protocol support. No accuracy, latency, or cost improvement is
+inferred from synthetic contract fixtures. A connected generative classifier
+must use the separate Chat Completions classifier contract.
+
+### Sources
+
+- https://github.com/LeonaDavinci/laya-system-one/blob/main/laya/serve.py
+- https://github.com/LeonaDavinci/laya-system-one/blob/main/laya/agent.py
 
 ---
 
@@ -451,42 +463,47 @@ not be confused with client-defined gateway tools.
 
 ### Status
 
-Research status: verified from Jev API documentation
+Research status: verified from current TypeSafe API documentation
 Implementation status: direct and provider-transport classifiers implemented
-Last verified: 2026-09-30
+Last verified: 2026-10-07
 
-Jev is a typed-decision API, not a chat-generation provider. The direct
-classifier sends one state plus typed `choice` and `noul` questions to
-`POST https://jevmodel.org/v1/systemone/` with a bearer API key. Torii maps
-the returned task-type and complexity choices plus boolean noul probabilities
-into the existing classifier contract. The request asks seven questions,
-within Jev's documented eight-question limit.
+Jev returns typed decisions rather than chat completions. The current direct
+endpoint is `POST https://api.typesafe.ai/v1/systemone`, with bearer
+authentication. Torii accepts a configured service root or `/v1` API root,
+retaining deployment prefixes, and sends `model`, `state`, and seven typed
+questions. The request contains two `choice` questions for task and complexity
+and five `noul` questions for requirements and latency preference.
 
-The gateway configuration is:
+Choice answers must match their requested type and option, contain confidence
+in [0, 1], and include the complete valid probability distribution. The choice
+must be a highest-probability option. Each requested noul answer must contain
+a numeric probability in [0, 1]; omitted and null values are errors. Unknown
+extension metadata is accepted. Confidence is the minimum of the two choice
+confidences, including zero. Objective request capabilities are preserved on
+success and by the configured capability fallback.
+
+The direct configuration is:
 
     router:
       classifier:
         type: jev
         model: jev-latest
-        base_url: https://jevmodel.org
+        base_url: https://api.typesafe.ai
         api_key:
           env: JEVMODEL_API_KEY
 
-The implementation also supports provider transport for gateways that expose
-the Jev System One contract at their own origin. For example, OpenRouter
-documents `POST /api/v1/systemone`; configure a provider-backed classifier with
-`transport: provider`, `provider: openrouter`, and model
-`typesafe/jev-1.13`. The provider owns the origin and bearer credential, while
-the classifier owns only the typed-decision request/response mapping.
-
-Jev's documented limits include an 8,000-character serialized state, up to
-eight questions, and 120 requests per minute per key. The API bills input
-tokens only.
+Provider transport uses a configured decision provider's origin, headers,
+model aliases, and `/systemone` endpoint. The classifier owns the typed
+request/response mapping. Both the direct client and dedicated typed provider
+refuse redirects even with caller-supplied HTTP clients, keeping credentials
+and request state at the configured endpoint. Upstream diagnostic bodies are
+not included in classification errors.
 
 ### Sources
 
-- https://jevmodel.org/docs/
-- https://openrouter.ai/blog/insights/what-is-jev/
+- https://docs.typesafe.ai/api
+- https://github.com/LeonaDavinci/laya-system-one/blob/main/laya/serve.py
+- https://github.com/LeonaDavinci/laya-system-one/blob/main/laya/agent.py
 
 ## Ollama
 

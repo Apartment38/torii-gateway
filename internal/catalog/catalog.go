@@ -184,6 +184,26 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 			d.Availability = Availability{Available: true, CheckedAt: now}
 			d.Metadata.CatalogSource = "live"
 			d = mergeMatching(d, c.bundled, "bundled")
+			if model.Discovery != nil {
+				d.Endpoints = mergeEndpoints(d.Endpoints, EndpointCapabilities{
+					ChatCompletions: discoveredState(model.Discovery.Endpoints, "chat_completions"),
+					Completions:     discoveredState(model.Discovery.Endpoints, "completions"),
+					Responses:       discoveredState(model.Discovery.Endpoints, "responses"),
+					Embeddings:      discoveredState(model.Discovery.Endpoints, "embeddings"),
+				})
+				d.Capabilities = mergeCapabilities(d.Capabilities, ModelCapabilities{
+					Streaming:        discoveredState(model.Discovery.Capabilities, "streaming"),
+					Tools:            discoveredState(model.Discovery.Capabilities, "tools"),
+					Vision:           discoveredState(model.Discovery.Capabilities, "vision"),
+					StructuredOutput: discoveredState(model.Discovery.Capabilities, "structured_output"),
+					Reasoning:        discoveredState(model.Discovery.Capabilities, "reasoning"),
+				})
+				if model.Discovery.Local != nil {
+					local := *model.Discovery.Local
+					d.Local = &local
+				}
+				d.Metadata.CapabilitySource = model.Discovery.Source
+			}
 			d = mergeMatching(d, c.overrides, "config")
 			descriptors = append(descriptors, d)
 		}
@@ -371,4 +391,15 @@ func copyFloat(v *float64) *float64 {
 	}
 	n := *v
 	return &n
+}
+
+func discoveredState(facts map[string]bool, name string) TriState {
+	value, known := facts[name]
+	if !known {
+		return Unknown
+	}
+	if value {
+		return Supported
+	}
+	return Unsupported
 }

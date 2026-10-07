@@ -1,0 +1,9 @@
+{
+  "revealed_after_frozen_critic_verdict": true,
+  "mapping": {
+    "reference-A.json": "torii",
+    "reference-B.json": "hermes",
+    "revision-A.json": "revised",
+    "revision-B.json": "original"
+  }
+}

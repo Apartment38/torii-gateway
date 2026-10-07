@@ -1,0 +1,12 @@
+{
+  "actual_podman_console": true,
+  "browser": "Firefox headless",
+  "login": true,
+  "default_tuning_collapsed": true,
+  "discovered_saved_classifier_loaded": true,
+  "customization_saved_and_reloaded": true,
+  "explicit_paid_false_persisted": true,
+  "provider_configuration_and_secret_refs_preserved": true,
+  "screenshot": "console-customization.png",
+  "configuration_restored": true
+}

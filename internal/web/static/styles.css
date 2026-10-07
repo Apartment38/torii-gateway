@@ -143,6 +143,10 @@ textarea { resize: vertical; line-height: 1.5; }
 .advanced-provider { grid-column: 1 / -1; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 15px; }
 .advanced-provider summary { width: max-content; cursor: pointer; color: var(--accent-deep); font-size: 12px; font-weight: 800; }
 .advanced-provider[open] summary { margin-bottom: 17px; }
+.advanced-fields { margin: 20px 0; border-top: 1px solid var(--line); padding-top: 15px; }
+.advanced-fields summary { cursor: pointer; color: var(--accent-deep); font-weight: 700; }
+.advanced-fields[open] summary { margin-bottom: 16px; }
+.advanced-fields > label { display: grid; gap: 8px; margin: 16px 0; }
 .subcard { margin-top: 20px; padding: 17px; border: 1px dashed var(--line); border-radius: 15px; }
 .subcard-title { color: var(--text-strong); font-size: 13px; font-weight: 800; }
 .muted { color: var(--muted); font-size: 12px; }

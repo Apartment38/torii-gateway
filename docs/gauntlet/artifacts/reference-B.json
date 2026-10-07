@@ -1,0 +1,252 @@
+{
+  "pool": [
+    {
+      "id": "cheap",
+      "context_window": 100000,
+      "local": false,
+      "endpoints": [
+        "chat_completions",
+        "responses",
+        "completions"
+      ],
+      "streaming": true,
+      "tools": false,
+      "vision": true,
+      "structured_output": true,
+      "reasoning": false,
+      "quality": 0.6,
+      "input_per_million": 0.1,
+      "output_per_million": 0.1
+    },
+    {
+      "id": "strong",
+      "context_window": 100000,
+      "local": false,
+      "endpoints": [
+        "chat_completions",
+        "responses",
+        "completions"
+      ],
+      "streaming": true,
+      "tools": true,
+      "vision": true,
+      "structured_output": true,
+      "reasoning": true,
+      "quality": 0.99,
+      "input_per_million": 2,
+      "output_per_million": 2
+    },
+    {
+      "id": "backup",
+      "context_window": 100000,
+      "local": false,
+      "endpoints": [
+        "chat_completions",
+        "responses",
+        "completions"
+      ],
+      "streaming": true,
+      "tools": true,
+      "vision": true,
+      "structured_output": true,
+      "reasoning": true,
+      "quality": 0.99,
+      "input_per_million": 4,
+      "output_per_million": 4
+    }
+  ],
+  "cases": [
+    {
+      "case": "simple",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "opaque": {
+          "preserve": true
+        }
+      },
+      "selected_model": "cheap",
+      "forwarded_request": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "opaque": {
+          "preserve": true
+        },
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "case": "complex",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ]
+      },
+      "selected_model": "strong",
+      "forwarded_request": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "case": "objective_tools",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "tools"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "selected_model": "cheap",
+      "forwarded_request": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "tools"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ],
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "case": "affinity_first",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "selected_model": "cheap",
+      "forwarded_request": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "case": "affinity_new_requirement",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "content": "hello"
+          },
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      },
+      "selected_model": "strong",
+      "forwarded_request": {
+        "model": "strong",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "content": "hello"
+          },
+          {
+            "role": "user",
+            "content": "complex reasoning"
+          }
+        ],
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "case": "malformed_safe_fallback",
+      "input": {
+        "model": "smart",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      },
+      "selected_model": "cheap",
+      "forwarded_request": {
+        "model": "cheap",
+        "messages": [
+          {
+            "role": "user",
+            "content": "malformed"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

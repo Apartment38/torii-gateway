@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"gopkg.in/yaml.v3"
 )
@@ -41,13 +42,17 @@ type RouterConfig struct {
 }
 
 type ClassifierConfig struct {
-	Type      string     `yaml:"type,omitempty"`
-	Model     string     `yaml:"model,omitempty"`
-	Provider  string     `yaml:"provider,omitempty"`
-	OnFailure string     `yaml:"on_failure,omitempty"`
-	BaseURL   string     `yaml:"base_url,omitempty"`
-	APIKey    *SecretRef `yaml:"api_key,omitempty"`
-	Transport string     `yaml:"transport,omitempty"`
+	Type              string                                 `yaml:"type,omitempty"`
+	Model             string                                 `yaml:"model,omitempty"`
+	Provider          string                                 `yaml:"provider,omitempty"`
+	OnFailure         string                                 `yaml:"on_failure,omitempty"`
+	BaseURL           string                                 `yaml:"base_url,omitempty"`
+	APIKey            *SecretRef                             `yaml:"api_key,omitempty"`
+	Transport         string                                 `yaml:"transport,omitempty"`
+	Timeout           string                                 `yaml:"timeout,omitempty"`
+	MinimumConfidence float64                                `yaml:"minimum_confidence,omitempty"`
+	Questions         map[string]classifier.QuestionOverride `yaml:"questions,omitempty"`
+	NoulThresholds    map[string]float64                     `yaml:"noul_thresholds,omitempty"`
 }
 type SessionConfig struct {
 	InactivityTimeout string `yaml:"inactivity_timeout,omitempty"`
@@ -319,6 +324,20 @@ func (r RouterConfig) Validate() error {
 	}
 	if r.Classifier.OnFailure != "" && r.Classifier.OnFailure != "fail" && r.Classifier.OnFailure != "capability_fallback" {
 		return fmt.Errorf("classifier.on_failure %q is unsupported", r.Classifier.OnFailure)
+	}
+	if r.Classifier.Timeout != "" {
+		if timeout, err := time.ParseDuration(r.Classifier.Timeout); err != nil || timeout < time.Millisecond || timeout > 5*time.Minute {
+			return errors.New("classifier.timeout must be between 1ms and 5m")
+		}
+	}
+	if minimum := r.Classifier.MinimumConfidence; math.IsNaN(minimum) || math.IsInf(minimum, 0) || minimum < 0 || minimum > 1 {
+		return errors.New("classifier.minimum_confidence must be finite and between zero and one")
+	}
+	if (len(r.Classifier.Questions) > 0 || len(r.Classifier.NoulThresholds) > 0) && r.Classifier.Type != "jev" && r.Classifier.Type != "disabled" {
+		return errors.New("classifier questions and noul_thresholds require a typed Jev classifier")
+	}
+	if err := (classifier.DecisionOptions{Questions: r.Classifier.Questions, NoulThresholds: r.Classifier.NoulThresholds}).Validate(); err != nil {
+		return fmt.Errorf("classifier: %w", err)
 	}
 	if r.Sessions.InactivityTimeout != "" {
 		if d, err := time.ParseDuration(r.Sessions.InactivityTimeout); err != nil || d <= 0 {

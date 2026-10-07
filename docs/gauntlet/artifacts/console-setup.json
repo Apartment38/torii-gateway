@@ -1,0 +1,25 @@
+{
+  "actual_podman_console": true,
+  "browser": "Firefox headless",
+  "precondition": "Working inference provider already configured; local Jev-compatible service reachable",
+  "steps_observed": [
+    "sign in",
+    "add provider",
+    "choose Jev compatible",
+    "enter provider ID and API URL",
+    "test connection and discover models",
+    "select discovered classifier model",
+    "save and reload"
+  ],
+  "advanced_tuning_edits": 0,
+  "catalog_file_required": false,
+  "model_overrides_required": false,
+  "local_service_api_key_required": false,
+  "default_tuning_collapsed": true,
+  "classifier_provider_saved": "gauntlet-ui-judge",
+  "classifier_model_saved": "decision",
+  "smart_tool_request_selected": "strong",
+  "fixtures_only": true,
+  "screenshot": "console-setup.png",
+  "configuration_restored": true
+}

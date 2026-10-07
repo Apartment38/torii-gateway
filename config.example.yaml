@@ -128,13 +128,29 @@ providers:
 #   catalog_file: ./catalog-overrides.json
 #   allow_paid_models: true
 #   classifier:
-#     type: model
-#     model: local/laya
+#     type: jev
+#     transport: provider
+#     provider: laya  # a configured jev_compatible provider
+#     model: english
 #     on_failure: capability_fallback
+#     # Optional tuning; omit these to use defaults.
+#     timeout: 10s  # valid range: 1ms to 5m
+#     minimum_confidence: 0  # 0..1; low confidence uses on_failure
+#     questions:
+#       task_type:
+#         instructions: Which task type best describes this request?
+#         criteria:
+#           coding: Writing, debugging, or reviewing software
+#       tools:
+#         criteria:
+#           "true": Requires external tool or function actions
+#           "false": Can be answered directly
+#     noul_thresholds:
+#       tools: 0.5  # default for each noul question; 0..1, inclusive
 #   # Alternatively, use the hosted typed-decision Jev classifier:
 #   # type: jev
 #   # model: jev-latest
-#   # base_url: https://jevmodel.org
+#   # base_url: https://api.typesafe.ai
 #   # api_key:
 #   #   credential: YOUR_STORED_JEVMODEL_API_KEY_ID
 #   # Or route Jev through a configured OpenAI-compatible provider such as

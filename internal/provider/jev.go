@@ -53,13 +53,14 @@ func NewJevProvider(cfg OpenAICompatibleConfig, healthFallback bool) (*JevProvid
 	}
 	client := cfg.Client
 	if client == nil {
-		client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		client = &http.Client{}
 	}
+	cloned := *client
+	cloned.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	if cfg.RequestTimeout > 0 {
-		cloned := *client
 		cloned.Timeout = cfg.RequestTimeout
-		client = &cloned
 	}
+	client = &cloned
 	t, err := transport.NewOpenAICompatibleWithHeaders(root, client, cfg.Headers)
 	if err != nil {
 		return nil, err

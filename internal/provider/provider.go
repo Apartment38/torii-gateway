@@ -7,14 +7,24 @@ import (
 
 // Model is the OpenAI-compatible metadata exposed for a physical model.
 type Model struct {
-	ID               string   `json:"id"`
-	Object           string   `json:"object"`
-	Created          int64    `json:"created"`
-	OwnedBy          string   `json:"owned_by"`
-	ContextWindow    *int64   `json:"context_window,omitempty"`
-	InputPerMillion  *float64 `json:"input_per_million,omitempty"`
-	OutputPerMillion *float64 `json:"output_per_million,omitempty"`
-	Subscription     bool     `json:"subscription,omitempty"`
+	ID               string          `json:"id"`
+	Object           string          `json:"object"`
+	Created          int64           `json:"created"`
+	OwnedBy          string          `json:"owned_by"`
+	ContextWindow    *int64          `json:"context_window,omitempty"`
+	InputPerMillion  *float64        `json:"input_per_million,omitempty"`
+	OutputPerMillion *float64        `json:"output_per_million,omitempty"`
+	Subscription     bool            `json:"subscription,omitempty"`
+	Discovery        *ModelDiscovery `json:"-"`
+}
+
+// ModelDiscovery carries verified adapter facts into the catalog without
+// changing the OpenAI model-list wire format. Missing keys remain unknown.
+type ModelDiscovery struct {
+	Endpoints    map[string]bool
+	Capabilities map[string]bool
+	Local        *bool
+	Source       string
 }
 
 // Provider discovers models from one configured upstream.

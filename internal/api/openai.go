@@ -78,7 +78,7 @@ func NewOpenAIHandlerWithOverrides(providers []provider.OpenAIProvider, override
 
 // SetClassifier configures the bounded semantic classifier used by smart.
 // Leaving it unset selects using objective requirements and deterministic
-// capability fallback.
+// selection within the configured safety constraints.
 func (h *OpenAIHandler) SetClassifier(runner classifier.Runner) { h.classifier = runner }
 
 func (h *OpenAIHandler) SetSelectionPolicy(policy router.SelectionPolicy) { h.policy = policy }
@@ -235,15 +235,17 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	requestedModel := fields.Model
+	var routing *smartRouting
 	if requestedModel == "smart" {
-		var resolveErr error
-		requestedModel, resolveErr = h.resolveSmartModel(r, body)
-		if resolveErr != nil {
-			writeError(w, fault.Wrap(fault.ClassifierFailure, "resolve smart model", resolveErr))
-			return
+		routing, err = h.prepareSmartRouting(r, body)
+		defer routing.logEvidence(r.Context())
+		if err == nil {
+			requestedModel, err = h.selectSmartModel(r.Context(), routing, "")
 		}
-		if requestedModel == "" {
-			writeError(w, fault.New(fault.ModelUnavailable, "smart"))
+		if err != nil {
+			routing.errorKind, _ = fault.KindOf(err)
+			routing.writeHeaders(w.Header(), "")
+			writeError(w, err)
 			return
 		}
 	}
@@ -255,20 +257,39 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	started := time.Now()
 	response, err := upstream.Forward(r.Context(), r.URL.Path, body, modelID)
-	if fields.Model == "smart" && h.rerouteOnFailure && (err != nil || (response != nil && response.StatusCode >= 500)) {
-		if response != nil {
-			_ = response.Body.Close()
-		}
-		if alternate := h.nextSmartModel(r, body, requestedModel); alternate != "" {
-			if alternateProvider, alternateModel, parseErr := provider.ParseModelID(alternate); parseErr == nil && h.byID[alternateProvider] != nil {
-				requestedModel, providerID, modelID = alternate, alternateProvider, alternateModel
-				upstream = h.byID[providerID]
+	h.recordLatency(requestedModel, time.Since(started))
+	routing.recordAttempt(requestedModel, response, err, time.Since(started))
+	if routing != nil && retryableResponse(response, err) {
+		h.sessions.Delete(routing.identity.ID)
+		// Retry at most once, before any upstream bytes have reached the client.
+		// Tool continuations keep their provider's opaque call IDs and fail in
+		// place rather than silently crossing to a different physical model.
+		if h.rerouteOnFailure && !routing.toolContinuation && r.Context().Err() == nil {
+			if alternate, selectErr := h.selectSmartModel(r.Context(), routing, requestedModel); selectErr == nil {
+				if response != nil && response.Body != nil {
+					_ = response.Body.Close()
+				}
+				providerID, modelID, _ = provider.ParseModelID(alternate)
+				requestedModel, upstream = alternate, h.byID[providerID]
+				started = time.Now()
 				response, err = upstream.Forward(r.Context(), r.URL.Path, body, modelID)
+				h.recordLatency(requestedModel, time.Since(started))
+				routing.recordAttempt(requestedModel, response, err, time.Since(started))
 			}
 		}
 	}
-	h.recordLatency(requestedModel, time.Since(started))
+	if err == nil && (response == nil || response.Body == nil) {
+		err = errors.New("upstream returned no response body")
+	}
 	if err != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if routing != nil {
+			h.sessions.Delete(routing.identity.ID)
+			routing.errorKind = fault.ProviderUnavailable
+			routing.writeHeaders(w.Header(), requestedModel)
+		}
 		if errors.Is(err, transport.ErrInvalidRequest) {
 			writeAPIError(w, http.StatusBadRequest, "Invalid request body", "invalid_request_error", "invalid_request")
 			return
@@ -277,19 +298,16 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordQuotaHeaders(requestedModel, response.Header)
-	if fields.Model == "smart" {
-		if identity := smartIdentityInfo(r, body, r.URL.Path); identity.ID != "" {
-			_ = h.sessions.Put(session.Record{ID: identity.ID, Model: requestedModel, ContextSignature: identity.Signature})
-		}
-	}
 	defer response.Body.Close()
 	CopyResponseHeaders(w.Header(), response.Header)
+	routing.writeHeaders(w.Header(), requestedModel)
 	if id, ok := requestid.FromContext(r.Context()); ok {
 		w.Header().Set(requestIDHeader, id)
 	}
 	w.WriteHeader(response.StatusCode)
 	if fields.Stream {
-		_ = relayStream(w, response.Body)
+		relayErr := relayStream(w, response.Body)
+		h.finishSmartRouting(routing, requestedModel, response.StatusCode, relayErr)
 		return
 	}
 	if h.usage != nil {
@@ -300,11 +318,15 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 					slog.Warn("usage_update_rejected", "error", err)
 				}
 			}
-			_, _ = w.Write(data)
+			_, writeErr := w.Write(data)
+			h.finishSmartRouting(routing, requestedModel, response.StatusCode, writeErr)
 			return
 		}
+		h.finishSmartRouting(routing, requestedModel, response.StatusCode, readErr)
+		return
 	}
-	_, _ = io.Copy(w, response.Body)
+	_, relayErr := io.Copy(w, response.Body)
+	h.finishSmartRouting(routing, requestedModel, response.StatusCode, relayErr)
 }
 
 func (h *OpenAIHandler) actualCost(model string, input, output uint64) float64 {
@@ -347,82 +369,6 @@ func firstHeaderNumber(headers http.Header, names ...string) *float64 {
 	return nil
 }
 
-func (h *OpenAIHandler) resolveSmartModel(r *http.Request, body []byte) (string, error) {
-	if err := h.ensureCatalog(r.Context()); err != nil {
-		return "", err
-	}
-	identity := smartIdentityInfo(r, body, r.URL.Path)
-	if identity.ID != "" {
-		if pinned, ok := h.sessions.GetWithSignature(identity.ID, identity.Signature); ok && pinned.Model != "" {
-			if _, exists := h.catalog.Model(pinned.Model); exists {
-				return pinned.Model, nil
-			}
-		}
-	}
-	models := h.catalog.Models()
-	if len(models) == 0 {
-		return "", errors.New("smart model has no physical candidates")
-	}
-	endpoint := router.EndpointChat
-	switch r.URL.Path {
-	case "/v1/completions":
-		endpoint = router.EndpointCompletions
-	case "/v1/responses":
-		endpoint = router.EndpointResponses
-	case "/v1/embeddings":
-		endpoint = router.EndpointEmbeddings
-	}
-	requirements, err := router.ExtractRequirements(endpoint, body)
-	if err == nil {
-		complexity := "medium"
-		requirements.TaskType = string(classifier.TaskGeneral)
-		if h.classifier.Classifier != nil {
-			// The classifier's physical identity, not the client's virtual model,
-			// belongs here. Passing "smart" triggers the recursion guard before
-			// any classifier can run.
-			classification, classifyErr := h.classifier.Classify(r.Context(), classifier.ClassificationRequest{Model: h.classifier.Classifier.ID(), Text: smartText(body), Requirements: requirements})
-			if classifyErr != nil {
-				return "", classifyErr
-			}
-			complexity = string(classification.Complexity)
-			requirements.TaskType = string(classification.TaskType)
-			requirements.Tools = classification.Requirements.Tools
-			requirements.Vision = classification.Requirements.Vision
-			requirements.Reasoning = classification.Requirements.Reasoning
-			requirements.StructuredOutput = classification.Requirements.StructuredOutput
-		}
-		candidates := make([]router.Candidate, 0, len(models))
-		for _, model := range models {
-			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID), Intelligence: h.modelIntelligence(model.PublicID)}
-			if h.quota != nil {
-				if status, quotaErr := h.quota.Get(r.Context(), model.PublicID); quotaErr == nil {
-					candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted
-				}
-			}
-			candidates = append(candidates, candidate)
-		}
-		policy := h.policy
-		if policy.MinimumQuality == nil {
-			policy = router.DefaultSelectionPolicy()
-		}
-		if decision, selectErr := router.Select(candidates, requirements, complexity, policy); selectErr == nil {
-			return decision.Model.PublicID, nil
-		}
-		if requirements.Tools || requirements.Vision || requirements.StructuredOutput || requirements.Reasoning || requirements.Streaming {
-			return "", errors.New("no candidate has verified support for the requested capabilities")
-		}
-	}
-	// Unknown provider metadata is intentionally not treated as verified
-	// capability support. The deterministic fallback still gives smart a useful
-	// route when no metadata-backed candidate is available.
-	for _, model := range models {
-		if model.Availability.Available {
-			return model.PublicID, nil
-		}
-	}
-	return models[0].PublicID, nil
-}
-
 func (h *OpenAIHandler) recordLatency(model string, value time.Duration) {
 	h.latencyMu.Lock()
 	defer h.latencyMu.Unlock()
@@ -437,105 +383,6 @@ func (h *OpenAIHandler) getLatency(model string) time.Duration {
 	h.latencyMu.Lock()
 	defer h.latencyMu.Unlock()
 	return h.latency[model]
-}
-
-func (h *OpenAIHandler) nextSmartModel(r *http.Request, body []byte, excluded string) string {
-	if err := h.ensureCatalog(r.Context()); err != nil {
-		return ""
-	}
-	endpoint := router.EndpointChat
-	switch r.URL.Path {
-	case "/v1/completions":
-		endpoint = router.EndpointCompletions
-	case "/v1/responses":
-		endpoint = router.EndpointResponses
-	case "/v1/embeddings":
-		endpoint = router.EndpointEmbeddings
-	}
-	if requirements, extractErr := router.ExtractRequirements(endpoint, body); extractErr == nil {
-		candidates := make([]router.Candidate, 0)
-		for _, model := range h.catalog.Models() {
-			if model.PublicID == excluded {
-				continue
-			}
-			candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID), Intelligence: h.modelIntelligence(model.PublicID)}
-			if h.quota != nil {
-				if status, quotaErr := h.quota.Get(r.Context(), model.PublicID); quotaErr == nil {
-					candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted
-				}
-			}
-			candidates = append(candidates, candidate)
-		}
-		policy := h.policy
-		if policy.MinimumQuality == nil {
-			policy = router.DefaultSelectionPolicy()
-		}
-		if decision, selectErr := router.Select(candidates, requirements, "medium", policy); selectErr == nil {
-			return decision.Model.PublicID
-		}
-		if requirements.Tools || requirements.Vision || requirements.StructuredOutput || requirements.Reasoning || requirements.Streaming {
-			return ""
-		}
-	}
-	for _, model := range h.catalog.Models() {
-		if model.PublicID == excluded || !model.Availability.Available {
-			continue
-		}
-		return model.PublicID
-	}
-	_ = body
-	return ""
-}
-
-func smartText(body []byte) string {
-	var root map[string]any
-	if json.Unmarshal(body, &root) != nil {
-		return ""
-	}
-	if input, ok := root["input"].(string); ok {
-		return input
-	}
-	if messages, ok := root["messages"].([]any); ok {
-		for _, raw := range messages {
-			message, _ := raw.(map[string]any)
-			role, _ := message["role"].(string)
-			if role == "user" {
-				if content, ok := message["content"].(string); ok {
-					return content
-				}
-			}
-		}
-	}
-	return ""
-}
-
-func smartIdentity(r *http.Request, body []byte, endpoint string) string {
-	return smartIdentityInfo(r, body, endpoint).ID
-}
-
-func smartIdentityInfo(r *http.Request, body []byte, endpoint string) session.Identity {
-	var root map[string]any
-	if json.Unmarshal(body, &root) != nil {
-		return session.Identity{}
-	}
-	metadata, _ := root["metadata"].(map[string]any)
-	user, _ := root["user"].(string)
-	var system, first string
-	if messages, ok := root["messages"].([]any); ok {
-		for _, raw := range messages {
-			message, _ := raw.(map[string]any)
-			role, _ := message["role"].(string)
-			content, _ := message["content"].(string)
-			if role == "system" || role == "developer" {
-				system += content
-			}
-			if role == "user" && first == "" {
-				first = content
-			}
-		}
-	}
-	headers := map[string]string{"X-Session-ID": r.Header.Get("X-Session-ID"), "X-Conversation-ID": r.Header.Get("X-Conversation-ID")}
-	return session.Identify(headers, metadata, user, endpoint, system, first)
 }
 
 func writeUnsupportedParameter(w http.ResponseWriter, parameter string) {

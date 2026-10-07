@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -338,7 +339,7 @@ func TestBenchmarkModelTableCombinesScoresAndKeepsLegacyRoutingAPIUnchanged(t *t
 		t.Fatalf("model table: %d %s %v", w.Code, w.Body.String(), err)
 	}
 	model := rows["external/claude-opus-5"]
-	if model.Scores[intelligence.Coding] != .9 || model.Scores[intelligence.Agentic] != .8 || model.Scores[intelligence.Knowledge] != .95 || model.ObservationCount != 3 || model.Observations != nil {
+	if !(math.Abs(model.Scores[intelligence.Coding]-.9) <= 1e-12) || !(math.Abs(model.Scores[intelligence.Agentic]-.8) <= 1e-12) || !(math.Abs(model.Scores[intelligence.Knowledge]-.95) <= 1e-12) || model.ObservationCount != 3 || model.Observations != nil {
 		t.Fatalf("scores not combined: %+v", model)
 	}
 	if strings.Contains(w.Body.String(), "large_upstream_row") {

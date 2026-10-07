@@ -89,13 +89,29 @@
               <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
               <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="capability_fallback">Fallback</option><option value="fail">Fail</option></select></label>
             </div>
+            <details id="classifier-tuning" class="advanced-fields">
+              <summary>Classifier tuning · optional</summary>
+              <p class="section-note">Defaults work without changes. Low confidence uses the classifier failure policy. Question edits apply to Jev and compatible classifiers; routing labels stay fixed.</p>
+              <div class="grid two">
+                <label>Decision timeout<input name="router.classifier.timeout" placeholder="10s" /></label>
+                <label>Minimum confidence<input name="router.classifier.minimum_confidence" type="number" min="0" max="1" step="0.01" placeholder="0 · accept valid decisions" /></label>
+                <label>Question<select id="classifier-question"><option value="task_type">Task type</option><option value="complexity">Complexity</option><option value="tools">Tools</option><option value="vision">Vision</option><option value="reasoning">Reasoning</option><option value="structured_output">Structured output</option><option value="latency_sensitive">Latency sensitivity</option></select></label>
+                <label id="classifier-threshold-label" hidden>Yes probability threshold<input id="classifier-question-threshold" type="number" min="0" max="1" step="0.01" placeholder="0.5" /></label>
+              </div>
+              <label>Question instructions<textarea id="classifier-question-instructions" maxlength="4000" rows="3"></textarea></label>
+              <div class="grid two">
+                <label>Option<select id="classifier-question-option"></select></label>
+                <label>Option rubric<textarea id="classifier-question-rubric" maxlength="4000" rows="3"></textarea></label>
+              </div>
+              <p class="section-note">Clear an instruction, rubric, or threshold to restore its default. Save &amp; reload applies your edits.</p>
+            </details>
             <div class="grid three compact-fields">
               <label data-tooltip="The maximum fraction of a model context window that routing may consume. Lower values leave more room for the model response.">Max context utilization<input name="router.selection.context_utilization_limit" type="number" min="0" max="1" step="0.01" placeholder="0.85" /></label>
               <label data-tooltip="The output-token estimate used when comparing model context limits. Increase it for long expected responses.">Expected output tokens<input name="router.selection.default_expected_output_tokens" type="number" min="0" placeholder="1024" /></label>
               <label data-tooltip="Prefers models in a location class when set. Supported values are neutral, local, and cloud.">Location preference<input name="router.selection.location_preference" placeholder="local" /></label>
               <label data-tooltip="JSON quality thresholds for deterministic selection. Each score must be between 0 and 1.">Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
             </div>
-            <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" /> Allow paid models</label></div>
+            <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid models</label></div>
           </section>
 
           <section id="intelligence" class="page section-block">

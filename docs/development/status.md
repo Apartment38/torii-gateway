@@ -6,14 +6,10 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-Configuration save conflict protection is implemented and undergoing final
-validation and Podman deployment. A stale console can currently overwrite a
-newer provider configuration when adding Codex; mandatory revision checks prevent
-that overwrite. Historical request bodies are unavailable, so the specific
-stale-tab incident remains inferred from the reproduced path and save timestamps.
-Hermes's saved-endpoint connection test still omits the
-stored key; Hermes code changes are outside the authorized scope. Re-entering
-the key for each test is the current workaround.
+No implementation milestone is currently in progress. Configuration revision
+protection and the combined Podman provider catalog are deployed and validated.
+Hermes's saved-endpoint connection test still omits the stored key; Hermes code
+changes remain outside scope. Re-entering the key for each test is the workaround.
 
 ## Pending release checks and future work
 
@@ -35,6 +31,41 @@ the key for each test is the current workaround.
   or general comparative routing superiority is established by the retained evaluation.
 
 ## Completed milestones without separate old task records
+
+### Configuration save conflict protection — 2026-10-07
+
+Reproduced an outdated console's full-document save restoring static `ziz/setup`
+settings while adding Codex. A fresh console preserved native Ollama settings;
+Codex itself did not rewrite the other provider. Logs correlate a later save
+with the reversion, but historical request bodies are unavailable, so that
+specific stale-tab incident remains inferred.
+
+Configuration reads now supply an opaque `ETag`. Both PUT and POST saves require
+its exact `If-Match` value: missing revisions return 428 and stale revisions 412,
+before credential storage or handler construction. Serialized saves advance a
+revision even for unchanged documents. Meaningful external YAML edits and
+restarts invalidate old revisions. The console retains conflicted drafts and
+requires reload/reconciliation; repository configuration-writing scripts and
+API/provider/design documentation follow the new required-header contract.
+
+Baseline checks passed. Final full Go tests/race tests, vet/build, module/format
+checks, all 70 console tests, generated script freshness, script syntax, affected
+documentation links and diff checks passed. The standard image at source commit
+`b9147e3` passed disposable non-root credentials, persistence, rotation, benchmark
+console/API and stopped-backup recovery checks, then replaced the live Compose
+container with the original volume intact. The previous image and a protected
+stopped configuration/database archive are retained for rollback; the master key
+was preserved separately in the unchanged deployment environment.
+
+Restored native `ziz` Ollama with a five-minute inference timeout while preserving
+Codex, Jev and routing configuration. Live checks confirmed 57 catalog entries
+(49 Ollama, seven Codex, `smart`), missing/stale revision rejection, valid saves,
+wrong-key rejection, restart persistence and pre-restart revision rejection.
+Small Ollama JSON/SSE and smart inference requests returned content. Hermes's
+unmodified installed discovery/parser found all 57 entries using the supplied
+key; the desktop form itself was not operated. No Hermes code/configuration or
+upstream credentials were changed. Task-owned source files were replicated to
+both authorized checkouts; the task branch/worktree is retained without merging.
 
 ### Configurable Ollama inference deadline — 2026-10-07
 

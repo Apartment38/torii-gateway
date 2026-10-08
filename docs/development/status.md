@@ -26,7 +26,9 @@ and local model prices when the free-provider option is off.
 
 Source commit `2c821fb` produced live image `cc85d358be44`. Live discovery,
 authentication, cookie saves/conflicts, JSON/SSE/Smart inference, named-key usage,
-activity and quotas passed; sessions and quotas survived restart. Temporary test
+activity and quotas passed; sessions and quotas survived restart. An image
+identity check caught Compose retaining a container under a changed tag; forced
+recreation and repeated acceptance verified the final artifact. Temporary test
 settings were restored, the test key revoked and the session logged out. The
 original database, master key, provider credentials, model IDs and benchmark state
 were preserved. Stopped backups and rollback images remain in the deployment;

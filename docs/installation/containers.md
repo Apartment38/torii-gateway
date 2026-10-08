@@ -89,7 +89,8 @@ mapping to `127.0.0.1:8081:8080` for local-only access. Use HTTPS for remote log
 
 `TORII_IMAGE` selects an image. For a published release, obtain its actual tag or
 digest from the [release page](https://github.com/Apartment38/torii-gateway/releases),
-set it in `.env`, then use `pull` and `up --no-build -d` with your usual overrides.
+set it in `.env`, then use `pull` and `up --no-build --force-recreate -d` with your usual overrides. Verify the
+running container image ID, especially when reusing an image tag.
 The source-build flow above works without a published image. See [Environment](../reference/environment.md).
 
 If mounted secrets are impractical, place `TORII_DB_KEY=YOUR_EXISTING_64_HEX_KEY`

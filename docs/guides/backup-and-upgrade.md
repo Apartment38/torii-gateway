@@ -137,15 +137,17 @@ schema range without opening a database or requiring its master key.
 
    ```sh
    TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose pull torii-gateway
-   TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose up --no-build -d
+   TORII_IMAGE=ghcr.io/apartment38/torii-gateway:vX.Y.Z podman compose up --no-build --force-recreate -d
    podman compose ps
    podman compose logs --tail=100 torii-gateway
    ```
 
    Replace the example version with a published release. Supply the same
    `-p` and `-f` options as the existing deployment. Docker users use
-   `compose.docker.yaml`. Source-built deployments use `up --build -d`
-   after selecting the release's source tag.
+   `compose.docker.yaml`. Source-built deployments use `up --build --force-recreate -d`
+   after selecting the release's source tag. Force recreation when replacing an
+   image under the same tag; a running container can otherwise keep its old
+   image. Compare its image ID with the intended image before acceptance.
 6. Startup verifies encrypted records with the original master key before
    applying database upgrades. Each step commits its changes and schema version
    together. Missing migration steps fail before any upgrade writes; a failed
@@ -181,14 +183,14 @@ project, volumes, `.env`, and override files. For the file-secret Podman layout:
 
 ```sh
 git pull --ff-only
-podman compose -f compose.yaml -f compose.secrets.yaml up --build -d
+podman compose -f compose.yaml -f compose.secrets.yaml up --build --force-recreate -d
 podman compose -f compose.yaml -f compose.secrets.yaml ps
 podman compose -f compose.yaml -f compose.secrets.yaml logs --tail=100 torii-gateway
 ```
 
 Docker users include `-f compose.docker.yaml`. Do not replace the saved config
 with an example during a normal upgrade. Rebuilding is needed for code changes;
-console config changes apply through save/reload.
+validated console configuration changes save automatically.
 
 ## Rollback
 

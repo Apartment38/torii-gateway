@@ -39,8 +39,10 @@ are never forwarded across redirects. Use HTTPS for remote authenticated sources
 
 ## Read the table
 
-**Current model benchmark data** shows one row per model with capability scores,
-operational measurements, provenance, dates, age, and validity. Choose **All
+**Current model benchmark data** shows a compact scorecard per model with overall
+and capability scores, sources, match safety, and freshness. **Inspect** opens all
+available scores, operational measurements, provenance, dates, age, and validity.
+Choose **All
 benchmark models** or **Configured models only**, filter rows, and select
 25, 50, or 100 models per page (default 25).
 

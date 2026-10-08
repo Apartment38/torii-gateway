@@ -14,6 +14,7 @@
     <dialog id="setup-dialog"><form id="setup-form"><h2>Create your administrator</h2><p>Use the one-time setup code from the gateway terminal or container logs. A new API key will be displayed only once; save it securely. An imported key is preserved without being shown again.</p><label>Setup code<input id="setup-code" type="password" autocomplete="off" required /></label><label>Choose username<input id="setup-username" pattern="[a-zA-Z0-9._-]{1,64}" maxlength="64" autocomplete="off" required /></label><label>Choose password (at least 12 characters)<input id="setup-password" type="password" minlength="12" autocomplete="off" required /></label><label>Confirm password<input id="setup-confirm" type="password" autocomplete="off" required /></label><p id="setup-error" role="alert"></p><button class="button primary" type="submit">Create administrator</button></form></dialog>
     <dialog id="new-key-dialog"><h2>Save your new API key</h2><p id="new-key-warning">This key is displayed only once. Save it securely before closing this dialog.</p><label>API key<textarea id="new-api-key" readonly autocomplete="off"></textarea></label><button id="close-new-key" class="button primary" type="button">I have saved it</button></dialog>
     <dialog id="create-key-dialog"><form id="create-key-form"><h2>Create a gateway API key</h2><p>Give this key a name to identify its client. The generated key will be displayed only once.</p><label data-tooltip="A name to identify the client that will use this key. This name is metadata, not the secret key.">API key name<input id="client-key-name" maxlength="128" autocomplete="off" placeholder="Hermes agent" required /></label><p id="create-key-error" role="alert"></p><button id="generate-client-key" class="button primary" type="submit">Generate API key</button><button id="cancel-create-key" class="button quiet" type="button">Cancel</button></form></dialog>
+    <dialog id="benchmark-evidence-dialog" aria-labelledby="benchmark-evidence-title"><p class="eyebrow">Published evidence</p><h2 id="benchmark-evidence-title" tabindex="-1">Model evidence</h2><div id="benchmark-evidence-content"></div><button id="close-benchmark-evidence" class="button primary" type="button">Done</button></dialog>
     <a class="skip-link" href="#top">Skip to workspace</a>
     <div class="app-shell">
       <aside class="sidebar">
@@ -121,7 +122,7 @@
           <section id="intelligence" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">Model evidence</p><h2>Benchmark intelligence</h2></div><button id="refresh-benchmarks" class="button secondary" type="button">Refresh benchmarks</button></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Automatic saves to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable benchmark intelligence</label></div>
-            <div class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it; wait for Saved before refreshing.</span></div>
+            <div id="benchmark-source-notice" class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it; wait for Saved before refreshing.</span></div>
             <section id="benchmark-refresh-panel" class="benchmark-refresh" aria-label="Benchmark refresh activity" hidden>
               <h3>Refresh activity</h3><p id="benchmark-progress-label" role="status" aria-live="polite"></p>
               <progress id="benchmark-progress" max="1" value="0" aria-label="Completed benchmark sources and table update"></progress>
@@ -134,12 +135,12 @@
             </details>
             <section id="benchmark-data" hidden>
               <div class="section-heading"><h3>Current model benchmark data</h3><span id="benchmark-data-count" class="section-note"></span></div>
-              <div class="grid three compact-fields">
+              <div class="grid three compact-fields benchmark-view-controls">
                 <label data-tooltip="Show all imported models from enabled sources or only models matched to configured providers. Approximate matches are display-only and do not supply smart-routing scores. Both views combine scores into one row per model.">View<select id="benchmark-table-view"><option value="models">All benchmark models</option><option value="routable">Configured models only</option></select></label>
                 <label data-tooltip="Filter the model summaries by model name, alias, provider or benchmark source. This does not change routing or stored data.">Filter<input id="benchmark-table-filter" type="search" maxlength="256" placeholder="Model, provider, or source" /></label>
                 <label data-tooltip="Choose how many model summaries appear on each page. Scores are combined before pagination, so a model's capabilities stay together.">Rows per page<select id="benchmark-page-size"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
               </div>
-              <p class="section-note">One row per model combines its available capability scores as normalized percentages; — means no comparable score is available. Unmatched or ambiguous models are display-only; raw results and metadata remain stored but hidden here.</p>
+              <p class="section-note">Scores are normalized percentages. — means unknown; display-only matches never affect routing.</p>
               <div class="benchmark-table-scroll" tabindex="0" role="region" aria-label="Scrollable benchmark data"><table id="benchmark-table"><thead id="benchmark-table-head"></thead><tbody id="benchmark-table-body"></tbody></table></div>
               <div class="benchmark-pagination"><button id="benchmark-previous" class="button quiet" type="button">Previous</button><span id="benchmark-page-label" role="status"></span><button id="benchmark-next" class="button quiet" type="button">Next</button></div>
             </section>

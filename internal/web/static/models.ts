@@ -1,3 +1,4 @@
+const modelLoadingMarkup='<div class="empty-state" role="status"><strong>Loading model catalog…</strong><p>Discovering models from configured providers.</p></div>';
 let modelEnabledDraft:Record<string,boolean>={};
 let physicalModels:any[]=[];
 let modelSearch="";
@@ -35,7 +36,7 @@ function renderModelsPage():void{
  document.querySelector("#model-previous")!.addEventListener("click",()=>{modelPage--;renderModelRows();});document.querySelector("#model-next")!.addEventListener("click",()=>{modelPage++;renderModelRows();});renderModelRows();
 }
 async function loadModelsPage():Promise<void>{
- const output=document.querySelector<HTMLElement>("#models-list")!;const login=consoleSession;const button=document.querySelector<HTMLButtonElement>("#refresh-models")!;button.disabled=true;
+ const output=document.querySelector<HTMLElement>("#models-list")!;const login=consoleSession;const button=document.querySelector<HTMLButtonElement>("#refresh-models")!;button.disabled=true;if(!physicalModels.length)output.innerHTML=modelLoadingMarkup;
  try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!response.ok)throw new Error("Model discovery unavailable. Refresh to retry.");const data=await response.json();if(login!==consoleSession)return;physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview();
  }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load models</strong><p>${escapeHTML(error instanceof Error?error.message:"Models unavailable")}</p></div>`;}finally{button.disabled=false;}
 }

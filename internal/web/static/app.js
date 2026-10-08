@@ -47,6 +47,7 @@ function applyBenchmarkConfig(config                      = {})       {
   updateBenchmarkControls();
 }
 function clearBenchmarkConsole()       {
+  closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
   benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
@@ -127,28 +128,48 @@ function benchmarkSafeMessage(message        )         {
   return message;
 }
 function benchmarkNumber(raw     , score = false)         { return typeof raw === "number" && Number.isFinite(raw) ? (score ? (raw * 100).toFixed(1) : String(Number(raw.toFixed(4)))) : "—"; }
+function benchmarkLabel(name       )       {return name.replace(/_/g," ").replace(/^./,letter=>letter.toUpperCase());}
+function benchmarkEvidence(row    )       {
+ const scores=["overall",...benchmarkCapabilities];
+ const operations                      ={input_price:"Input USD / 1M",output_price:"Output USD / 1M",latency:"Latency seconds",ttft:"First token seconds",throughput:"Tokens / second",context_length:"Context tokens"};
+ const fields=[...scores.map(name=>[`${benchmarkLabel(name)} %`,benchmarkNumber(row.scores?.[name],true)]),...Object.entries(operations).map(([name,label])=>[label,benchmarkNumber(row.operations?.[name])]),["Model ID",row.id],["Providers",(row.provider_ids||[]).join(", ")||"—"],["Sources",(row.sources||[]).join(", ")||"—"],["Match",["approximate","ambiguous","unmatched"].includes(row.match)?`${benchmarkLabel(row.match)} · display only`:"Matched"],["Data status",row.stale?"Stale":"Current"],["Observations",String(row.observation_count||0)],["Latest evaluation",benchmarkDate(row.latest_evaluation)],["Last retrieval",benchmarkDate(row.latest_retrieval)],["Age seconds",benchmarkNumber(row.age_seconds)],["Valid until",benchmarkDate(row.valid_until)]];
+ return `<div class="benchmark-evidence-content"><dl class="benchmark-evidence-grid">${fields.map(([label,value])=>`<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(String(value))}</dd></div>`).join("")}</dl></div>`;
+}
+let inspectedBenchmarkModel="";
+function openBenchmarkEvidence(id       )     {
+ const model=benchmarkModels[id];if(!model)return;inspectedBenchmarkModel=id;
+ document.querySelector("#benchmark-evidence-title") .textContent=model.display_name||id;
+ document.querySelector("#benchmark-evidence-content") .innerHTML=benchmarkEvidence({...model,id});
+ const dialog=document.querySelector                   ("#benchmark-evidence-dialog");dialog?.showModal?.();
+ document.querySelector             ("#benchmark-evidence-title")?.focus?.({preventScroll:true});
+ if(dialog)dialog.scrollTop=0;
+}
+function closeBenchmarkEvidence()     {document.querySelector                   ("#benchmark-evidence-dialog")?.close?.();}
 function renderBenchmarkTable()       {
-  const scores = ["overall", ...benchmarkCapabilities];
-  const scoreHeaders = scores.map(score => `${score.replace(/_/g," ").replace(/^./, letter => letter.toUpperCase())} %`);
-  const operations = Object.keys(benchmarkOperations);
-  const headers = ["Model", ...scoreHeaders, "Providers", "Input $ / 1M", "Output $ / 1M", "Latency s", "TTFT s", "Tokens / s", "Context tokens", "Sources", "Observations", "Match", "Data status", "Latest evaluation", "Last retrieval", "Age seconds", "Valid until"];
-  const query = benchmarkFilter.toLowerCase();
-  const models = Object.entries(benchmarkModels).sort(([a,left],[b,right]) => String(left.display_name || a).localeCompare(String(right.display_name || b)) || a.localeCompare(b))
-    .filter(([id, model]) => `${id} ${model.display_name || ""} ${(model.external_ids || []).join(" ")} ${(model.provider_ids || []).join(" ")} ${(model.sources || []).join(" ")}`.toLowerCase().includes(query));
-  const total = models.length;
-  benchmarkPage = Math.min(benchmarkPage, Math.max(0, Math.ceil(total / benchmarkPageSize) - 1));
-  const rows = models.slice(benchmarkPage * benchmarkPageSize, (benchmarkPage + 1) * benchmarkPageSize).map(([id, model]) => ({...model,id}));
-  document.querySelector("#benchmark-table-head") .innerHTML = `<tr>${headers.map(header => `<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
-  document.querySelector("#benchmark-table-body") .innerHTML = rows.length ? rows.map(row => {
-    const match = row.match === "approximate" ? "Approximate" : row.match === "ambiguous" ? "Ambiguous" : row.match === "unmatched" ? "Unmatched" : "Matched";
-    const values = [row.display_name || row.id, ...scores.map(score => benchmarkNumber(row.scores?.[score],true)), (row.provider_ids || []).join(", "), ...operations.map(metric => benchmarkNumber(row.operations?.[metric])), (row.sources || []).join(", "), String(row.observation_count || 0), match, row.stale ? "Stale" : "Current", benchmarkDate(row.latest_evaluation), benchmarkDate(row.latest_retrieval), benchmarkNumber(row.age_seconds), benchmarkDate(row.valid_until)];
-    return `<tr>${values.map(value => `<td>${escapeHTML(String(value))}</td>`).join("")}</tr>`;
-  }).join("") : `<tr><td colspan="${headers.length}">No cached benchmark data matches this view. Enable sources, save, and refresh to import results.</td></tr>`;
-  const pages = Math.max(1, Math.ceil(total / benchmarkPageSize));
-  document.querySelector("#benchmark-data-count") .textContent = `${total} models`;
-  document.querySelector("#benchmark-page-label") .textContent = `Page ${benchmarkPage + 1} of ${pages}`;
-  document.querySelector                   ("#benchmark-previous") .disabled = benchmarkPage === 0;
-  document.querySelector                   ("#benchmark-next") .disabled = (benchmarkPage + 1) * benchmarkPageSize >= total;
+ const headers=["Model","Overall %","Capability scores","Sources","Match / freshness","Evidence"];
+ const query=benchmarkFilter.toLowerCase();
+ const models=Object.entries(benchmarkModels).sort(([a,left],[b,right])=>String(left.display_name||a).localeCompare(String(right.display_name||b))||a.localeCompare(b))
+   .filter(([id,model])=>`${id} ${model.display_name||""} ${(model.external_ids||[]).join(" ")} ${(model.provider_ids||[]).join(" ")} ${(model.sources||[]).join(" ")}`.toLowerCase().includes(query));
+ const total=models.length;const focused=document.activeElement?.id;
+ benchmarkPage=Math.min(Math.max(0,benchmarkPage),Math.max(0,Math.ceil(total/benchmarkPageSize)-1));
+ const rows=models.slice(benchmarkPage*benchmarkPageSize,(benchmarkPage+1)*benchmarkPageSize).map(([id,model])=>({...model,id}));
+ const body=document.querySelector("#benchmark-table-body") ;
+ document.querySelector("#benchmark-table")?.classList.add("benchmark-scorecard");
+ document.querySelector("#benchmark-table-head") .innerHTML=`<tr>${headers.map(header=>`<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
+ body.innerHTML=rows.length?rows.map(row=>{
+   const match=row.match==="approximate"?"Approximate":row.match==="ambiguous"?"Ambiguous":row.match==="unmatched"?"Unmatched":"Matched";
+   const known=benchmarkCapabilities.filter(name=>typeof row.scores?.[name]==="number"&&Number.isFinite(row.scores[name]));
+   const capabilities=known.slice(0,3).map(name=>`<span class="benchmark-score-pill"><span>${escapeHTML(benchmarkLabel(name))}</span><strong>${benchmarkNumber(row.scores[name],true)}%</strong></span>`).join("");
+   return `<tr><td data-label="Model">${escapeHTML(row.display_name||row.id)}</td><td data-label="Overall %" class="benchmark-overall">${benchmarkNumber(row.scores?.overall,true)}</td><td data-label="Capability scores"><div class="benchmark-capability-summary">${capabilities||'<span class="data-secondary">No comparable scores</span>'}</div>${known.length>3?`<span class="data-secondary">${known.length-3} more in evidence</span>`:""}</td><td data-label="Sources">${escapeHTML((row.sources||[]).join(", ")||"—")}</td><td data-label="Match / freshness"><span class="status-badge ${match==="Matched"?"success":"neutral"}">${match}</span><span class="data-secondary">${row.stale?"Stale":"Current"}${match!=="Matched"?" · display only":""}</span></td><td data-label="Evidence"><button type="button" class="button quiet benchmark-inspect" data-benchmark-inspect="${escapeHTML(row.id)}" aria-label="Inspect evidence for ${escapeHTML(row.display_name||row.id)}">Inspect →</button></td></tr>`;
+ }).join(""):`<tr><td colspan="${headers.length}"><div class="empty-state"><strong>No benchmark evidence in this view</strong><p>Enable a source, then refresh to import published results. Try another filter if data is already cached.</p></div></td></tr>`;
+ body.querySelectorAll                   ("[data-benchmark-inspect]").forEach(button=>button.addEventListener("click",()=>openBenchmarkEvidence(button.dataset.benchmarkInspect )));
+ const pages=Math.max(1,Math.ceil(total/benchmarkPageSize));
+ document.querySelector("#benchmark-data-count") .textContent=`${total} models`;
+ document.querySelector("#benchmark-page-label") .textContent=`Page ${benchmarkPage+1} of ${pages}`;
+ const previous=document.querySelector                   ("#benchmark-previous") ,next=document.querySelector                   ("#benchmark-next") ;
+ previous.disabled=benchmarkPage===0;next.disabled=(benchmarkPage+1)*benchmarkPageSize>=total;
+ if(focused==="benchmark-next"&&next.disabled)(previous.disabled?document.querySelector                  ("#benchmark-table-filter"):previous)?.focus?.();
+ if(focused==="benchmark-previous"&&previous.disabled)(next.disabled?document.querySelector                  ("#benchmark-table-filter"):next)?.focus?.();
 }
 function benchmarkDate(value     )         { return value && !String(value).startsWith("0001-") ? String(value) : "Unknown"; }
 async function loadBenchmarkData()                   {
@@ -168,8 +189,8 @@ async function loadBenchmarkData()                   {
     }));
     if (sequence !== benchmarkReloadSequence || login !== consoleSession) return false;
     [benchmarkSourceStatus, benchmarkModels] = replies;
-    renderBenchmarkSourceStatus(); renderBenchmarkTable();
-    if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status") .textContent = "Showing saved benchmark evidence. Missing scores are unknown, not zero; human preference remains a separate signal.";
+    renderBenchmarkSourceStatus(); renderBenchmarkTable(); updateBenchmarkControls();
+    if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status") .textContent = "Saved evidence · missing scores are unknown.";
     return true;
   } catch (error) { if (sequence === benchmarkReloadSequence) document.querySelector("#benchmark-status") .textContent = benchmarkSafeMessage(error instanceof Error ? error.message : "Unable to load benchmark data");return false; }
 }
@@ -264,6 +285,10 @@ async function inspectBenchmarks(refresh         )                {
   finally { if (benchmarkAbort === abort) { benchmarkRefreshRunning = false; benchmarkAbort = null; updateBenchmarkControls(); } }
 }
 function initializeBenchmarks()       {
+ document.querySelector("#close-benchmark-evidence")?.addEventListener("click",closeBenchmarkEvidence);
+ const evidence=document.querySelector                   ("#benchmark-evidence-dialog");
+ evidence?.addEventListener("close",()=>{const buttons=document.querySelectorAll                   ("[data-benchmark-inspect]");const opener=Array.from(buttons).find(button=>button.dataset.benchmarkInspect===inspectedBenchmarkModel);(opener||document.querySelector                  ("#benchmark-table-filter"))?.focus?.();});
+ evidence?.addEventListener("keydown",event=>{if(event.key==="Tab"){event.preventDefault();document.querySelector                   ("#close-benchmark-evidence")?.focus?.();}});
   const list = document.querySelector("#benchmark-sources-list") ;
   list.addEventListener("input", updateBenchmarkSource); list.addEventListener("click", benchmarkSourceAction);
   document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;renderBenchmarkTable();});
@@ -274,6 +299,7 @@ function initializeBenchmarks()       {
   renderBenchmarkTable();
 }
 
+const modelLoadingMarkup='<div class="empty-state" role="status"><strong>Loading model catalog…</strong><p>Discovering models from configured providers.</p></div>';
 let modelEnabledDraft                       ={};
 let physicalModels      =[];
 let modelSearch="";
@@ -311,7 +337,7 @@ function renderModelsPage()     {
  document.querySelector("#model-previous") .addEventListener("click",()=>{modelPage--;renderModelRows();});document.querySelector("#model-next") .addEventListener("click",()=>{modelPage++;renderModelRows();});renderModelRows();
 }
 async function loadModelsPage()              {
- const output=document.querySelector             ("#models-list") ;const login=consoleSession;const button=document.querySelector                   ("#refresh-models") ;button.disabled=true;
+ const output=document.querySelector             ("#models-list") ;const login=consoleSession;const button=document.querySelector                   ("#refresh-models") ;button.disabled=true;if(!physicalModels.length)output.innerHTML=modelLoadingMarkup;
  try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!response.ok)throw new Error("Model discovery unavailable. Refresh to retry.");const data=await response.json();if(login!==consoleSession)return;physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview();
  }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load models</strong><p>${escapeHTML(error instanceof Error?error.message:"Models unavailable")}</p></div>`;}finally{button.disabled=false;}
 }
@@ -484,6 +510,13 @@ function renderOverview()     {
  initializeClientConnection();
 }
 function providerTypeLabel(type       )       {return ({openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"}                         )[type]||type;}
+function providerTypeOptions(provider                              ,subscriptionOnly=false)       {
+ const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter"]},{label:"Subscriptions",types:["openai-codex","nous"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["jev","jev_compatible"]}];
+ return groups.filter(group=>!subscriptionOnly||group.label==="Subscriptions").map(group=>`<optgroup label="${group.label}">${group.types.map(type=>`<option value="${type}" ${provider.type===type?"selected":""}>${escapeHTML(providerTypeLabel(type))}</option>`).join("")}</optgroup>`).join("");
+}
+function providerTypeDescription(type       )       {
+ return ({openai_compatible:"Connect any API that supports OpenAI-compatible endpoints.",openai:"Connect OpenAI with your API key.",anthropic:"Connect Anthropic with your API key.",gemini:"Connect Google Gemini with your API key.",xai:"Connect xAI with your API key.",openrouter:"Connect OpenRouter with your API key.","openai-codex":"Connect your OpenAI Codex subscription using OAuth login.",nous:"Connect your Nous subscription using OAuth login.",ollama:"Connect a self-hosted Ollama server and discover its model catalog.",jev:"Connect TypeSafe Jev classifier models for Smart routing.",jev_compatible:"Connect a Jev-compatible classifier, such as Laya, for Smart routing."}                         )[type]||"Configure this provider integration.";
+}
 async function loadOverview()              {
  if(!consoleSession||!configurationLoaded||overviewLoading)return;const login=consoleSession;overviewLoading=true;overviewError="";renderOverview();
  const results=await Promise.allSettled([gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()}),gatewayFetch("/gateway/v1/usage",{headers:await authProvider.headers()}),gatewayFetch("/gateway/v1/activity?limit=30",{headers:await authProvider.headers()})]);
@@ -690,8 +723,8 @@ function renderProviders()       {
     <article class="provider-card">
       <div class="provider-card-head"><div class="provider-card-title"><span class="provider-avatar">${escapeHTML(String(provider.id||"P").slice(0,1).toUpperCase())}</span><div><span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span><span class="data-secondary">${escapeHTML(providerTypeLabel(String(provider.type)))}${provider.enabled===false?" · Disabled":""}</span>${provider.api_url&&!subscriptionProvider(provider)?`<span class="provider-endpoint" title="${value(provider,"api_url")}">${value(provider,"api_url")}</span>`:""}</div></div><div class="provider-card-actions"><button class="button quiet" type="button" data-provider-models="${index}">Models →</button><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
-      <dialog class="provider-editor" data-provider-dialog="${index}" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title-${index}"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3 id="provider-editor-title-${index}">${editingProvider===index&&!editingOriginal?"Add provider":provider.id?`Edit ${value(provider,"id")}`:"Add provider"}</h3><p>Connect a model API or subscription to your gateway.</p></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
-        <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
+      <dialog class="provider-editor" data-provider-dialog="${index}" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title-${index}"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3 id="provider-editor-title-${index}">${editingProvider===index&&!editingOriginal?"Add provider":provider.id?`Edit ${value(provider,"id")}`:"Add provider"}</h3><p>${escapeHTML(providerTypeDescription(String(provider.type)))}</p></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,true)}</select></label><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+        <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,false)}</select></label>
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
         ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Reveal entered provider API key" aria-pressed="false">Reveal</button></span></label>`}
@@ -898,7 +931,7 @@ async function loadServerConfig()                {
     applyConfig(configuration, response.headers.get("ETag") || "");
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
-    if((location.hash||"#overview")==="#overview")void loadOverview();
+    navigate();
   } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
@@ -952,7 +985,7 @@ function navigate()       {
   if(current==="overview"){renderOverview();if(configurationLoaded)void loadOverview();}
   if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="state" && configurationLoaded)void loadUsagePage();
-  if(current==="models" && configurationLoaded)void loadModelsPage();
+  if(current==="models"){if(configurationLoaded)void loadModelsPage();else document.querySelector("#models-list") .innerHTML=modelLoadingMarkup;}
   if (current === "routing") updateClassifierOptions();
   if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
 }
@@ -1053,6 +1086,7 @@ function updateBenchmarkControls()       {
   document.querySelector                ("#benchmark-configuration") .hidden = !enabled;
   document.querySelector                ("#benchmark-data") .hidden = !benchmarksEnabledSaved;
   document.querySelector             ("#benchmark-status") .hidden=!enabled;
+  const sourceNotice=document.querySelector             ("#benchmark-source-notice");if(sourceNotice)sourceNotice.hidden=enabled&&benchmarksEnabledSaved&&!benchmarkDirty&&Object.keys(benchmarkModels).length>0;
   document.querySelector("#benchmark-enable-notice") .textContent = enabled !== benchmarksEnabledSaved || benchmarkDirty
     ? "Your benchmark setting is saving. Wait for Saved before refreshing."
     : enabled ? "Choose the sources you trust in Benchmark sources, then refresh to import published results. Source changes save automatically."

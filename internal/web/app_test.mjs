@@ -853,7 +853,8 @@ test("cached model table combines capabilities, operational data and unmatched m
   });
   app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('loadBenchmarkData()');
-  let html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
+  app.run('openBenchmarkEvidence("provider/model")');
+  let html=app.run('document.querySelector("#benchmark-table-body").innerHTML + document.querySelector("#benchmark-evidence-content").innerHTML');
   assert.match(html,/92\.0/);assert.match(html,/81\.0/);assert.match(html,/128000/);assert.match(html,/—/);
   assert.match(html,/&lt;unmatched&gt;/);assert.match(html,/85\.0/);assert.match(html,/Unmatched/);
   assert.equal([...html.matchAll(/<tr>/g)].length,2);
@@ -861,19 +862,29 @@ test("cached model table combines capabilities, operational data and unmatched m
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-table-head").innerHTML'),/>Metadata</);
 });
 
-test("one model row contains every available capability score and hides metadata", () => {
-  const app=consoleFixture(()=>response({}));
-  app.context.models={"external/claude-opus-5":{display_name:"claude-opus-5",match:"unmatched",scores:{overall:.9,coding:.92,agentic:.88,knowledge:.94,math:0},metadata:{hidden:"metadata-sentinel"}}};
-  app.run('benchmarkModels=models;renderBenchmarkTable()');
-  const headers=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
-  const cells=[...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>(.*?)<\/tr>/g)].map(row=>[...row[1].matchAll(/<td>(.*?)<\/td>/g)].map(match=>match[1]));
-  for(const name of ["Coding %","Agentic %","Knowledge %","Reasoning %","Math %","Instruction following %","Multimodal %","Preference %","General intelligence %"])assert.ok(headers.includes(name));
-  assert.equal(headers.includes("Metadata"),false);
-  assert.equal(cells.length,1);
-  assert.equal(cells[0][headers.indexOf("Model")],"claude-opus-5");
-  for(const [name,score] of [["Overall %","90.0"],["Coding %","92.0"],["Agentic %","88.0"],["Knowledge %","94.0"],["Math %","0.0"],["Reasoning %","—"]])assert.equal(cells[0][headers.indexOf(name)],score);
-  assert.ok(cells.every(row=>row.length===headers.length));
-  assert.doesNotMatch(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/metadata-sentinel/);
+test("compact benchmark scorecards retain every available score and operational evidence", () => {
+ const app=consoleFixture(()=>response({}));
+ app.context.models={"external/claude-opus-5":{display_name:"claude-opus-5",match:"unmatched",scores:{overall:.9,coding:.92,agentic:.88,knowledge:.94,math:0},operations:{input_price:.25,output_price:1.2,latency:2,ttft:.3,throughput:48,context_length:128000},provider_ids:["p/model"],sources:["source-a"],observation_count:8,latest_retrieval:"2026-10-08",latest_evaluation:"2026-10-01",age_seconds:120,valid_until:"2026-10-09",metadata:{hidden:"metadata-sentinel"}}};
+ app.run('benchmarkModels=models;renderBenchmarkTable()');
+ const headers=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
+ assert.deepEqual(headers,["Model","Overall %","Capability scores","Sources","Match / freshness","Evidence"]);
+ app.run('openBenchmarkEvidence("external/claude-opus-5")');
+ const html=app.run('document.querySelector("#benchmark-table-body").innerHTML + document.querySelector("#benchmark-evidence-content").innerHTML');
+ assert.equal([...html.matchAll(/<tr>/g)].length,1);
+ assert.match(html,/<td data-label="Model">claude-opus-5<\/td>/);
+ assert.match(html,/<td data-label="Overall %" class="benchmark-overall">90\.0<\/td>/);
+ for(const [name,score] of [["Coding %","92.0"],["Agentic %","88.0"],["Knowledge %","94.0"],["Math %","0.0"],["Reasoning %","—"]])assert.ok(html.includes(`<dt>${name}</dt><dd>${score}</dd>`));
+ for(const value of ["128000","0.25","1.2","48","2026-10-08","2026-10-01","2026-10-09","p/model","source-a"])assert.ok(html.includes(value));
+ assert.match(html,/data-benchmark-inspect="external\/claude-opus-5"/);
+ assert.match(html,/Unmatched/);assert.match(html,/display only/);
+ assert.doesNotMatch(html,/metadata-sentinel/);
+});
+
+test("empty benchmark evidence uses a compact six-column state",()=>{
+ const app=consoleFixture(()=>response({}));app.run('renderBenchmarkTable()');
+ assert.equal([...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th /g)].length,6);
+ assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/colspan="6"/);
+ assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/No benchmark evidence in this view/);
 });
 
 test("streamed refresh advances actual source progress and updates the table before completion", async () => {
@@ -1407,4 +1418,34 @@ test("pagination boundaries move keyboard focus to the remaining enabled page ac
  assert.deepEqual(Array.from(app.context.focusHits),["model-previous"]);
  app.run('activityRows=records;activityPageSize=5;activityPage=2;document.querySelector("#activity-previous").focus=()=>focusHits.push("activity-previous");document.activeElement={id:"activity-next"};renderActivity()');
  assert.deepEqual(Array.from(app.context.focusHits),["model-previous","activity-previous"]);
+});
+
+test("authenticated initial model deep links load the catalog after configuration resolves",async()=>{
+ const app=consoleFixture(url=>url==="/gateway/v1/models"?response({models:[{id:"p/discovered",provider_id:"p",enabled:true}]}):response({providers:[],router:{classifier:{type:"disabled"}}}));
+ app.run('location.hash="#models";consoleSession="authenticated";navigate()');
+ assert.match(app.run('document.querySelector("#models-list").innerHTML'),/Loading model catalog/);
+ await app.run('loadServerConfig()');await new Promise(resolve=>setImmediate(resolve));
+ assert.ok(app.calls.some(call=>call.url==="/gateway/v1/models"));
+ assert.match(app.run('document.querySelector("#model-table-body").innerHTML'),/p\/discovered/);
+});
+
+test("provider selection groups integrations and explains the current type",()=>{
+ const app=consoleFixture(()=>response({}));app.setProviders([draft("jev_compatible","laya")]);
+ const html=app.list.innerHTML;
+ for(const label of ["API providers","Subscriptions","Self-hosted","Classifiers"])assert.ok(html.includes(`<optgroup label="${label}">`));
+ assert.match(html,/Jev-compatible classifier, such as Laya/);
+ app.setProviders([draft("openai-codex","codex")]);
+ assert.match(app.list.innerHTML,/<optgroup label="Subscriptions">/);
+ assert.doesNotMatch(app.list.innerHTML,/<optgroup label="API providers">/);
+ assert.match(app.list.innerHTML,/subscription using OAuth login/);
+});
+
+test("opening benchmark evidence focuses its title and starts at the top of the dialog",()=>{
+ const app=consoleFixture(()=>response({}));app.context.focusCalls=[];
+ app.run('benchmarkModels={"fixture/model":{display_name:"Synthetic model",scores:{overall:.9}}};document.querySelector("#benchmark-evidence-dialog").scrollTop=500;document.querySelector("#benchmark-evidence-title").focus=options=>focusCalls.push(options);openBenchmarkEvidence("fixture/model")');
+ assert.equal(app.run('document.querySelector("#benchmark-evidence-dialog").open'),true);
+ assert.equal(app.run('document.querySelector("#benchmark-evidence-title").textContent'),"Synthetic model");
+ assert.equal(app.run('document.querySelector("#benchmark-evidence-dialog").scrollTop'),0);
+ assert.equal(app.context.focusCalls.length,1);
+ assert.equal(app.context.focusCalls[0].preventScroll,true);
 });

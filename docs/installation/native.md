@@ -52,36 +52,22 @@ containing `bin/gateway`. Generate the key only when creating a new database.
    Back up `secrets/torii_db_key` separately now. Losing it prevents Torii from
    decrypting your saved credentials. Reuse this file on every restart.
 
-2. Create `config.yaml`:
-
-   ```yaml
-   server:
-     listen: 127.0.0.1:8080
-   state:
-     database_path: ./state/torii.db
-   providers: []
-   ```
-
-   You may instead copy the full [example configuration](../../config.example.yaml),
-   but change its database path to a writable local path. The minimal configuration
-   starts without contacting any provider.
-
-3. Validate and start:
+2. Start with a new database and an explicit local listener:
 
    ```sh
    export TORII_DB_KEY_FILE="$PWD/secrets/torii_db_key"
-   ./bin/gateway config validate --config ./config.yaml
-   ./bin/gateway serve --config ./config.yaml
+   ./bin/gateway serve --database ./state/torii.db --listen 127.0.0.1:8080
    ```
 
-4. Choose an administrator username and a password of at least 12 characters.
+   Fresh databases have no providers. Settings are saved in SQLite automatically.
+   For an existing YAML installation, follow [the explicit import procedure](../guides/backup-and-upgrade.md#legacy-configuration-import) before starting.
+
+3. Choose an administrator username and a password of at least 12 characters.
    Save the newly displayed API key immediately. In a noninteractive launch,
    the terminal output instead contains a 30-minute setup code for the web console.
-5. Open <http://127.0.0.1:8080/> and continue with [Getting Started](../getting-started.md).
+4. Open <http://127.0.0.1:8080/> and continue with [Getting Started](../getting-started.md).
 
-Stop with Ctrl+C. Restart with the same working directory, key file, configuration,
-and serve command. Configuration and data remain on disk. The gateway's default
-config path is `/config/config.yaml`; always pass `--config` for this native layout.
+Stop with Ctrl+C. Restart with the same database, key file, and listener options.
 
 ## Configure and start on Windows
 
@@ -97,16 +83,8 @@ $toriiRng.GetBytes($toriiKeyBytes)
 $toriiRng.Dispose()
 $toriiKeyHex = ([BitConverter]::ToString($toriiKeyBytes)).Replace('-', '').ToLowerInvariant()
 [IO.File]::WriteAllText("$PWD/secrets/torii_db_key", $toriiKeyHex)
-@'
-server:
-  listen: 127.0.0.1:8080
-state:
-  database_path: ./state/torii.db
-providers: []
-'@ | Set-Content -Encoding ascii config.yaml
 $env:TORII_DB_KEY_FILE = "$PWD/secrets/torii_db_key"
-./bin/gateway.exe config validate --config ./config.yaml
-./bin/gateway.exe serve --config ./config.yaml
+./bin/gateway.exe serve --database ./state/torii.db --listen 127.0.0.1:8080
 ```
 
 Back up the key separately before setup. Do not rerun key generation for an
@@ -117,7 +95,7 @@ legacy `curl` alias. See [Clients](../guides/clients.md) for a PowerShell reques
 
 First finish interactive administrator/provider setup. On Linux, this systemd
 example assumes installation at `/opt/torii`, owned by a dedicated `torii` user,
-including writable `state/` and the configuration directory. Adjust paths and
+including writable `state/`. Adjust paths and
 ownership to your installation; the repository does not install a service for you.
 
 ```ini
@@ -131,7 +109,7 @@ User=torii
 Group=torii
 WorkingDirectory=/opt/torii
 Environment=TORII_DB_KEY_FILE=/opt/torii/secrets/torii_db_key
-ExecStart=/opt/torii/bin/gateway serve --config /opt/torii/config.yaml
+ExecStart=/opt/torii/bin/gateway serve --database /opt/torii/state/torii.db --listen 127.0.0.1:8080
 Restart=on-failure
 UMask=0077
 

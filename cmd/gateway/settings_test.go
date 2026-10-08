@@ -114,3 +114,22 @@ func TestModelEnablementPersistsAndProtectsClassifier(t *testing.T) {
 		t.Fatal("disabled classifier accepted")
 	}
 }
+
+func TestValidationAcceptsLegacyImportSecrets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.yaml")
+	raw := `server: {listen: "127.0.0.1:8080"}
+providers:
+ - id: p
+   type: openai_compatible
+   base_url: https://example.test
+   discover_models: false
+   models: [model]
+   bearer_token: {value: import-only-secret}
+`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithIO(context.Background(), []string{"config", "validate", "--config", path}, new(bytes.Buffer)); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -21,7 +21,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if SubjectFrom(req.Context()) == nil {
 		return t.Base.RoundTrip(req)
 	}
-	body, err := io.ReadAll(io.LimitReader(req.Body, 2<<20))
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}

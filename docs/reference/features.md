@@ -22,7 +22,7 @@ still depends on your account, model capabilities, quotas, and upstream availabi
 
 Not implemented: multi-user administration, administrator password reset,
 Authentik/OIDC, automatic master-key rotation, automated update installation,
-stateful Responses storage, streaming usage accounting, and a billing ledger.
+stateful Responses storage and a provider billing ledger. JSON and SSE usage are tracked as operator accounting, with conservative estimates when usage is missing.
 Native provider audio/media endpoints and MCP/tool/skill gateways are not part
 of the public API. Current pending checks and future work live only in
 [Project status](../development/status.md).

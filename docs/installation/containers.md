@@ -6,8 +6,7 @@ OpenSSL, and either Docker with Compose or Podman with a working Compose provide
 Run commands on the container host in the repository directory.
 
 A **volume** is persistent storage independent of the container. The Compose
-service mounts `config/` at `/config` and a project-scoped named database volume
-at `/data`. The image runs as user/group 65532, so its mounted files must be
+service mounts a project-scoped named database volume at `/data`. The image runs as user/group 65532, so its mounted files must be
 accessible to that user. It has no shell; use its `/gateway` commands for checks.
 
 ## Prepare a new installation
@@ -16,17 +15,13 @@ accessible to that user. It has no shell; use its `/gateway` commands for checks
 git clone https://github.com/Apartment38/torii-gateway.git
 cd torii-gateway
 umask 077
-mkdir -p config secrets
+mkdir -p secrets
 openssl rand -hex 32 > secrets/torii_db_key
 ```
 
 Generate this key once and back it up separately. Do not overwrite an existing
-key. No initial YAML is necessary: Compose enables automatic creation of a
-minimal configuration listening at `0.0.0.0:8080` with no providers.
-
-Optional: copy `config.example.yaml` to `config/config.yaml` before startup,
-set `server.listen: 0.0.0.0:8080`, and use provider addresses reachable from the
-container. The database path should remain `/data/torii.db`.
+key. Fresh databases use settings defaults listening at `0.0.0.0:8080` with no providers.
+Existing YAML installations require [explicit import](../guides/backup-and-upgrade.md#legacy-configuration-import).
 
 ## Podman Compose
 
@@ -39,27 +34,23 @@ podman compose -f compose.yaml -f compose.secrets.yaml ps
 podman compose -f compose.yaml -f compose.secrets.yaml logs --tail=100 torii-gateway
 ```
 
-The `:U` config mount maps its ownership for the non-root image user; `:Z` applies
-private SELinux labels. Ownership changes are confined to `config/`. Rootful
+The database volume uses private SELinux labels. Rootful
 Podman uses host ownership (`sudo chown 65532:65532 secrets/torii_db_key`) instead
 of `podman unshare`. Podman machine users should verify permissions inside the VM
 if the host filesystem does not honor Linux ownership.
 
 ## Docker Compose
 
-On a Linux Docker host, prepare the dedicated config directory and secret file,
-then apply the Docker override to remove Podman's unsupported `:U` option:
+On a Linux Docker host, prepare the dedicated secret file:
 
 ```sh
-sudo chown -R 65532:65532 config
 sudo chown 65532:65532 secrets/torii_db_key
-docker compose -f compose.yaml -f compose.docker.yaml -f compose.secrets.yaml up --build -d
-docker compose -f compose.yaml -f compose.docker.yaml -f compose.secrets.yaml ps
-docker compose -f compose.yaml -f compose.docker.yaml -f compose.secrets.yaml logs --tail=100 torii-gateway
+docker compose -f compose.yaml -f compose.secrets.yaml up --build -d
+docker compose -f compose.yaml -f compose.secrets.yaml ps
+docker compose -f compose.yaml -f compose.secrets.yaml logs --tail=100 torii-gateway
 ```
 
-On Docker Desktop, host ownership behaves differently. Ensure the mounted
-config directory is writable and the secret readable by the image's user; do
+On Docker Desktop, host ownership behaves differently. Ensure the database volume is writable and the secret readable by the image's user; do
 not change ownership of the repository. If file-secret permissions cannot be
 mapped, use the environment-key alternative below. Compose file secrets are
 mounted files, not an encrypted host secret vault.
@@ -102,8 +93,7 @@ set it in `.env`, then use `pull` and `up --no-build -d` with your usual overrid
 The source-build flow above works without a published image. See [Environment](../reference/environment.md).
 
 If mounted secrets are impractical, place `TORII_DB_KEY=YOUR_EXISTING_64_HEX_KEY`
-in a private `.env` file and start without `compose.secrets.yaml`. Docker still
-requires `compose.docker.yaml`. Use your existing key value, not a newly generated
+in a private `.env` file and start without `compose.secrets.yaml`. Use your existing key value, not a newly generated
 one. Privileged container operators can inspect environment values; keep `.env`
 out of source control and backups containing publicly shared files.
 
@@ -114,8 +104,7 @@ to use another file. Native Podman secrets are another option:
 podman secret create torii_db_key secrets/torii_db_key
 ```
 
-A custom `podman run` deployment must mount a writable config directory and data
-volume, set `TORII_CONFIG_BOOTSTRAP=true` and
+A custom `podman run` deployment must mount a writable data volume, set
 `TORII_DB_KEY_FILE=/run/secrets/torii_db_key`, publish port 8080, and mount the
 secret with `--secret torii_db_key,type=mount,target=torii_db_key,uid=65532,gid=65532,mode=0400`.
 Docker Swarm secrets require their own service secret declarations; local Compose

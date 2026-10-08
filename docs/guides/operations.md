@@ -18,7 +18,7 @@ podman compose -f compose.yaml -f compose.secrets.yaml logs --tail=100 torii-gat
 ```
 
 Use your normal Docker overrides on Docker. Native services can use
-`journalctl -u torii-gateway.service`. Logs include request IDs, paths, statuses,
+`journalctl -u torii-gateway.service`. Logs are structured JSON and include request IDs, paths, statuses,
 and durations, plus safe provider/benchmark errors. They omit prompts, headers,
 query values, tokens, and arbitrary upstream error bodies. Avoid sharing startup
 logs containing an unused administrator setup code.
@@ -34,7 +34,7 @@ access to the gateway's plain-HTTP listener. Native local use should keep
 port/firewall rules controlling exposure. The base Compose port mapping publishes
 to all host interfaces.
 
-Configure the proxy to preserve the host and forwarded scheme, allow request
+Configure `server.trusted_proxies` with the immediate proxy's CIDR before relying on forwarded HTTPS for Secure session cookies. Configure the proxy to preserve the host and forwarded scheme, allow request
 bodies up to the gateway's 32 MiB limit, disable streaming buffering, and allow
 long inference/benchmark refresh connections. Administrator Basic authentication
 and OAuth credential transfers need HTTPS remotely. Management writes enforce
@@ -48,12 +48,10 @@ disconnects cancel upstream work. The server allows 10 seconds to finish active
 requests on SIGINT/SIGTERM, then attempts final usage persistence with a separate
 deadline. Idle HTTP connections close after 60 seconds.
 
-Usage totals are routing accounting, not a billing ledger. Non-streaming totals
-are flushed approximately once a second; crashes/write failures can lose pending
-counters. Streamed responses do not contribute usage totals. Sessions, live quota,
-and pending login sessions remain in memory and are lost on restart.
+The durable operator ledger reserves budgets before dispatch and settles reported JSON/SSE usage afterward. Missing usage or interruptions retain conservative estimates. Reservations, budgets, and administrator sessions survive restarts. These estimated monetary costs are not provider billing. Legacy routing counters are buffered separately; upstream live quota caches and pending OAuth flows remain in memory.
 
-Use one process per SQLite data volume on local storage. Keep config/data/key
-persistent. [Backup and upgrade](backup-and-upgrade.md) explains coherent backups
+The Activity page retains metadata for seven days by default with a 100 MiB cap. `activity` settings control retention; `activity.log_file` enables an optional rotating JSON file. Prompts, responses, and credentials are excluded.
+
+Use one process per SQLite data volume on local storage. Keep the database and master key persistent. [Backup and upgrade](backup-and-upgrade.md) explains coherent backups
 and schema compatibility. [State and security](../development/state-and-security.md)
 explains implementation and security boundaries.

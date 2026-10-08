@@ -58,7 +58,7 @@ Run browser-console tests and verify the generated script (Node.js 22.13+):
     node scripts/build-console.mjs --check
 
 The dependency-free build combines `internal/intelligence/presets.json`,
-`internal/web/static/benchmarks.ts` and `app.ts` into the committed `app.js`.
+the console TypeScript files listed in `scripts/build-console.mjs` into the committed `app.js`.
 Run `node scripts/build-console.mjs` after editing either TypeScript source or
 the shared presets. Console tests use a mocked DOM and gateway;
 benchmark tests exercise fragmented streaming updates without live services.
@@ -73,8 +73,7 @@ and never touches an existing gateway deployment. It exercises setup, authentica
 configuration saves, key regeneration, restart persistence and wrong-key rejection.
 It also verifies shipped benchmark controls, authenticated table access and
 streaming refresh. The script requires the host SQLite CLI (`sqlite3`) and uses
-only synthetic keys, usage and disabled benchmark fixtures (no live source
-calls). SQLite remains authoritative across container recreation and restore.
+only synthetic keys, a controlled Python upstream, usage and disabled benchmark fixtures (no live source calls). It also verifies persistent cookies, model enablement, fragmented JSON/SSE usage, quota enforcement after restart, and metadata redaction. SQLite remains authoritative across container recreation and restore.
 
 ## Format
 

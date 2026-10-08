@@ -24,7 +24,7 @@ Typed Jev/Laya classifier providers are separate from inference providers.
    **Jev compatible · Laya / custom** for a compatible decision server.
 2. Supply a reachable URL and the service's key if required; test the connection.
 3. On **Routing**, select the discovered classifier model in Smart Routing.
-4. Choose **Save & reload**, then send a `smart` request.
+4. Wait for **Saved**, then send a `smart` request.
 
 Discovery uses `/models`; compatible Laya services may advertise loaded
 checkpoints via `/health`. A successful connection test is discovery evidence,
@@ -36,7 +36,7 @@ Disable classification to retain deterministic routing without classifier calls.
 
 Expand **Classifier tuning** only when needed. You can change timeout, minimum
 confidence, question instructions, option descriptions, and yes thresholds.
-Clear an edited value to restore its default; choose **Save & reload** to apply.
+Clear an edited value to restore its default; wait for **Saved** to apply.
 Changing questions/providers retains draft tuning; browser reload discards drafts.
 
 Defaults are a 10-second deadline, confidence threshold 0, and yes threshold 0.5.
@@ -44,7 +44,7 @@ The deadline range is 1ms–5m; probabilities are finite values from 0 to 1.
 Below-threshold or failed classification follows `on_failure`: capability fallback
 (default) or fail. Fallback still enforces objective requirements such as tools
 and images. Confidence is model-specific and does not predict production quality.
-For supported labels and YAML overrides, see [Configuration](../reference/configuration.md#router).
+For supported labels and settings overrides, see [Configuration](../reference/configuration.md#router).
 
 ## Control cost, quality, and location
 

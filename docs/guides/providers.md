@@ -11,7 +11,7 @@ key, or the subscription account required by the selected profile.
 3. Set its API URL, using the profile defaults in [Provider support](../reference/providers.md).
 4. For API-key services, enter the upstream key in the provider's key field.
    For Codex/Nous subscriptions, use **Log in** after configuring the provider.
-5. Test the connection, inspect the returned model list, and choose **Save & reload**.
+5. Test the connection, inspect the returned model list, and choose **Save provider**.
 6. List `/v1/models` or check the console, then use a discovered `provider/model`
    in your client. Connection tests exercise discovery, not billable inference.
 
@@ -20,24 +20,24 @@ key in your client. These keys have different jobs and are not interchangeable.
 Model names can contain additional slashes: `openrouter/google/MODEL` belongs to
 provider `openrouter` with upstream model `google/MODEL`.
 
-If configuration changed in another tab or through the API, **Save & reload**
+If configuration changed in another tab or through the API, **Save provider**
 rejects the outdated draft rather than restoring old provider settings. Copy
 your edits, choose **Refresh config**, then reconcile them with the current
 settings before saving. The same applies after a gateway restart. API clients
 must use the [configuration revision header](../reference/api.md#health-setup-configuration-and-providers).
 
 Connection tests query the live catalog even when **Discover models** is disabled.
-The status then warns that **Save & reload** uses the static model list. Enable
+The status then warns that **Save provider** uses the static model list. Enable
 discovery to expose the returned models. For an Ollama server, choose **Ollama**
 and its server URL without `/v1`; Torii also queries native capability metadata
 so `smart` can select models that support the request. A leftover `setup` entry
 is a placeholder, not an upstream model.
 
-## Multiple providers and advanced YAML
+## Multiple providers and advanced settings
 
-The following are configuration excerpts: merge them into your existing config.
+The following are configuration excerpts: submit them through the revision-protected configuration API; see [Configuration](../reference/configuration.md).
 Credential ID placeholders refer to secrets already stored by Torii. Prefer the
-console to create them. Do not put literal keys in persisted YAML.
+console to create them. Do not put literal keys in persisted settings.
 
 `providers` may be empty during setup. Each configured provider accepts the common fields below; profile-specific restrictions are listed in the [provider reference](../reference/providers.md).
 
@@ -64,7 +64,7 @@ If both servers expose `llama3.2`, clients see `local/llama3.2` and
 
 Ollama inference has a **5-minute request timeout** by default to allow cold model
 loading. Change **Request timeout** on its provider card, or set `request_timeout`
-to a positive Go duration such as `10m` in its YAML entry, then **Save & reload**.
+to a positive Go duration such as `10m` in its settings entry, then save through the configuration API.
 The deadline includes loading, generation, and reading the complete streamed or
 JSON response. Leave the field blank to restore the default. Discovery remains
 limited to 10 seconds; client cancellation still stops inference immediately.
@@ -93,7 +93,7 @@ providers:
 This exposes `private/assistant` while sending `production-model` upstream.
 Provider credentials are isolated in a dedicated HTTP client and are not
 forwarded across redirects. The authenticated console accepts a new, masked
-API key and encrypts it in SQLite; YAML receives only a credential reference.
+API key and encrypts it in SQLite; settings receive only a credential reference.
 **Show** reveals only a newly entered value, never an existing stored key.
 Persisted credentials must use database references.
 Use HTTPS for remote console access. See [credential management](credentials.md)
@@ -201,8 +201,7 @@ checks, retains the saved choice, and selects the first discovered classifier
 when none was configured. URLs, keys, and transport are no longer configured
 on that page. If no models are available, the console explains how to add a
 classifier and redirects Smart Routing visitors to Providers. Deterministic
-routing still works without a classifier. Use **Save & reload** to apply the
-selected model and provider-backed transport. Legacy direct Jev configuration
+routing still works without a classifier. The selected classifier and completed field edits save automatically; wait for **Saved**. Legacy direct Jev configuration
 is moved into a provider draft, preserving its key reference; save to persist
 the migration.
 
@@ -232,7 +231,7 @@ provider as well for `smart` to return chat responses. Laya's example model
 must be loaded and advertised by your server. For local, non-container builds,
 use the reachable server hostname (often `localhost`) instead.
 
-Classifier setup needs only a provider, a discovered model, and Save & reload.
+Classifier setup needs only a provider, a discovered model, and an automatic save.
 The optional **Classifier tuning** panel adjusts the 10-second timeout,
 minimum confidence, question instructions and option rubrics, and per-question
 yes thresholds. See [routing customization](smart-routing.md) for
@@ -251,10 +250,10 @@ placing token values in arguments or YAML:
 
 ```sh
 export PROVIDER_ACCESS_TOKEN="..."
-./bin/gateway auth login PROVIDER_ID --config ./config.yaml \
+./bin/gateway auth login PROVIDER_ID --database ./state/torii.db \
   --access-token-env PROVIDER_ACCESS_TOKEN
-./bin/gateway auth status PROVIDER_ID --config ./config.yaml
-./bin/gateway auth logout PROVIDER_ID --config ./config.yaml
+./bin/gateway auth status PROVIDER_ID --database ./state/torii.db
+./bin/gateway auth logout PROVIDER_ID --database ./state/torii.db
 ```
 
 Replace `PROVIDER_ID` with a configured provider ID, and set the environment

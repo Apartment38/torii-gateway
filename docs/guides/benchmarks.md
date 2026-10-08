@@ -12,7 +12,7 @@ Imported scores do not grant unverified tool, vision, or endpoint support.
 3. Enter an Artificial Analysis key if using that source. Hugging Face,
    LiveBench, and LMArena accept an optional Hugging Face token; public datasets
    need no separate LiveBench or Arena key.
-4. Choose **Save & reload** before **Refresh benchmarks**. Refresh uses saved settings.
+4. Wait for **Saved** before **Refresh benchmarks**. Refresh uses saved settings.
 5. Watch **Refresh activity** and the source cards. The progress bar counts
    completed sources (including failures), then table loading, not download bytes.
 
@@ -61,13 +61,13 @@ does not cancel the worker. Rate-limit pauses/heartbeats can indicate active wor
 On the gateway host with its master-key environment loaded:
 
 ```sh
-./bin/gateway benchmarks refresh --config ./config.yaml
+./bin/gateway benchmarks refresh --database ./state/torii.db
 ```
 
 For the file-secret Podman setup:
 
 ```sh
-podman compose -f compose.yaml -f compose.secrets.yaml exec torii-gateway /gateway benchmarks refresh --config /config/config.yaml
+podman compose -f compose.yaml -f compose.secrets.yaml exec torii-gateway /gateway benchmarks refresh --database /data/torii.db
 ```
 
 The command calls the running gateway using its stored default API key. It needs
@@ -79,7 +79,7 @@ shows cached-data and streamed-refresh endpoints.
 ## Customize imports and weights
 
 The console presets configure URLs, datasets, and score mappings. Advanced
-settings are retained during saves but edited in YAML: aliases, dataset columns,
+settings are retained during saves but edited through the revision-protected configuration API: aliases, dataset columns,
 metrics/scales, freshness thresholds, transport, and aggregation/routing weights.
 Use [Configuration](../reference/configuration.md#intelligence) for every field.
 

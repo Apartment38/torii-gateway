@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -108,10 +109,14 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		if flags.NArg() != 0 {
 			return errors.New("usage: gateway config validate --config <path>")
 		}
-		if _, err := config.Load(*configPath); err != nil {
+		data, err := os.ReadFile(*configPath)
+		if err != nil {
 			return err
 		}
-		_, err := fmt.Fprintln(output, "configuration is valid")
+		if _, err := config.Decode(bytes.NewReader(data)); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(output, "configuration is valid")
 		return err
 	}
 	if len(args) > 0 && args[0] == "models" {
@@ -133,7 +138,13 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 			return err
 		}
 		defer db.Close()
+		if _, err := fmt.Fprintln(output, "smart"); err != nil {
+			return err
+		}
 		for _, providerConfig := range cfg.Providers {
+			if providerConfig.Enabled != nil && !*providerConfig.Enabled {
+				continue
+			}
 			upstream, buildErr := buildProviderWithState(providerConfig, db)
 			if buildErr != nil {
 				return fmt.Errorf("initialize provider %q: %w", providerConfig.ID, buildErr)
@@ -143,13 +154,15 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 				return fmt.Errorf("discover provider %q: %w", providerConfig.ID, modelErr)
 			}
 			for _, model := range models {
+				if enabled, remembered := cfg.ModelEnabled[model.ID]; remembered && !enabled {
+					continue
+				}
 				if _, err := fmt.Fprintln(output, model.ID); err != nil {
 					return err
 				}
 			}
 		}
-		_, err = fmt.Fprintln(output, "smart")
-		return err
+		return nil
 	}
 	if len(args) > 0 && args[0] == "auth" {
 		return runAuth(args[1:], output)
@@ -1051,6 +1064,10 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 	}
 	if err != nil {
 		newHandler.(*catalogHandler).stopIntelligence()
+		if errors.Is(err, state.ErrSettingsConflict) {
+			writeConfigError(w, http.StatusPreconditionFailed, err)
+			return
+		}
 		writeConfigError(w, 500, errors.New("cannot commit configuration"))
 		return
 	}

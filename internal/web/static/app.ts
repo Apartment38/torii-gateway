@@ -13,7 +13,7 @@ const authProvider: AuthProvider = new CookieSessionProvider();
 async function gatewayFetch(url:string,options?:RequestInit):Promise<Response>{
   const login = consoleSession;
   const response=await fetch(url,options);
-  if(response.status===401 && login===consoleSession){signOutConsole();document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
+  if(response.status===401 && login===consoleSession){expireConsoleSession();document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
   return response;
 }
 const form = document.querySelector<HTMLFormElement>("#config-form")!;
@@ -38,6 +38,9 @@ function updateConsoleIdentity(): void {
   document.querySelector<HTMLButtonElement>("#console-login")!.hidden = signedIn;
   document.querySelector<HTMLButtonElement>("#console-logout")!.hidden = !signedIn;
   document.querySelector("#signed-in-user")!.textContent = signedIn ? signedInUsername : "Not signed in";
+}
+function expireConsoleSession():void{
+ stopActivity();consoleSession="";csrfToken="";signedInUsername="";clearNewAPIKey();if(configurationLoaded)document.querySelector<HTMLButtonElement>("#save-button")!.hidden=false;updateConsoleIdentity();updateBenchmarkControls();saveState.textContent="Session expired. Sign in to retry; your draft is retained.";
 }
 function signOutConsole(): void {
  stopActivity();
@@ -726,8 +729,8 @@ document.querySelector("#console-login")!.addEventListener("click",()=>location.
 document.querySelector("#console-logout")!.addEventListener("click",async()=>{try{const response=await gatewayFetch("/gateway/v1/session",{method:"DELETE",headers:await authProvider.headers()});if(!response.ok)throw new Error();signOutConsole();location.assign("/login");}catch{toast("Sign-out failed. Retry to revoke the session.");}});
 document.querySelector("#login-form")!.addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector<HTMLInputElement>("#login-username")!.value;const input=document.querySelector<HTMLInputElement>("#login-password")!;const password=input.value;input.value="";
-  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json(),response.headers.get("ETag")||"");signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
-  catch{signOutConsole();document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
+  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(revision!==configurationRevision){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
+  catch{expireConsoleSession();document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata():Promise<void>{
   const list=document.querySelector<HTMLElement>("#credential-list")!;

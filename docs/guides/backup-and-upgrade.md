@@ -18,7 +18,7 @@ For the native layout, after stopping and choosing an unused backup directory:
 ```sh
 umask 077
 mkdir -p backups/native-before-upgrade
-cp -a state config.yaml backups/native-before-upgrade/
+cp -a state backups/native-before-upgrade/
 ```
 
 For container storage, inspect the actual volume identity (Compose prefixes names
@@ -43,19 +43,17 @@ Torii is running. Advanced online backups require SQLite's backup API or `.backu
 ## Supported databases
 
 Torii's database-only baseline is SQLite schema **4**; the current schema is
-**5**. Fresh installations create the baseline and apply the registered upgrade.
-Schema 4 upgrades automatically, preserving all data and adding named client-key
-metadata. Schemas 1–3 and nonempty unversioned databases are
+**9**. Fresh installations create the baseline and apply the registered upgrade.
+Schema 4 upgrades automatically, preserving all data and adding settings, sessions, accounting and activity storage. Schemas 1–3 and nonempty unversioned databases are
 rejected without an automatic import, deletion or reset. Future releases retain
 schema 4 as their supported starting point and preserve data through sequential,
 transactional database migrations. Unsupported newer schemas are also rejected.
 
-All durable application state uses `state.database_path`, default
+Select durable application storage with `--database` or `TORII_DB_PATH`, default
 `/data/torii.db`: encrypted administrator/credential/API-key/OAuth records,
 public benchmark observations and provenance, usage aggregates and Codex host
 identity. Configuration now lives in SQLite; the master key stays
-outside the database. Sessions, live quota caches and pending login flows remain
-memory-only. There is no `state.directory` or flat-file credential/cache importer.
+outside the database. Administrator sessions and budget accounting persist in SQLite. Upstream live quota caches and pending OAuth flows remain memory-only. There is no `state.directory` or flat-file credential/cache importer.
 
 
 ## One-time baseline reset
@@ -69,7 +67,7 @@ matching binary/key. Torii never performs this reset automatically.
 2. Archive its configuration and complete stopped data volume/directory,
    including any WAL/SHM files. Back up its matching master key separately.
    Protect old plaintext files/backups as sensitive material.
-3. Provision a **new, empty database location/volume** and fresh configuration.
+3. Provision a **new, empty database location/volume** and database defaults.
    Do not point the new release at the old database. Do not copy old credential
    IDs, `server.authentication`, `state.directory`, or YAML value/env/file keys.
 4. Containers can start without an initial configuration. One approach is to
@@ -89,7 +87,7 @@ matching binary/key. Torii never performs this reset automatically.
    Use this same project name for every subsequent update. Append secret/Docker
    overrides as appropriate. If no old config directory exists, omit its move.
    For local builds, archive the old database directory and use a new database
-   path with fresh YAML copied from the example.
+   path with database defaults.
 5. Keep your existing master key, or provision a new key only for this empty
    database. Retain the old key with the old backup if you choose a new one.
 6. Create an administrator through terminal setup or the console's one-time
@@ -103,6 +101,20 @@ matching binary/key. Torii never performs this reset automatically.
 source and published port are the only required environment settings; database
 path and image overrides remain optional. Credential entry and OAuth helper
 transfer remain supported normal operations, not legacy migration features.
+
+## Legacy configuration import
+
+For a schema-4/5 installation that still uses YAML, first take the stopped backup above and retain the previous image. Use the new binary with the original database and master-key environment:
+
+```sh
+./bin/gateway config validate --config ./config.yaml
+./bin/gateway config import --config ./config.yaml --database ./state/torii.db
+./bin/gateway serve --database ./state/torii.db --listen 127.0.0.1:8080
+```
+
+Import validates settings and credential ownership, imports catalog overrides, and commits settings and submitted secrets together. It refuses to overwrite established database settings. Existing credentials, model IDs, benchmarks, and master key are preserved. Keep any referenced certificate files at their configured paths. Container imports need the original configuration mounted read-only, the original data volume mounted at `/data`, and the original key source; run `/gateway config import --config /config/config.yaml --database /data/torii.db` before recreating the service with `serve` and no `--config` option.
+
+Normal startup never reads or rewrites YAML. Keep legacy configuration in the rollback backup. Rollback requires the stopped pre-upgrade database, original configuration, original key and retained image together.
 
 ## Upgrade an existing installation
 
@@ -148,15 +160,14 @@ their separate backup; no key replacement can decrypt existing credentials.
 ### Source-built native binary
 
 After the stopped backup, select the source version, build a replacement, and
-validate config before replacing the binary:
+replace the binary after validation:
 
 ```sh
 git pull --ff-only
 go build -trimpath -o ./bin/gateway.new ./cmd/gateway
-./bin/gateway.new config validate --config ./config.yaml
 cp ./bin/gateway ./bin/gateway.previous
 mv ./bin/gateway.new ./bin/gateway
-./bin/gateway serve --config ./config.yaml
+./bin/gateway serve --database ./state/torii.db --listen 127.0.0.1:8080
 ```
 
 Use the same master-key source and working directory. Restart a systemd-managed

@@ -9,11 +9,8 @@ import base64
 import copy
 import json
 import math
-import os
 import pathlib
 import statistics
-import subprocess
-import tempfile
 import threading
 import time
 import urllib.error
@@ -128,7 +125,6 @@ def main():
     results = []
     key_id = None
     edited = False
-    catalog_path = "/tmp/torii-gauntlet-catalog.json"
     descriptors = []
     for name, quality, price in [("cheap", .6, .1), ("strong", .99, 2), ("backup", .99, 4)]:
         descriptors.append({"id": "gauntlet/" + name, "provider_id": "gauntlet", "upstream_id": name, "context_window": 100000, "local": False,
@@ -138,11 +134,6 @@ def main():
                             "quality": {"general": quality},
                             "pricing": {"input_per_million": price, "output_per_million": price}})
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as f:
-            json.dump(descriptors, f)
-            f.flush()
-            os.chmod(f.name, 0o644)
-            subprocess.run(["podman", "cp", f.name, "torii-gateway:" + catalog_path], check=True, capture_output=True)
         status, created, _, _ = request("/gateway/v1/admin/api-keys", {"name": "Gauntlet temporary test"})
         assert status == 201, "Temporary test credential failed"
         key_id = created["key"]["id"]
@@ -153,7 +144,7 @@ def main():
              "models": ["cheap", "strong", "backup"], "discover_models": False},
             {"id": "gauntlet-judge", "type": "jev_compatible", "base_url": url,
              "models": ["decision"], "discover_models": False}]
-        cfg["router"] = {"catalog_file": catalog_path, "classifier": {"type": "jev", "transport": "provider",
+        cfg["router"] = {"catalog_overrides": descriptors, "classifier": {"type": "jev", "transport": "provider",
                          "provider": "gauntlet-judge", "model": "decision", "on_failure": "capability_fallback"},
                          "sessions": {"on_model_failure": "reroute"}}
         cfg["intelligence"] = {"enabled": False}

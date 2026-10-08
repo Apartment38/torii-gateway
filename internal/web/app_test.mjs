@@ -1236,3 +1236,17 @@ test("helper commands match platform downloads and quote shell arguments",()=>{
  for(const asset of ["torii-auth-linux-arm64","torii-auth-darwin-amd64","torii-auth-darwin-arm64"]){app.context.asset=asset;assert.match(app.run('helperCommand(asset,"url","token")'),new RegExp(asset));assert.ok(app.run('helperDownloadURL(asset)').endsWith(asset));}
  const source=readFileSync(new URL("./static/app.ts",import.meta.url),"utf8");assert.match(source,/helper-platform/);assert.doesNotMatch(source,/torii-router\/releases/);
 });
+
+
+test("session expiry and failed reauthentication preserve settings drafts", async () => {
+  const app=consoleFixture(()=>({...response({},false),status:401}));
+  app.run('consoleSession="expired";configurationLoaded=true;configurationRevision="revision";providers=[{...providerDefaults,id:"draft-provider",api_key:"draft-secret"}]');
+  await app.run('loadCredentialMetadata()');
+  assert.equal(app.run('providers[0].id'),"draft-provider");
+  assert.equal(app.run('providers[0].api_key'),"draft-secret");
+  assert.equal(app.run('configurationRevision'),"revision");
+  assert.equal(app.run('document.querySelector("#save-button").hidden'),false);
+  await app.run('document.querySelector("#login-form").listeners.submit({preventDefault(){}})');
+  assert.equal(app.run('providers[0].id'),"draft-provider");
+  assert.equal(app.run('configurationRevision'),"revision");
+});

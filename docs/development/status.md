@@ -2,24 +2,28 @@
 
 Updated 2026-10-07. This is the sole project progress and backlog tracker.
 
-## v1 implementation in progress
+## v1 implementation and rollout
 
-Database-backed settings, persistent revisions, explicit transactional YAML import, and staged credential validation are implemented on `feat/gateway-v1` in `/tmp/torii-gateway-v1`. Normal startup and CLI commands use SQLite; fresh databases use first-run defaults. Automatic console saves and confirmation-based provider dialogs are implemented and tested, including serialized pending saves and conflict draft preservation. Persistent cookie login is implemented and tested for expiry, revocation, CSRF, origin and trusted proxy security. Models controls now persist by provider-qualified ID, filter discovery/Smart/direct dispatch, protect the active classifier, and expose existing benchmark matches and free-provider estimates. Durable per-key accounting and daily/monthly request/token/cost quotas are implemented with atomic reservations, JSON/SSE reconciliation, conservative cancellation estimates and restart recovery. Bounded persistent activity history/SSE, safe structured logs and optional rotating files are implemented. Helper instructions now match the downloaded platform filename, include executable permissions and correct POSIX/PowerShell argument quoting, and provide manual platform selection and completion/retry guidance. Final acceptance and deployment recovery checks remain pending.
-
-Future work also includes MCP aggregation and a skills library; a TUI with CLI/web feature parity; multiple users with usage tracking, quotas and allowed providers/models/tools/skills; Hermes and Pi plugins.
+Database-backed settings, persistent revisions, explicit transactional YAML import, and staged credential validation are implemented on `feat/gateway-v1` in `/tmp/torii-gateway-v1`. Normal startup and CLI commands use SQLite; fresh databases use first-run defaults. Automatic console saves and confirmation-based provider dialogs are implemented and tested, including serialized pending saves and conflict draft preservation. Persistent cookie login is implemented and tested for expiry, revocation, CSRF, origin and trusted proxy security. Models controls now persist by provider-qualified ID, filter discovery/Smart/direct dispatch, protect the active classifier, and expose existing benchmark matches and free-provider estimates. Durable per-key accounting and daily/monthly request/token/cost quotas are implemented with atomic reservations, JSON/SSE reconciliation, conservative cancellation estimates and restart recovery. Bounded persistent activity history/SSE, safe structured logs and optional rotating files are implemented. Helper instructions now match the downloaded platform filename, include executable permissions and correct POSIX/PowerShell argument quoting, and provide manual platform selection and completion/retry guidance. Full Go/race, vet/build, console/release validation, generated assets, local documentation links, and disposable non-root persistence/recovery checks pass. Acceptance also found and fixed SQLite snapshot-upgrade failures during concurrent activity and credential writes, and verified preservation of large classifier payloads. The authorized live upgrade remains pending its stopped backup and explicit import.
 
 Current user-visible support is in [Features](../reference/features.md), with
 contracts in [Design](design.md). Old Version 1/2 labels no longer define support.
 
 ## Active work
 
-No implementation milestone is currently in progress. The Smart-first catalog
+v1 implementation and isolated acceptance checks are complete; the authorized live upgrade is in progress. The Smart-first catalog
 repair and configuration revision protection are deployed and validated.
 Hermes remains unchanged as requested; its model-label formatting and custom
 endpoint Fast controls remain outside scope. Its saved-endpoint re-test also
 requires re-entering the actual key rather than a credential preview.
 
 ## Pending release checks and future work
+
+- MCP aggregation and a skills library.
+- A TUI with CLI and web-console feature parity.
+- Multiple users with usage tracking, quotas and allowed providers/models/tools/skills.
+- Hermes plugin.
+- Pi plugin.
 
 - Before publishing a release, rerun the CI gate and disposable container
   persistence/recovery check, complete compatibility notes, verify all artifacts,
@@ -31,8 +35,7 @@ requires re-entering the actual key rather than a credential preview.
   to actual release assets rather than claiming a release exists.
 - Docker, macOS, and Windows native/service workflows need validation on their
   respective hosts; documented build targets are not platform test results.
-- Future scope, currently unimplemented: administrator password reset, multi-user
-  administration, Authentik/OIDC, automated master-key rotation, stateful Responses,
+- Future scope, currently unimplemented: administrator password reset, Authentik/OIDC, automated master-key rotation, stateful Responses,
   automatic updater, and MCP/tool/skill gateways.
 - Performance measurements beyond the transparent dispatch microbenchmark require
   a reproducible harness; no production answer-quality, savings, actual billing,

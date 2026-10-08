@@ -23,13 +23,12 @@ Interactive `serve` prompts for a username/password. Unattended launches print
 a 30-minute setup code used in the console. Alternatively, run:
 
 ```sh
-./bin/gateway admin create --config ./config.yaml
+./bin/gateway admin create --database ./state/torii.db
 ```
 
 This prompts for a password of at least 12 characters and shows a new gateway key
 once. It cannot replace an existing administrator. The running gateway notices
-local administrator creation without a restart. Basic login is held in browser
-memory; reload requires signing in again. Use HTTPS for remote access.
+local administrator creation without a restart. Browser login uses an HttpOnly cookie session; reload and gateway restarts retain login until expiry. Use HTTPS for remote access.
 
 ## Give each client its own key
 
@@ -48,7 +47,7 @@ an older backup can reactivate keys revoked after that backup; revoke them again
 Use **Credentials → Generate new API key**, or run:
 
 ```sh
-./bin/gateway admin api-key --config ./config.yaml
+./bin/gateway admin api-key --database ./state/torii.db
 ```
 
 Enter the administrator password, save the displayed new key, and update clients
@@ -59,7 +58,7 @@ retrieve an existing gateway key.
 For Podman using file secrets, the equivalent command is:
 
 ```sh
-podman compose -f compose.yaml -f compose.secrets.yaml exec torii-gateway /gateway admin api-key --config /config/config.yaml
+podman compose -f compose.yaml -f compose.secrets.yaml exec torii-gateway /gateway admin api-key --database /data/torii.db
 ```
 
 Docker users use their usual base, Docker, and secret override files.
@@ -74,8 +73,8 @@ IDs; benchmark keys belong on **Benchmarks**, not in the gateway client key list
 Advanced operators can use the administrator credential API or local commands:
 
 ```sh
-./bin/gateway credentials replace --config ./config.yaml --id STORED_ID
-./bin/gateway credentials delete --config ./config.yaml --id STORED_ID
+./bin/gateway credentials replace --database ./state/torii.db --id STORED_ID
+./bin/gateway credentials delete --database ./state/torii.db --id STORED_ID
 ```
 
 Replace `STORED_ID` with an actual credential ID. Commands verify the admin
@@ -85,7 +84,7 @@ ID requires saving/reloading config. Deletion prevents connections using that
 secret. Protected system/OAuth/client-key records cannot be modified through
 this generic credential interface; use provider login for OAuth replacement.
 
-Persisted YAML stores only references such as `bearer_token: {credential: ID}`.
+Persisted settings store only references such as `bearer_token: {credential: ID}`.
 Literal `value`, `env`, and `file` provider secrets in a saved file are rejected.
 Transient authenticated console submissions are encrypted before persistence.
 See [API](../reference/api.md) and [CLI](../reference/cli.md) for advanced management.

@@ -9,7 +9,7 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Page | Purpose |
 | --- | --- |
 | Overview | Inspect the current gateway and model summary |
-| Server | Listener and database path settings |
+| Server | Listener setting and database bootstrap information |
 | Providers | Add/test inference and classifier providers; subscription login |
 | Models | Enable models and inspect capabilities, pricing and benchmark freshness |
 | Routing | Smart routing, classifier selection/tuning, session failure policy |
@@ -32,6 +32,6 @@ Torii validates a replacement runtime and atomically commits settings and submit
 
 Listener changes require restart. Database paths and master-key inputs are bootstrap CLI/environment options. [Configuration](../reference/configuration.md) describes all fields.
 
-Browser reload/sign-out loses unsaved drafts. Administrator login uses an HttpOnly, SameSite=Lax cookie with a seven-day default expiry. It survives browser reloads and gateway restarts. Sign out revokes the session. Saved
+Session expiry preserves drafts for reauthentication. Browser reload/sign-out loses unsaved drafts. Administrator login uses an HttpOnly, SameSite=Lax cookie with a seven-day default expiry. It survives browser reloads and gateway restarts. Sign out revokes the session. Saved
 classifier tuning and advanced source settings survive configuration saves.
 For first-time setup, follow [Getting Started](../getting-started.md).

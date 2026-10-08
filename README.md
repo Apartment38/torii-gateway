@@ -28,18 +28,8 @@ umask 077
 go build -trimpath -o ./bin/gateway ./cmd/gateway
 ollama pull llama3.2
 openssl rand -hex 32 > secrets/torii_db_key
-cat > config.yaml <<'YAML'
-server:
-  listen: 127.0.0.1:8080
-state:
-  database_path: ./state/torii.db
-providers:
-  - id: local
-    type: ollama
-    base_url: http://127.0.0.1:11434
-YAML
 export TORII_DB_KEY_FILE="$PWD/secrets/torii_db_key"
-./bin/gateway serve --config ./config.yaml
+./bin/gateway serve --database ./state/torii.db --listen 127.0.0.1:8080
 ```
 
 Generate the master key only for a new installation. Back it up separately from
@@ -47,7 +37,8 @@ Generate the master key only for a new installation. Back it up separately from
 password of at least 12 characters when prompted. Save the generated API key;
 it is shown once.
 
-Open <http://127.0.0.1:8080/> and sign in. In another terminal, replace the key
+Open <http://127.0.0.1:8080/> and sign in. Add an Ollama provider named `local`
+with URL `http://127.0.0.1:11434` and confirm **Save provider**. In another terminal, replace the key
 placeholder with your generated key, then send a request:
 
 ```sh

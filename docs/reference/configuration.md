@@ -4,7 +4,7 @@ Settings and their revisions are stored in SQLite. Use `gateway config import --
 
 `router.catalog_overrides` stores the same descriptor array previously read from `router.catalog_file`; import reads and embeds that file. Optional CA files remain external resources. Configuration mutations validate a candidate runtime and atomically commit its settings, revision, and submitted encrypted credentials before publishing it. Failed changes preserve persisted and active settings.
 
-Torii reads one YAML document. Unknown fields and multiple documents are rejected.
+The import and configuration-management interfaces accept the schema below. Unknown fields and multiple documents are rejected. Normal startup loads the stored settings document from SQLite.
 The [complete example](../../config.example.yaml) is a starting point; a native
 installation must change its `/data/torii.db` path to writable local storage.
 [Console](../guides/console.md) saves use these same validation rules.
@@ -20,10 +20,10 @@ Optional defaults refer to code defaults when omitted, not enabled example value
 | Field | Type/default | Rules and purpose |
 | --- | --- | --- |
 | `server.listen` | Required string | TCP `host:port`; `127.0.0.1:8080` local, `0.0.0.0:8080` inside container |
-| `state.database_path` | String, `/data/torii.db` | Local filesystem path, overridden by `TORII_DB_PATH`; SQLite URIs/in-memory paths are not supported |
+| `state.database_path` | String, `/data/torii.db` | Legacy import bootstrap path; normal commands select `--database`, then `TORII_DB_PATH`, then `/data/torii.db`; SQLite URIs/in-memory paths are not supported |
 | `providers` | List, empty allowed | Unique provider IDs; inference needs an eligible physical model |
 
-Listener/database changes require an offline edit and restart. Master keys,
+Listener changes require a restart; database changes require a startup-option change and restart. Master keys,
 administrator login, and gateway API keys are never YAML settings.
 `server.authentication` and `state.directory` are obsolete and rejected.
 
@@ -85,7 +85,8 @@ Proxy-Connection, Transfer-Encoding, Upgrade, or X-Request-Id.
 | Field under `router` | Type/default | Rules and purpose |
 | --- | --- | --- |
 | `model_name` | String, `smart` | Only `smart` accepted |
-| `catalog_file` | String, absent | Strict JSON array of catalog descriptors applied after bundled/live metadata; no newlines |
+| `catalog_file` | String, absent | Legacy import only: strict JSON descriptor array imported into `catalog_overrides` |
+| `catalog_overrides` | Descriptor array, empty | Persistent provider-qualified metadata and pricing overrides, applied after bundled/live metadata |
 | `allow_paid_models` | Boolean, true | Hard gate for smart paid candidates; explicit model requests bypass smart |
 | `classifier.type` | String, absent | `disabled`, `model`, `laya`, `embedding`, `jev`; absent means no configured classifier |
 | `classifier.model` | String, conditional | Physical `provider/model` for connected `model`/`laya`; provider-local model for typed/embedding transport; never `smart` |

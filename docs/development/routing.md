@@ -68,13 +68,13 @@ Supported question names are `task_type`, `complexity`, `tools`, `vision`,
 `general`, `conversation`, `coding`, `sysadmin`, `reasoning`, `math`, `research`,
 `summarization`, `extraction`, `creative`, and `translation`. Complexity options
 are `low`, `medium`, and `high`. Noul criteria use `true` and `false` (quote these
-keys in YAML), and thresholds may reference only the five noul questions.
+keys in settings), and thresholds may reference only the five noul questions.
 
 Overrides merge into the built-in rubrics; they do not remove options. Nonempty
 instructions and criterion descriptions are limited to 4,000 characters, and
 the serialized question overrides are limited to 32 KiB. Unknown questions or
 options are rejected when validating configuration. Server validation remains
-authoritative when editing YAML or submitting console settings.
+authoritative when importing YAML or submitting console settings.
 
 The console always saves `allow_paid_models` as an explicit boolean, so an
 unchecked policy stays false after reload.

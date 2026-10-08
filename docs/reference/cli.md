@@ -12,7 +12,7 @@ commands exit zero. A successful benchmark refresh may still report partial fail
 | `gateway version` | Print build version, commit/time, and supported SQLite schema range; no config/master key needed |
 | `gateway serve --database PATH` | Open database settings, perform first admin setup, discover providers, serve until shutdown |
 | `gateway config validate --config PATH` | Strict YAML/schema validation without starting the server or querying providers; stored references are checked structurally |
-| `gateway models --database PATH` | Open database, query configured providers, print their model IDs and `smart`; discovery failures fail command; may include classifier-provider models unlike public inference catalog |
+| `gateway models --database PATH` | Open database, query configured providers, print `smart` first, followed by enabled model IDs; discovery failures fail command; may include classifier-provider models unlike public inference catalog |
 | `gateway healthcheck --url URL` | Query health URL (default `http://127.0.0.1:8080/healthz`); nonzero on failure |
 | `gateway admin create --database PATH [--username NAME]` | Create the one administrator, prompt/confirm password, display newly created API key once; fails if admin already exists |
 | `gateway admin api-key --database PATH [--username NAME]` | Verify admin password, rotate only default gateway key, display it once |

@@ -34,7 +34,7 @@ one local database volume; benchmark writer coordination is process-local.
 | `cmd/gateway` | CLI, lifecycle, admin setup, config persistence/reload, OAuth orchestration |
 | `cmd/torii-auth` | Browser-host loopback login and single-use remote pairing |
 | `internal/api` | Authentication, public endpoints, streaming, smart dispatch/evidence, errors |
-| `internal/config` | Strict YAML schema, references, defaults/validation |
+| `internal/config` | Strict settings/import schema, references, defaults/validation |
 | `internal/provider` | Discovery, profile-specific credentials/protocols/quota |
 | `internal/transport` | Transparent JSON model rewrite and canonical translation contract |
 | `internal/catalog` | Immutable model snapshots and tri-state metadata merge |
@@ -43,6 +43,8 @@ one local database volume; benchmark writer coordination is process-local.
 | `internal/session` | Bounded in-memory identities, context signatures, affinity |
 | `internal/quota` / `internal/usage` | Quota snapshots, aggregate accounting and background flush |
 | `internal/intelligence` | Source adapters, identities, aggregation, refresh/store manager |
+| `internal/accounting` | Durable per-key budgets, conservative reservations and JSON/SSE usage |
+| `internal/activity` | Bounded metadata history, live events and structured logs |
 | `internal/state` | Encrypted records, admin/client keys, schemas, durable runtime/benchmark data |
 | `internal/web` / `assets` | Embedded console/generated JS and project images |
 | `internal/fault`, `requestid`, `buildinfo` | Shared error taxonomy, correlation, version metadata |
@@ -69,7 +71,7 @@ HTTP header reads have a ten-second timeout; idle connections close after 60 sec
 4. Resolve an explicit public ID directly, or run smart session/classification,
    eligibility, quota/cost/intelligence ranking, and pre-stream failure policy.
 5. Dispatch via the provider-owned transport and relay JSON or stream.
-6. Record safe routing evidence/latency and non-streaming aggregate usage.
+6. Record safe routing evidence/latency and JSON/SSE operator usage.
 
 Explicit requests cannot be substituted. Smart pins are revalidated against
 current constraints; tool continuation requires its originating eligible pin.
@@ -101,11 +103,11 @@ Pairing and callback routes validate pending token/state. API keys are encrypted
 and checked using indexed digests plus encrypted-record verification. Provider
 clients isolate credentials/TLS/timeouts; redirects cannot leak secrets.
 
-YAML contains nonsensitive config/references. SQLite contains encrypted credential
+SQLite stores validated settings and revisions; YAML is accepted for explicit import and validation. SQLite contains encrypted credential
 payloads and readable benchmark/usage/host-identity data. Separate pools for
 benchmark and usage writes prevent those writes queuing credential reads, though
 SQLite still serializes competing writes. Usage is buffered/flushed every second.
-Sessions/live quota/pending login remain memory-only.
+Administrator sessions, budgets, reservations and activity metadata are durable. Routing affinity, upstream live quota caches and pending OAuth flows remain memory-only.
 
 ## Decisions and risks
 

@@ -12,7 +12,7 @@ never post provider keys, passwords, master keys, or unused setup codes.
 | Setup code expired | Restart for a new code or run `admin create` locally | Setup creates one admin and displays a key |
 | Console asks for login again | Browser reload clears its in-memory login | Sign in with administrator username/password |
 | 401 on inference | Use a current gateway key, not provider/master key; check deleted/rotated keys | Authenticated `/v1/models` succeeds |
-| 401 on config/credentials | These need administrator Basic login, not an inference key | Sign in to console or use Basic for management |
+| 401 on config/credentials | These need an administrator session or Basic login, not an inference key | Sign in to console or use Basic for management |
 | No models/provider connection fails | Check upstream service, URL, credential, and installed models | Provider connection test returns actual models |
 | Host Ollama unavailable from container | Use host gateway alias; Ollama must bind to a reachable interface and firewall must allow it | Host `/api/tags` and Torii connection test succeed |
 | Console save fails with permission error | Mount the whole writable config directory with correct non-root ownership, not a read-only single file | Save/reload and re-read active config |

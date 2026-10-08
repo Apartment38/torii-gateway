@@ -9,8 +9,8 @@ combinations are in [Provider support](providers.md).
 | Boundary | Authorization |
 | --- | --- |
 | `/v1/*` inference and model routes | `Authorization: Bearer GATEWAY_KEY` |
-| Config, provider tests/login/status/helper download, credential/client-key management | Administrator HTTP Basic (`curl -u USERNAME`, prompts for password) |
-| Intelligence and session deletion | Administrator Basic or gateway bearer key |
+| Config, provider tests/login/status/helper download, credential/client-key management | Administrator cookie session (CSRF required for writes) or HTTP Basic (`curl -u USERNAME`, prompts for password) |
+| Intelligence and session deletion | Administrator session/Basic or gateway bearer key |
 | Static console, `/healthz`, setup status | Public |
 | Initial setup write | Unused 30-minute setup code, only while no administrator exists |
 | Remote login session/import | One-time pairing bearer token (10-minute pending session), not an inference key |
@@ -87,8 +87,7 @@ and multiple tags are rejected. This is required for API scripts as well as the
 console, including the POST alias.
 
 Every successful save advances the revision, including an unchanged document.
-Read again before preparing another save. Meaningful external YAML edits and
-gateway restarts invalidate earlier revisions. On conflict, reload and reconcile
+Read again before preparing another save. Revisions persist across restarts; successful changes advance them. Normal operation never reads external YAML edits. On conflict, reload and reconcile
 your draft; do not fetch a new revision merely to retry the old full document.
 The console preserves conflicted drafts. Copy your edits before choosing
 **Refresh config**, which discards the local draft.
@@ -180,7 +179,7 @@ call. These headers expose safe evidence, not prompts or full classifier context
 
 ## Administrator browser sessions
 
-`POST /gateway/v1/session` accepts `{username,password}` and sets an opaque HttpOnly, SameSite=Lax cookie. Only its hash is stored in SQLite; expiry defaults to seven days (`server.admin_session_ttl`, positive Go duration up to `720h`). `GET` returns username, expiry and `csrf_token`; `DELETE` revokes the session and clears its cookie. Browser mutations must send `X-CSRF-Token` from the session response and a matching Origin when present. Cross-site requests are denied. Logout and administrator record changes invalidate sessions. Basic administrator authentication remains available for scripts; inference requires a Bearer key.
+`POST /gateway/v1/session` returns HTTP 201, accepts `{username,password}` and sets an opaque HttpOnly, SameSite=Lax cookie. Only its hash is stored in SQLite; expiry defaults to seven days (`server.admin_session_ttl`, positive Go duration up to `720h`). `GET` returns username, expiry and `csrf_token`; `DELETE` revokes the session and clears its cookie. Browser mutations must send `X-CSRF-Token` from the session response and a matching Origin when present. Cross-site requests are denied. Logout and administrator record changes invalidate sessions. Basic administrator authentication remains available for scripts; inference requires a Bearer key.
 
 Cookies are Secure on direct HTTPS and when the immediate peer belongs to an explicitly configured `server.trusted_proxies` CIDR and sends `X-Forwarded-Proto: https`. Untrusted forwarding headers have no effect. Direct HTTP remains supported. `/login` is the dedicated login page; first-run setup stays at the console root.
 

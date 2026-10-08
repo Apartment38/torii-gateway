@@ -44,6 +44,16 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
+The premium console redesign is active on `feat/premium-console` in
+`/tmp/torii-premium-console`. Separate visual-shell and workflow builders are
+paired with independent running-browser review against Routerly screenshots and
+workflow documents. The first revision replaces the decorative overview with
+live state, adds a searchable compact model catalog, and clarifies provider,
+activity and accounting screens. Disposable SQLite and controlled local upstreams
+provide test data. Baseline console and Go web/gateway tests pass.
+The [live visual review page](evaluations/console-design/index.html) records
+screenshots and critique; it does not establish general product superiority.
+
 V1 implementation and authorized rollout are complete. Release publication and
 platform-native checks remain below. The Smart-first catalog repair and
 configuration revision protection are deployed and validated.

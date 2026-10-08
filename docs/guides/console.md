@@ -12,11 +12,13 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Server | Listener setting and database bootstrap information |
 | Providers | Add/test inference and classifier providers; subscription login |
 | Models | Enable models and inspect capabilities, pricing and benchmark freshness |
-| Routing | Smart routing, classifier selection/tuning, session failure policy |
+| Smart routing | Smart routing, classifier selection/tuning, session failure policy |
 | Benchmarks | Enable sources, enter source keys, refresh and inspect scores |
-| Credentials | Create/revoke client API keys and rotate the default key |
+| API keys | Create/revoke client API keys and rotate the default key |
 | Activity | Recent metadata-only request events and live routing/completion updates |
-| State & Quota | Inspect usage and allowance/quota state |
+| Usage & quota | Inspect usage and allowance/quota state |
+
+The overview links live provider, enabled-model, current UTC request, and routing summaries to their detailed pages. The model catalog supports search, provider and enablement filters; **Inspect metadata** expands full capabilities and benchmark provenance. **Usage & quota** shows the chosen client scope and UTC period without combining daily and monthly totals.
 
 The console supports light and dark themes. It loads the active configuration
 when you sign in. Static assets are public, but configuration and credential

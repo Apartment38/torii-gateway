@@ -1250,3 +1250,44 @@ test("session expiry and failed reauthentication preserve settings drafts", asyn
   assert.equal(app.run('providers[0].id'),"draft-provider");
   assert.equal(app.run('configurationRevision'),"revision");
 });
+
+test("overview request counts exclude model attempts and monthly totals",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"local",type:"ollama"}];overviewModels=[{id:"local/a",enabled:true},{id:"local/b",enabled:false}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:3},{key_id:"*",period:"2026-10-08",model:"local/a",requests:12},{key_id:"*",period:"2026-10",model:"",requests:99},{key_id:"client",period:"2026-10-08",model:"",requests:3}];renderOverview()');
+ const summary=app.run('document.querySelector("#overview-summary").innerHTML');
+ assert.match(summary,/Requests today<\/span><strong class="metric-value">3<\/strong>/);
+ assert.match(summary,/Available models<\/span><strong class="metric-value">1<\/strong>/);
+ assert.match(summary,/href="#models"/);
+});
+
+test("model catalog combines text, provider and enabled filters",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('physicalModels=[{id:"a/fast",provider_id:"a",enabled:true},{id:"a/deep",provider_id:"a",enabled:false},{id:"b/fast",provider_id:"b",enabled:true}];modelSearch="fast";modelProviderFilter="a";modelStatusFilter="enabled"');
+ assert.deepEqual(Array.from(app.run('filteredPhysicalModels().map(m=>m.id)')),["a/fast"]);
+ app.run('modelStatusFilter="disabled"');
+ assert.equal(app.run('filteredPhysicalModels().length'),0);
+ app.run('modelSearch="DEEP"');
+ assert.deepEqual(Array.from(app.run('filteredPhysicalModels().map(m=>m.id)')),["a/deep"]);
+});
+
+test("usage summary separates client totals from model usage and uses current selected period",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('document.querySelector("#budget-scope").value="*";usageData={usage:[{key_id:"client",period:"2026-10-08",model:"",requests:2},{key_id:"client",period:"2026-10-08",model:"local/a",requests:0,input_tokens:100,output_tokens:20,estimated_cost:.5},{key_id:"*",period:"2026-10-08",model:"",requests:2},{key_id:"client",period:"2026-10",model:"",requests:80}]};renderUsagePage()');
+ let html=app.run('document.querySelector("#usage-list").innerHTML');
+ assert.match(html,/Client requests<\/span><strong class="metric-value">2<\/strong>/);
+ assert.match(html,/Input tokens<\/span><strong class="metric-value">100<\/strong>/);
+ app.run('usagePeriod="monthly";renderUsagePage()');
+ html=app.run('document.querySelector("#usage-list").innerHTML');
+ assert.match(html,/Client requests<\/span><strong class="metric-value">80<\/strong>/);
+});
+
+test("empty activity and unavailable metadata stay explicit",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('renderActivity()');
+ assert.match(app.run('document.querySelector("#activity-list").innerHTML'),/Ready for your first request/);
+ app.run('activityRows=[{at:"invalid",request_id:"<unsafe>",kind:"request",unknown_cost:true}];renderActivity()');
+ const html=app.run('document.querySelector("#activity-list").innerHTML');
+ assert.match(html,/&lt;unsafe&gt;/);
+ assert.match(html,/Unknown/);
+ assert.doesNotMatch(html,/<unsafe>/);
+});

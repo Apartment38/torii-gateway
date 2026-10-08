@@ -6,54 +6,52 @@
     <meta name="theme-color" content="#071a35" />
     <title>Torii Gateway Console</title>
     <link rel="icon" href="/web/torii-gateway-icon.png" />
-    <link rel="stylesheet" href="/web/styles.css?v=12" />
+    <script>try{document.documentElement.dataset.theme=localStorage.getItem("torii-theme")||"light"}catch{}</script>
+    <link rel="stylesheet" href="/web/styles.css?v=13" />
   </head>
   <body>
     <dialog id="login-dialog"><form id="login-form"><h2>Sign in to Torii Gateway</h2><p>Use your administrator account. Login uses a persistent, secure cookie session.</p><label>Username<input id="login-username" autocomplete="off" required /></label><label>Password<input id="login-password" type="password" autocomplete="off" required /></label><p id="login-error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form></dialog>
     <dialog id="setup-dialog"><form id="setup-form"><h2>Create your administrator</h2><p>Use the one-time setup code from the gateway terminal or container logs. A new API key will be displayed only once; save it securely. An imported key is preserved without being shown again.</p><label>Setup code<input id="setup-code" type="password" autocomplete="off" required /></label><label>Choose username<input id="setup-username" pattern="[a-zA-Z0-9._-]{1,64}" maxlength="64" autocomplete="off" required /></label><label>Choose password (at least 12 characters)<input id="setup-password" type="password" minlength="12" autocomplete="off" required /></label><label>Confirm password<input id="setup-confirm" type="password" autocomplete="off" required /></label><p id="setup-error" role="alert"></p><button class="button primary" type="submit">Create administrator</button></form></dialog>
     <dialog id="new-key-dialog"><h2>Save your new API key</h2><p id="new-key-warning">This key is displayed only once. Save it securely before closing this dialog.</p><label>API key<textarea id="new-api-key" readonly autocomplete="off"></textarea></label><button id="close-new-key" class="button primary" type="button">I have saved it</button></dialog>
     <dialog id="create-key-dialog"><form id="create-key-form"><h2>Create a gateway API key</h2><p>Give this key a name to identify its client. The generated key will be displayed only once.</p><label data-tooltip="A name to identify the client that will use this key. This name is metadata, not the secret key.">API key name<input id="client-key-name" maxlength="128" autocomplete="off" placeholder="Hermes agent" required /></label><p id="create-key-error" role="alert"></p><button id="generate-client-key" class="button primary" type="submit">Generate API key</button><button id="cancel-create-key" class="button quiet" type="button">Cancel</button></form></dialog>
+    <a class="skip-link" href="#top">Skip to workspace</a>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="#top" aria-label="Torii Gateway home">
-          <img src="/web/torii-gateway-icon.png" alt="" />
-          <span>Torii <b>Gateway</b></span>
-        </a>
-        <p class="eyebrow">Control plane</p>
-        <nav id="nav" aria-label="Configuration sections">
-          <a class="nav-link active" href="#overview">Overview</a>
-          <a class="nav-link" href="#server">Server</a>
-          <a class="nav-link" href="#providers">Providers</a>
-          <a class="nav-link" href="#models">Models</a>
-          <a class="nav-link" href="#routing">Routing</a>
-          <a class="nav-link" href="#intelligence">Benchmarks</a>
-          <a class="nav-link" href="#credentials">Credentials</a>
-          <a class="nav-link" href="#activity">Activity</a>
-          <a class="nav-link" href="#state">State &amp; quota</a>
+        <a class="brand" href="#overview" aria-label="Torii Gateway home"><img src="/web/torii-gateway-icon.png" alt="" /><span>Torii Gateway<small>MODEL CONTROL PLANE</small></span></a>
+        <div class="workspace-label"><span class="workspace-avatar">T</span><span>Gateway workspace<small>Administrator console</small></span><span class="workspace-chevron">⌄</span></div>
+        <nav id="nav" aria-label="Configuration sections"><p class="nav-caption">Workspace</p>
+          <a class="nav-link active" href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
+          <a class="nav-link" href="#providers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4m8-8 4 4-4 4M14 5l-4 14"/></svg><span>Providers</span></a>
+          <a class="nav-link" href="#models"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/><rect x="10" y="10" width="4" height="4" rx="1"/></svg><span>Models</span></a>
+          <a class="nav-link" href="#routing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20v-8a6 6 0 0 1 6-6h7m-4-4 4 4-4 4M6 12h6a6 6 0 0 1 6 6v2"/></svg><span>Smart routing</span></a>
+          <a class="nav-link" href="#intelligence"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 15V9m5 6V4m5 11v-5"/></svg><span>Benchmarks</span></a>
+          <p class="nav-caption nav-divider">Operations</p>
+          <a class="nav-link" href="#activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h5l3-8 4 16 3-8h5"/></svg><span>Activity</span></a>
+          <a class="nav-link" href="#state"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M9 10v9"/></svg><span>Usage & quota</span></a>
+          <a class="nav-link" href="#credentials"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="5"/><path d="m12 13 8 8m-5-5 3-3m0 6 3-3"/></svg><span>API keys</span></a>
+          <a class="nav-link" href="#server"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01m4-11h6m-6 11h6"/></svg><span>Server</span></a>
         </nav>
-        <section class="sidebar-account" aria-label="Current user"><p class="eyebrow">Account</p><span id="signed-in-user" role="status" aria-live="polite">Not signed in</span></section>
+        <section class="sidebar-account" aria-label="Current user"><span class="account-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M6 20v-2a6 6 0 0 1 12 0v2"/></svg></span><div><span id="signed-in-user" role="status" aria-live="polite">Not signed in</span><small>Administrator</small></div></section>
         <div class="sidebar-foot">
           <span class="status-dot"></span>
-          <span>Gateway configuration</span>
+          <span>Torii Gateway<span class="sidebar-version"> / console</span></span>
         </div>
       </aside>
       <main id="top" class="content">
-        <header class="topbar">
+        <header class="topbar"><div class="topbar-context"><span class="context-icon">T</span><span>Workspace</span><span class="context-separator">/</span><strong>Gateway</strong></div>
           <div class="top-actions">
-            <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme">☾</button>
+            <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme" title="Toggle light and dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 13a9 9 0 0 1-9.8-9.8A9 9 0 1 0 20.8 13Z"/></svg></button>
             <button id="console-login" class="button secondary" type="button">Sign in</button>
             <button id="console-logout" class="button quiet" type="button" hidden>Sign out</button>
-            <button id="reset-button" class="button quiet" type="button">Refresh config</button>
+            <button id="reset-button" class="button quiet" type="button" title="Reload gateway settings">Refresh</button>
             <button id="save-button" class="button primary" type="button" hidden>Retry save</button>
           </div>
         </header>
 
-        <section id="overview" class="page hero card reveal">
-          <div class="hero-copy">
-            <span class="pill">Configuration studio</span>
-            <h2>Make the path through your models feel intentional.</h2>
-          </div>
-          <img class="hero-logo" src="/web/torii-gateway-logo.png" alt="Torii Gateway wave and torii logo" />
+        <section id="overview" class="page overview-page">
+          <div class="section-heading page-heading"><div><p class="eyebrow">Your model infrastructure, at a glance</p><h2>Overview</h2><p class="page-description">A clear view of your gateway, from connected providers to every request.</p></div><a class="button secondary" href="#providers">Manage providers <span aria-hidden="true">↗</span></a></div>
+          <div id="overview-summary" aria-label="Gateway summary"></div>
+          <div id="overview-workspace"></div>
         </section>
 
         <form id="config-form" novalidate>
@@ -65,7 +63,7 @@
             <div class="subcard"><p>Rotate the default gateway API key. The previous default key stops working immediately; named client keys are unaffected.</p><div><p>Gateway API key</p><button id="generate-api-key" class="button secondary" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Generate new API key</button></div></div>
           </section>
           <section id="server" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">01 / Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
+            <div class="section-heading"><div><p class="eyebrow">Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
             <div class="grid two">
               <label data-tooltip="The address and port where Torii listens for HTTP requests. In a container, retain 0.0.0.0:8080 and change the published host port through TORII_PORT or Compose.">Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
               <label data-tooltip="The SQLite database for credentials, usage, Codex identity and benchmarks, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
@@ -75,16 +73,16 @@
           </section>
 
           <section id="providers" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">02 / Upstreams</p><h2>Providers</h2></div><button id="add-provider" class="button secondary" type="button">＋ Add provider</button></div>
+            <div class="section-heading"><div><p class="eyebrow">Connections</p><h2>Providers</h2></div><button id="add-provider" class="button secondary" type="button">＋ Add provider</button></div>
             <div id="providers-empty-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span>No providers have been configured. Click <strong>Add provider</strong> to connect an API or sign in to a subscription. Models will become available after you configure a provider and save.</span></div>
             <div id="classifier-provider-notice" class="notice" role="status" hidden><span>◎</span><span>No classifier models are available. Add a provider with type <strong>TypeSafe AI · Jev</strong> or <strong>Jev compatible · Laya / custom</strong>, then test its connection to discover models for Smart Routing.</span></div>
             <div id="providers-list" class="provider-list"></div>
           </section>
 
-          <section id="models" class="page section-block"><div class="section-heading"><h2>Models</h2><button id="refresh-models" type="button" class="button secondary">Refresh models</button></div><p>Enable eligible models for discovery and Smart routing. Benchmark scores use established identities and explicit aliases; missing data stays unknown.</p><div id="models-list"></div></section>
+          <section id="models" class="page section-block"><div class="section-heading"><div><p class="eyebrow">Model catalog</p><h2>Models</h2></div><button id="refresh-models" type="button" class="button secondary">Refresh models</button></div><p>Enable eligible models for discovery and Smart routing. Benchmark scores use established identities and explicit aliases; missing data stays unknown.</p><div id="models-list"></div></section>
 
           <section id="routing" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">03 / Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
+            <div class="section-heading"><div><p class="eyebrow">Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
             <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
               <label data-tooltip="The virtual model name clients use to invoke smart routing. Keep this as smart unless your client contract requires another name.">Virtual model name<input name="router.model_name" value="smart" /></label>
@@ -128,10 +126,10 @@
               <pre id="benchmark-refresh-log" role="log" aria-live="polite"></pre>
             </section>
             <p id="benchmark-status" role="status" aria-live="polite">Enable and save benchmark intelligence to inspect cached results.</p>
-            <div id="benchmark-configuration" hidden>
+            <details id="benchmark-configuration" class="advanced-fields" hidden><summary>Benchmark sources · configure ingestion</summary>
               <div class="section-heading"><h3>Benchmark sources</h3><button id="inspect-benchmarks" class="button quiet" type="button">Reload cached data</button></div>
               <div id="benchmark-sources-list" class="provider-list"></div>
-            </div>
+            </details>
             <section id="benchmark-data" hidden>
               <div class="section-heading"><h3>Current model benchmark data</h3><span id="benchmark-data-count" class="section-note"></span></div>
               <div class="grid three compact-fields">
@@ -145,10 +143,10 @@
             </section>
           </section>
 
-          <section id="activity" class="page section-block"><h2>Activity</h2><p>Recent request metadata only. Prompts, responses and credentials are excluded. Usage and costs may be conservative estimates.</p><p id="activity-status" role="status">Connecting…</p><div id="activity-list"></div></section>
+          <section id="activity" class="page section-block"><div class="section-heading"><div><p class="eyebrow">Observability</p><h2>Activity</h2></div><span class="live-label"><span class="status-dot"></span> Live events</span></div><p>Recent request metadata only. Prompts, responses and credentials are excluded. Usage and costs may be conservative estimates.</p><p id="activity-status" role="status">Connecting…</p><div id="activity-list"></div></section>
 
           <section id="state" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
+            <div class="section-heading"><div><p class="eyebrow">Operations</p><h2>Usage &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
             <p>Operator accounting, not provider billing. Limits of 0 are disabled. Token budgets include classifier calls and retries. Missing usage retains conservative estimates; monetary budgets require reliable pricing or a provider marked free.</p>
             <label>Budget scope<select id="budget-scope"><option value="*">Entire gateway</option></select></label>
             <div class="grid three"><label>Daily requests<input id="budget-daily-requests" type="number" min="0" step="1" value="0"></label><label>Daily tokens<input id="budget-daily-tokens" type="number" min="0" step="1" value="0"></label><label>Daily estimated USD<input id="budget-daily-estimated_cost" type="number" min="0" step="0.01" value="0"></label><label>Monthly requests<input id="budget-monthly-requests" type="number" min="0" step="1" value="0"></label><label>Monthly tokens<input id="budget-monthly-tokens" type="number" min="0" step="1" value="0"></label><label>Monthly estimated USD<input id="budget-monthly-estimated_cost" type="number" min="0" step="0.01" value="0"></label></div>
@@ -160,7 +158,7 @@
             <div class="subcard"><label class="quota-field" data-tooltip="Optional estimated cost limits keyed by provider/model. Enter one model = amount pair per line."><span class="subcard-title">Local quota allowances</span><span class="muted">Optional model-to-cost limits, one entry per line.</span><textarea name="router.quota.allowances" rows="4" placeholder="provider/model = 10.00"></textarea></label></div>
           </section>
         </form>
-        <footer class="footer"><span>Torii Gateway · live configuration</span><span id="save-state">Ready</span></footer>
+        <footer class="footer"><span>Changes save automatically</span><span id="save-state">Ready</span></footer>
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

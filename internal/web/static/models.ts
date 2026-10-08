@@ -1,15 +1,33 @@
 let modelEnabledDraft:Record<string,boolean>={};
-async function loadModelsPage():Promise<void>{
- const output=document.querySelector<HTMLElement>("#models-list")!;
- try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(!response.ok)throw new Error("Model discovery unavailable");const data=await response.json();
- output.innerHTML=(data.models||[]).map((model:any)=>{
-  const benchmark=model.benchmark;
-  const scores=benchmark?Object.entries(benchmark.scores||{}).map(([name,value])=>`${escapeHTML(name)}: ${(Number(value)*100).toFixed(1)}%`).join(" · "):"";
-  const pricing=model.pricing||{};
-  return `<article class="subcard"><h3>${escapeHTML(model.id)}</h3><p>Provider: ${escapeHTML(model.provider_id)}</p><label class="checkbox"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" ${model.enabled?"checked":""}> Enabled</label><p>Capabilities: ${Object.entries(model.capabilities||{}).map(([name,value])=>`${escapeHTML(name)}: ${escapeHTML(String(value))}`).join(" · ")}</p><p>Estimated USD per million tokens · input: ${pricing.input_per_million??"unknown"} · output: ${pricing.output_per_million??"unknown"}</p><p>${model.benchmark_missing?"No safely matched benchmark scores available":scores}</p>${benchmark?`<p>Sources: ${(benchmark.sources||[]).map(escapeHTML).join(", ")} · ${benchmark.stale?"Stale":"Current"} · retrieved ${escapeHTML(benchmark.latest_retrieval||"unknown")} · evaluated ${escapeHTML(benchmark.latest_evaluation||"unknown")}</p>`:""}</article>`;
- }).join("")||"No physical models discovered. Add a provider first.";
- output.querySelectorAll<HTMLInputElement>("[data-model-enabled]").forEach(input=>input.addEventListener("change",async()=>{modelEnabledDraft[input.dataset.modelEnabled!]=input.checked;markDirty();if(await saveConfig())void loadModelsPage();}));
- }catch(error){output.textContent=error instanceof Error?error.message:"Models unavailable";}
+let physicalModels:any[]=[];
+let modelSearch="";
+let modelProviderFilter="";
+let modelStatusFilter="";
+function filteredPhysicalModels():any[]{const query=modelSearch.toLowerCase();return physicalModels.filter(model=>(!query||`${model.id} ${model.provider_id}`.toLowerCase().includes(query))&&(!modelProviderFilter||model.provider_id===modelProviderFilter)&&(!modelStatusFilter||Boolean(model.enabled)===(modelStatusFilter==="enabled")));}
+function renderModelRows():void{
+ const rows=document.querySelector("#model-table-body");if(!rows)return;const models=filteredPhysicalModels();
+ rows.innerHTML=models.length?models.map((model:any)=>{
+  const pricing=model.pricing||{};const supported=Object.entries(model.capabilities||{}).filter(([,v])=>v===true||v==="supported").map(([name])=>name.replace(/_/g," "));
+  const capabilities=supported.map(name=>`<span class="capability-pill">${escapeHTML(name)}</span>`).join("")||'<span class="data-secondary">Unknown</span>';
+  const scores=model.benchmark?Object.entries(model.benchmark.scores||{}).map(([name,score])=>`${name.replace(/_/g," ")} ${(Number(score)*100).toFixed(1)}%`).join(" · "):"";
+  const details=`<details class="model-details"><summary>Inspect metadata</summary><div class="model-detail-content"><p><strong>Capabilities</strong><br>${Object.entries(model.capabilities||{}).map(([name,v])=>`${escapeHTML(name.replace(/_/g," "))}: ${escapeHTML(String(v))}`).join(" · ")||"Unknown"}</p><p><strong>Context window</strong> ${consoleNumber(model.context_window)} tokens</p>${model.benchmark?`<p><strong>Benchmark scores</strong><br>${escapeHTML(scores||"No scores")}</p><p><strong>Sources</strong> ${(model.benchmark.sources||[]).map(escapeHTML).join(", ")||"Unknown"}<br>Retrieved ${escapeHTML(model.benchmark.latest_retrieval||"unknown")}<br>Evaluated ${escapeHTML(model.benchmark.latest_evaluation||"unknown")}</p>`:""}</div></details>`;
+  return `<tr><td><strong class="model-name">${escapeHTML(model.id)}</strong><span class="data-secondary">${escapeHTML(model.provider_id)}</span></td><td><div class="capability-list">${capabilities}</div></td><td class="numeric">${typeof pricing.input_per_million==="number"?`$${pricing.input_per_million.toFixed(2)}`:"—"}<span class="data-secondary">${typeof pricing.output_per_million==="number"?`$${pricing.output_per_million.toFixed(2)} output`:"Output unknown"}</span></td><td><span class="data-secondary">${escapeHTML(model.benchmark?scores.split(" · ").slice(0,2).join(" · ")||"No scores":"No matched benchmark data")}</span>${model.benchmark?`<span class="status-badge ${model.benchmark.stale?"neutral":"success"}">${model.benchmark.stale?"Stale":"Current"}</span>`:""}${details}</td><td><label class="checkbox model-enable"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" aria-label="Enable ${escapeHTML(model.id)}" ${model.enabled?"checked":""}><span>${model.enabled?"Enabled":"Disabled"}</span></label></td></tr>`;
+ }).join(""):`<tr><td colspan="5"><div class="empty-state"><strong>No models match these filters</strong><p>Try another model name or clear your filters.</p></div></td></tr>`;
+ document.querySelector("#model-count")!.textContent=`${models.length} of ${physicalModels.length} models`;
+ rows.querySelectorAll<HTMLInputElement>("[data-model-enabled]").forEach(input=>input.addEventListener("change",async()=>{modelEnabledDraft[input.dataset.modelEnabled!]=input.checked;markDirty();if(await saveConfig())void loadModelsPage();}));
 }
-
+function renderModelsPage():void{
+ const output=document.querySelector<HTMLElement>("#models-list")!;
+ if(!physicalModels.length){output.innerHTML='<div class="empty-state"><span class="empty-state-icon">◇</span><strong>Your model catalog is empty</strong><p>Connect and test a provider to discover the models available to your gateway.</p><a href="#providers" class="button primary">Connect a provider</a></div>';return;}
+ const providerIDs=[...new Set(physicalModels.map(model=>String(model.provider_id)))].sort();
+ output.innerHTML=`<div class="models-toolbar"><label class="search-field">Search models<input id="model-search" type="search" placeholder="Search by model or provider…" maxlength="256" value="${escapeHTML(modelSearch)}"></label><label>Provider<select id="model-provider-filter"><option value="">All providers</option>${providerIDs.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("")}</select></label><label>Status<select id="model-status-filter"><option value="">All models</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label><span id="model-count" class="section-note" role="status"></span></div><div class="benchmark-table-scroll"><table class="model-table"><thead><tr><th scope="col">Model / provider</th><th scope="col">Capabilities</th><th scope="col">Input / 1M tokens</th><th scope="col">Benchmark evidence</th><th scope="col">Access</th></tr></thead><tbody id="model-table-body"></tbody></table></div><p class="section-note">Prices are estimated USD per million tokens. — means unknown. Disabled models are unavailable to client discovery and routing.</p>`;
+ document.querySelector<HTMLInputElement>("#model-search")!.addEventListener("input",event=>{modelSearch=(event.target as HTMLInputElement).value;renderModelRows();});
+ const provider=document.querySelector<HTMLSelectElement>("#model-provider-filter")!;provider.value=modelProviderFilter;provider.addEventListener("change",()=>{modelProviderFilter=provider.value;renderModelRows();});
+ const status=document.querySelector<HTMLSelectElement>("#model-status-filter")!;status.value=modelStatusFilter;status.addEventListener("change",()=>{modelStatusFilter=status.value;renderModelRows();});renderModelRows();
+}
+async function loadModelsPage():Promise<void>{
+ const output=document.querySelector<HTMLElement>("#models-list")!;const login=consoleSession;const button=document.querySelector<HTMLButtonElement>("#refresh-models")!;button.disabled=true;
+ try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!response.ok)throw new Error("Model discovery unavailable. Refresh to retry.");const data=await response.json();if(login!==consoleSession)return;physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview();
+ }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load models</strong><p>${escapeHTML(error instanceof Error?error.message:"Models unavailable")}</p></div>`;}finally{button.disabled=false;}
+}
 document.querySelector("#refresh-models")!.addEventListener("click",()=>{void loadModelsPage();});

@@ -33,6 +33,34 @@ function openProviderEditor(index:number,adding=false):void{editingProvider=inde
 function cancelProviderEditor():void{if(editingProvider===null)return;if(editingOriginal)providers[editingProvider]=editingOriginal;else providers.splice(editingProvider,1);editingProvider=null;editingOriginal=null;renderProviders();}
 let signedInUsername = "";
 let benchmarksEnabledSaved = false;
+let overviewModels:any[]|null=null;
+let overviewUsage:any[]|null=null;
+let overviewLoading=false;
+let overviewError="";
+function consoleNumber(raw:unknown):string{return typeof raw==="number" && Number.isFinite(raw)?raw.toLocaleString():"—";}
+function consoleTime(raw:unknown):string{const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});}
+function renderOverview():void{
+ const summary=document.querySelector("#overview-summary");const workspace=document.querySelector("#overview-workspace");if(!summary||!workspace)return;
+ const enabled=providers.filter(p=>p.enabled!==false).length;
+ const models=overviewModels?.filter(m=>m.enabled);
+ // Client request totals are stored in gateway rows with an empty model. Model
+ // attempt rows include classifier/retries and must never be added to requests.
+ const daily=overviewUsage?.filter(r=>r.key_id==="*" && !r.model && /^\d{4}-\d{2}-\d{2}$/.test(r.period));
+ const requests=daily?.reduce((sum,r)=>sum+Number(r.requests||0),0);
+ const routing=loadedConfiguration.router?.classifier?.type;
+ const metrics=[{label:"Enabled providers",value:configurationLoaded?String(enabled):"—",detail:configurationLoaded?`${providers.length} configured upstreams`:"Sign in to load configuration",href:"providers"},{label:"Available models",value:overviewModels?String(models?.length||0):"—",detail:overviewModels?`${overviewModels.length} discovered · enabled for routing`:overviewLoading?"Discovering model catalog…":"Model catalog not loaded",href:"models"},{label:"Requests today",value:overviewUsage?consoleNumber(requests):"—",detail:"Client requests · current UTC day",href:"activity"},{label:"Routing",value:configurationLoaded?(routing && routing!=="disabled"?"Smart":"Deterministic"):"—",detail:configurationLoaded?(routing && routing!=="disabled"?"Classifier-assisted selection":"Capability and policy selection"):"Configuration not loaded",href:"routing"}];
+ summary.className="metric-grid";summary.innerHTML=metrics.map(m=>`<a class="metric-card" href="#${m.href}"><span class="metric-label">${m.label}</span><strong class="metric-value">${escapeHTML(m.value)}</strong><span class="metric-detail">${escapeHTML(m.detail)}</span></a>`).join("");
+ workspace.className="overview-grid";
+ workspace.innerHTML=`<section class="overview-panel"><div class="section-heading"><h3>Connected providers</h3><a href="#providers">Manage providers →</a></div>${providers.length?providers.slice(0,6).map(p=>{const status=providerStatuses.get(p);const count=overviewModels?.filter(m=>m.provider_id===p.id).length;return `<div class="overview-provider-row"><span class="provider-avatar">${escapeHTML(String(p.id||"P").slice(0,1).toUpperCase())}</span><div><strong>${value(p,"id")}</strong><span class="data-secondary">${escapeHTML(providerTypeLabel(String(p.type)))}</span></div><span class="status-badge ${p.enabled===false?"neutral":status?.state||"neutral"}">${p.enabled===false?"Disabled":status?.state==="success"?"Connected":status?.state==="failure"?"Needs attention":status?.state==="pending"?"Checking…":"Not checked"}</span>${count===undefined?"":`<span class="data-secondary">${count} models</span>`}</div>`;}).join(""):`<div class="empty-state"><strong>${configurationLoaded?"Your gateway starts here":"Welcome to your control plane"}</strong><p>${configurationLoaded?"Connect an upstream to discover models and start routing requests.":"Sign in to manage providers, model access and routing."}</p><a class="button primary" href="${configurationLoaded?"#providers":"/login"}">${configurationLoaded?"Connect a provider":"Sign in"}</a></div>`}</section><section class="overview-panel"><h3>Your next step</h3><a class="workflow-link" href="#providers"><span class="workflow-number">01</span><span><strong>Connect your providers</strong><span class="data-secondary">API endpoints and subscription accounts</span></span><span>→</span></a><a class="workflow-link" href="#models"><span class="workflow-number">02</span><span><strong>Choose your model catalog</strong><span class="data-secondary">Inspect capabilities and control model access</span></span><span>→</span></a><a class="workflow-link" href="#routing"><span class="workflow-number">03</span><span><strong>Shape your routing policy</strong><span class="data-secondary">Choose intelligent or deterministic selection</span></span><span>→</span></a><a class="workflow-link" href="#credentials"><span class="workflow-number">04</span><span><strong>Create a client API key</strong><span class="data-secondary">Give each application its own gateway access</span></span><span>→</span></a></section>${overviewError?`<p class="notice" role="status">${escapeHTML(overviewError)}</p>`:""}`;
+}
+function providerTypeLabel(type:string):string{return ({openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"} as Record<string,string>)[type]||type;}
+async function loadOverview():Promise<void>{
+ if(!consoleSession||!configurationLoaded||overviewLoading)return;const login=consoleSession;overviewLoading=true;overviewError="";renderOverview();
+ const results=await Promise.allSettled([gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()}),gatewayFetch("/gateway/v1/usage",{headers:await authProvider.headers()})]);
+ if(login!==consoleSession){overviewLoading=false;return;}
+ for(let i=0;i<results.length;i++){const result=results[i];try{if(result.status!=="fulfilled"||!result.value.ok)throw new Error();const data=await result.value.json();if(login!==consoleSession)return;if(i===0)overviewModels=data.models||[];else overviewUsage=data.usage||[];}catch{overviewError="Some gateway data could not be loaded. Open Models or State & quota to retry.";}}
+ overviewLoading=false;renderOverview();
+}
 function updateConsoleIdentity(): void {
   const signedIn = Boolean(consoleSession && signedInUsername);
   document.querySelector<HTMLButtonElement>("#console-login")!.hidden = signedIn;
@@ -52,6 +80,7 @@ function signOutConsole(): void {
   document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();
   document.querySelector<HTMLInputElement>("#client-key-name")!.value = "";
   providers = [];
+  overviewModels=null;overviewUsage=null;overviewLoading=false;overviewError="";physicalModels=[];usageData=null;usageKeyMetadata=[];document.querySelector("#models-list")!.textContent="";document.querySelector("#usage-list")!.textContent="";
   configurationLoaded = false;
   classifierQuestionOverrides = {};
   classifierNoulThresholds = {};
@@ -178,6 +207,7 @@ function setProviderStatus(provider: Record<string, string | boolean>, status: P
   const button = providerList.querySelector<HTMLButtonElement>(`[data-test="${index}"]`);
   if (button) button.disabled = status.state === "pending";
   updateClassifierOptions();
+  renderOverview();
 }
 
 function redactProviderKeys(message: string): string {
@@ -232,9 +262,9 @@ function renderProviders(): void {
   providers.forEach((provider, index) => { if (!provider.id && isKnownProvider(provider)) provider.id = knownProviderID(String(provider.type), index); });
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-avatar">${escapeHTML(String(provider.id||"P").slice(0,1).toUpperCase())}</span><div><span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span><span class="data-secondary">${escapeHTML(providerTypeLabel(String(provider.type)))}${provider.enabled===false?" · Disabled":""}</span></div></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
-      <dialog data-provider-dialog="${index}"><h3>${value(provider,"id") || "Add provider"}</h3><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+      <dialog class="provider-editor" data-provider-dialog="${index}" aria-label="Edit provider"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3>${value(provider,"id") || "Add provider"}</h3><p>Connect a model API or subscription to your gateway.</p></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
@@ -259,7 +289,7 @@ function renderProviders(): void {
         <label data-tooltip="Maximum time allowed while discovering the provider model catalog. Use a Go duration such as 10s.">Discovery timeout<input data-provider="${index}" data-key="discovery_timeout" value="${value(provider,"discovery_timeout")}" placeholder="10s" /></label>
         <label class="checkbox" data-tooltip="When enabled, Torii queries the provider for its available models. Disable this only when you provide a static model list."><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label>
       </div></details>`}
-      <button class="button primary" type="button" data-confirm-provider="${index}">Save provider</button><button class="button quiet" type="button" data-cancel-provider="${index}">Cancel</button></dialog>
+      <div class="dialog-actions"><button class="button quiet" type="button" data-cancel-provider="${index}">Cancel</button><button class="button primary" type="button" data-confirm-provider="${index}">Save provider</button></div></dialog>
     </article>`).join("");
   providerList.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(button=>button.addEventListener("click",()=>{openProviderEditor(Number(button.dataset.edit));}));
   providerList.querySelectorAll<HTMLButtonElement>("[data-confirm-provider]").forEach(button=>button.addEventListener("click",async()=>{const dialog=button.closest("dialog")!;const index=editingProvider;editingProvider=null;markDirty();if(await saveConfig()){editingOriginal=null;dialog.close();}else{editingProvider=index;}}));
@@ -287,6 +317,7 @@ function renderProviders(): void {
   });
   initializeTooltips();
   updateClassifierOptions();
+  renderOverview();
   if(editingProvider!==null)providerList.querySelector<HTMLDialogElement>(`[data-provider-dialog="${editingProvider}"]`)?.showModal?.();
 }
 
@@ -437,6 +468,7 @@ async function loadServerConfig(): Promise<void> {
     applyConfig(configuration, response.headers.get("ETag") || "");
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
+    if((location.hash||"#overview")==="#overview")void loadOverview();
   } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
@@ -486,6 +518,7 @@ function navigate(): void {
     page.setAttribute("aria-hidden", String(!active));
   });
   document.querySelectorAll<HTMLAnchorElement>(".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+  if(current==="overview"){renderOverview();if(configurationLoaded)void loadOverview();}
   if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models" && configurationLoaded)void loadModelsPage();

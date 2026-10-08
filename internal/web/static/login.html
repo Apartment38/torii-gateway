@@ -1,3 +1,19 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Torii Gateway</title><link rel="stylesheet" href="/web/styles.css"></head>
-<body><main class="content"><section class="card"><h1>Sign in to Torii Gateway</h1><p>Use your administrator account. Your session lasts seven days by default.</p><form id="session-login"><label>Username<input name="username" autocomplete="username" maxlength="64" required></label><label>Password<input name="password" type="password" autocomplete="current-password" maxlength="1024" required></label><p id="error" role="alert"></p><button class="button primary" type="submit">Sign in</button></form><a href="/">First-run administrator setup</a></section></main><script type="module" src="/web/login.js"></script></body></html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0c1930"><title>Sign in · Torii Gateway</title><link rel="icon" href="/web/torii-gateway-icon.png"><script>try{document.documentElement.dataset.theme=localStorage.getItem("torii-theme")||"light"}catch{}</script><link rel="stylesheet" href="/web/styles.css?v=13"></head>
+<body>
+<main class="login-page">
+  <section class="login-brand-panel" aria-label="Torii Gateway">
+    <a class="brand" href="/" aria-label="Torii Gateway home"><img src="/web/torii-gateway-icon.png" alt=""><span>Torii Gateway<small>MODEL CONTROL PLANE</small></span></a>
+    <p class="eyebrow">One gateway. Every possibility.</p>
+    <h2>A clearer path through your models.</h2>
+    <p>Connect your providers, shape your routing, and keep every request in view.</p>
+    <span class="login-brand-foot">Your infrastructure. Your intelligence.</span>
+  </section>
+  <section class="login-form-panel"><div class="login-card">
+    <p class="eyebrow">Administrator access</p><h1>Welcome back.</h1><p>Sign in to manage your gateway.</p>
+    <form id="session-login"><label>Username<input name="username" autocomplete="username" maxlength="64" placeholder="Your administrator username" required autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password" maxlength="1024" placeholder="Enter your password" required></label><p id="error" role="alert"></p><button class="button primary" type="submit">Sign in <span aria-hidden="true">→</span></button></form>
+    <p class="login-help">Setting up a new gateway? <a href="/">Create your administrator</a></p>
+  </div></section>
+</main><script type="module" src="/web/login.js"></script>
+</body></html>

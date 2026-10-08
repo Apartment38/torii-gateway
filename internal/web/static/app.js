@@ -275,19 +275,37 @@ function initializeBenchmarks()       {
 }
 
 let modelEnabledDraft                       ={};
-async function loadModelsPage()              {
- const output=document.querySelector             ("#models-list") ;
- try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(!response.ok)throw new Error("Model discovery unavailable");const data=await response.json();
- output.innerHTML=(data.models||[]).map((model    )=>{
-  const benchmark=model.benchmark;
-  const scores=benchmark?Object.entries(benchmark.scores||{}).map(([name,value])=>`${escapeHTML(name)}: ${(Number(value)*100).toFixed(1)}%`).join(" · "):"";
-  const pricing=model.pricing||{};
-  return `<article class="subcard"><h3>${escapeHTML(model.id)}</h3><p>Provider: ${escapeHTML(model.provider_id)}</p><label class="checkbox"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" ${model.enabled?"checked":""}> Enabled</label><p>Capabilities: ${Object.entries(model.capabilities||{}).map(([name,value])=>`${escapeHTML(name)}: ${escapeHTML(String(value))}`).join(" · ")}</p><p>Estimated USD per million tokens · input: ${pricing.input_per_million??"unknown"} · output: ${pricing.output_per_million??"unknown"}</p><p>${model.benchmark_missing?"No safely matched benchmark scores available":scores}</p>${benchmark?`<p>Sources: ${(benchmark.sources||[]).map(escapeHTML).join(", ")} · ${benchmark.stale?"Stale":"Current"} · retrieved ${escapeHTML(benchmark.latest_retrieval||"unknown")} · evaluated ${escapeHTML(benchmark.latest_evaluation||"unknown")}</p>`:""}</article>`;
- }).join("")||"No physical models discovered. Add a provider first.";
- output.querySelectorAll                  ("[data-model-enabled]").forEach(input=>input.addEventListener("change",async()=>{modelEnabledDraft[input.dataset.modelEnabled ]=input.checked;markDirty();if(await saveConfig())void loadModelsPage();}));
- }catch(error){output.textContent=error instanceof Error?error.message:"Models unavailable";}
+let physicalModels      =[];
+let modelSearch="";
+let modelProviderFilter="";
+let modelStatusFilter="";
+function filteredPhysicalModels()      {const query=modelSearch.toLowerCase();return physicalModels.filter(model=>(!query||`${model.id} ${model.provider_id}`.toLowerCase().includes(query))&&(!modelProviderFilter||model.provider_id===modelProviderFilter)&&(!modelStatusFilter||Boolean(model.enabled)===(modelStatusFilter==="enabled")));}
+function renderModelRows()     {
+ const rows=document.querySelector("#model-table-body");if(!rows)return;const models=filteredPhysicalModels();
+ rows.innerHTML=models.length?models.map((model    )=>{
+  const pricing=model.pricing||{};const supported=Object.entries(model.capabilities||{}).filter(([,v])=>v===true||v==="supported").map(([name])=>name.replace(/_/g," "));
+  const capabilities=supported.map(name=>`<span class="capability-pill">${escapeHTML(name)}</span>`).join("")||'<span class="data-secondary">Unknown</span>';
+  const scores=model.benchmark?Object.entries(model.benchmark.scores||{}).map(([name,score])=>`${name.replace(/_/g," ")} ${(Number(score)*100).toFixed(1)}%`).join(" · "):"";
+  const details=`<details class="model-details"><summary>Inspect metadata</summary><div class="model-detail-content"><p><strong>Capabilities</strong><br>${Object.entries(model.capabilities||{}).map(([name,v])=>`${escapeHTML(name.replace(/_/g," "))}: ${escapeHTML(String(v))}`).join(" · ")||"Unknown"}</p><p><strong>Context window</strong> ${consoleNumber(model.context_window)} tokens</p>${model.benchmark?`<p><strong>Benchmark scores</strong><br>${escapeHTML(scores||"No scores")}</p><p><strong>Sources</strong> ${(model.benchmark.sources||[]).map(escapeHTML).join(", ")||"Unknown"}<br>Retrieved ${escapeHTML(model.benchmark.latest_retrieval||"unknown")}<br>Evaluated ${escapeHTML(model.benchmark.latest_evaluation||"unknown")}</p>`:""}</div></details>`;
+  return `<tr><td><strong class="model-name">${escapeHTML(model.id)}</strong><span class="data-secondary">${escapeHTML(model.provider_id)}</span></td><td><div class="capability-list">${capabilities}</div></td><td class="numeric">${typeof pricing.input_per_million==="number"?`$${pricing.input_per_million.toFixed(2)}`:"—"}<span class="data-secondary">${typeof pricing.output_per_million==="number"?`$${pricing.output_per_million.toFixed(2)} output`:"Output unknown"}</span></td><td><span class="data-secondary">${escapeHTML(model.benchmark?scores.split(" · ").slice(0,2).join(" · ")||"No scores":"No matched benchmark data")}</span>${model.benchmark?`<span class="status-badge ${model.benchmark.stale?"neutral":"success"}">${model.benchmark.stale?"Stale":"Current"}</span>`:""}${details}</td><td><label class="checkbox model-enable"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" aria-label="Enable ${escapeHTML(model.id)}" ${model.enabled?"checked":""}><span>${model.enabled?"Enabled":"Disabled"}</span></label></td></tr>`;
+ }).join(""):`<tr><td colspan="5"><div class="empty-state"><strong>No models match these filters</strong><p>Try another model name or clear your filters.</p></div></td></tr>`;
+ document.querySelector("#model-count") .textContent=`${models.length} of ${physicalModels.length} models`;
+ rows.querySelectorAll                  ("[data-model-enabled]").forEach(input=>input.addEventListener("change",async()=>{modelEnabledDraft[input.dataset.modelEnabled ]=input.checked;markDirty();if(await saveConfig())void loadModelsPage();}));
 }
-
+function renderModelsPage()     {
+ const output=document.querySelector             ("#models-list") ;
+ if(!physicalModels.length){output.innerHTML='<div class="empty-state"><span class="empty-state-icon">◇</span><strong>Your model catalog is empty</strong><p>Connect and test a provider to discover the models available to your gateway.</p><a href="#providers" class="button primary">Connect a provider</a></div>';return;}
+ const providerIDs=[...new Set(physicalModels.map(model=>String(model.provider_id)))].sort();
+ output.innerHTML=`<div class="models-toolbar"><label class="search-field">Search models<input id="model-search" type="search" placeholder="Search by model or provider…" maxlength="256" value="${escapeHTML(modelSearch)}"></label><label>Provider<select id="model-provider-filter"><option value="">All providers</option>${providerIDs.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("")}</select></label><label>Status<select id="model-status-filter"><option value="">All models</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label><span id="model-count" class="section-note" role="status"></span></div><div class="benchmark-table-scroll"><table class="model-table"><thead><tr><th scope="col">Model / provider</th><th scope="col">Capabilities</th><th scope="col">Input / 1M tokens</th><th scope="col">Benchmark evidence</th><th scope="col">Access</th></tr></thead><tbody id="model-table-body"></tbody></table></div><p class="section-note">Prices are estimated USD per million tokens. — means unknown. Disabled models are unavailable to client discovery and routing.</p>`;
+ document.querySelector                  ("#model-search") .addEventListener("input",event=>{modelSearch=(event.target                    ).value;renderModelRows();});
+ const provider=document.querySelector                   ("#model-provider-filter") ;provider.value=modelProviderFilter;provider.addEventListener("change",()=>{modelProviderFilter=provider.value;renderModelRows();});
+ const status=document.querySelector                   ("#model-status-filter") ;status.value=modelStatusFilter;status.addEventListener("change",()=>{modelStatusFilter=status.value;renderModelRows();});renderModelRows();
+}
+async function loadModelsPage()              {
+ const output=document.querySelector             ("#models-list") ;const login=consoleSession;const button=document.querySelector                   ("#refresh-models") ;button.disabled=true;
+ try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!response.ok)throw new Error("Model discovery unavailable. Refresh to retry.");const data=await response.json();if(login!==consoleSession)return;physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview();
+ }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load models</strong><p>${escapeHTML(error instanceof Error?error.message:"Models unavailable")}</p></div>`;}finally{button.disabled=false;}
+}
 document.querySelector("#refresh-models") .addEventListener("click",()=>{void loadModelsPage();});
 
 let budgetsDraft                   ={};
@@ -296,16 +314,29 @@ function renderBudgetEditor()      {
  const budgets=scope==="*"?budgetsDraft.gateway:budgetsDraft.keys?.[scope];
  for(const period of ["daily","monthly"])for(const metric of ["requests","tokens","estimated_cost"]){document.querySelector                  (`#budget-${period}-${metric}`) .value=String(budgets?.[period]?.[metric]||0);}
 }
-async function loadUsagePage()              {
- const output=document.querySelector             ("#usage-list") ;
- try{
- const keys=await gatewayFetch("/gateway/v1/admin/api-keys",{headers:await authProvider.headers()});if(!keys.ok)throw new Error("Keys unavailable");const metadata=await keys.json();const selector=document.querySelector                   ("#budget-scope") ;const chosen=selector.value;
- selector.innerHTML='<option value="*">Entire gateway</option>'+(metadata.api_keys||[]).map((key    )=>`<option value="${escapeHTML(key.id)}">${escapeHTML(key.name)}</option>`).join("");selector.value=chosen||"*";renderBudgetEditor();
- const response=await gatewayFetch("/gateway/v1/usage",{headers:await authProvider.headers()});if(!response.ok)throw new Error("Usage accounting unavailable");const data=await response.json();
- output.innerHTML=`<p>${escapeHTML(data.qualification||"")}</p><h3>Budgets and resets</h3>`+(data.budgets||[]).filter((b    )=>b.limit.requests||b.limit.tokens||b.limit.estimated_cost).map((b    )=>`<p>${escapeHTML(b.key_id==="*"?"Gateway":((metadata.api_keys||[]).find((k    )=>k.id===b.key_id)?.name||b.key_id))} · ${escapeHTML(b.period)} · resets ${escapeHTML(b.reset_at)} · remaining requests ${b.limit.requests?b.remaining.requests:"unlimited"}, tokens ${b.limit.tokens?b.remaining.tokens:"unlimited"}, estimated USD ${b.limit.estimated_cost?Number(b.remaining.estimated_cost).toFixed(6):"unlimited"}</p>`).join("")+`<h3>Current UTC usage</h3><div class="benchmark-table-scroll"><table><thead><tr><th>Key</th><th>Period</th><th>Model</th><th>Client requests</th><th>Input / output tokens</th><th>Estimated tokens</th><th>Estimated USD</th></tr></thead><tbody>`+(data.usage||[]).filter((r    )=>r.key_id!=="*").map((r    )=>`<tr><td>${escapeHTML(r.key_name||r.key_id)}</td><td>${escapeHTML(r.period)}</td><td>${escapeHTML(r.model||"Client requests")}</td><td>${r.requests}</td><td>${r.input_tokens} / ${r.output_tokens}</td><td>${r.estimated_tokens}</td><td>${Number(r.estimated_cost).toFixed(6)}${r.unknown_cost_attempts?" + unknown costs":""}</td></tr>`).join("")+`</tbody></table></div>`;
- }catch(error){output.textContent=error instanceof Error?error.message:"Usage unavailable";}
+let usageData    =null;
+let usageKeyMetadata      =[];
+let usagePeriod="daily";
+function renderUsagePage()     {
+ const output=document.querySelector             ("#usage-list") ;if(!usageData)return;
+ const scope=document.querySelector                   ("#budget-scope") .value||"*";
+ const rows=(usageData.usage||[]).filter((r    )=>r.key_id!=="*" && (scope==="*"||r.key_id===scope) && (usagePeriod==="daily"?/^\d{4}-\d{2}-\d{2}$/.test(r.period):/^\d{4}-\d{2}$/.test(r.period)));
+ const requests=rows.filter((r    )=>!r.model).reduce((sum       ,r    )=>sum+Number(r.requests||0),0);
+ const input=rows.reduce((sum       ,r    )=>sum+Number(r.input_tokens||0),0);const out=rows.reduce((sum       ,r    )=>sum+Number(r.output_tokens||0),0);
+ const cost=rows.reduce((sum       ,r    )=>sum+Number(r.estimated_cost||0),0);const unknown=rows.reduce((sum       ,r    )=>sum+Number(r.unknown_cost_attempts||0),0);
+ const budgets=(usageData.budgets||[]).filter((b    )=>(scope==="*"||b.key_id===scope)&&(b.limit.requests||b.limit.tokens||b.limit.estimated_cost));
+ output.innerHTML=`<div class="section-heading"><h3>Usage overview</h3><label class="inline-filter">Period<select id="usage-period"><option value="daily">Today · UTC</option><option value="monthly">This month · UTC</option></select></label></div><div class="metric-grid usage-metrics"><div class="metric-card"><span class="metric-label">Client requests</span><strong class="metric-value">${consoleNumber(requests)}</strong><span class="metric-detail">${usagePeriod==="daily"?"Today":"This month"} · current scope</span></div><div class="metric-card"><span class="metric-label">Input tokens</span><strong class="metric-value">${consoleNumber(input)}</strong><span class="metric-detail">Includes classifiers and retries</span></div><div class="metric-card"><span class="metric-label">Output tokens</span><strong class="metric-value">${consoleNumber(out)}</strong><span class="metric-detail">Reported and conservative estimates</span></div><div class="metric-card"><span class="metric-label">Estimated cost</span><strong class="metric-value">$${cost.toFixed(4)}</strong><span class="metric-detail">${unknown?`${unknown} attempts with unknown cost`:"Operator estimate · USD"}</span></div></div>${budgets.length?`<details class="advanced-fields"><summary>Active limits &amp; resets · ${budgets.length}</summary><div class="budget-summary-list">${budgets.map((b    )=>`<div class="budget-summary"><strong>${escapeHTML(b.key_id==="*"?"Gateway":usageKeyMetadata.find(k=>k.id===b.key_id)?.name||b.key_id)} · ${escapeHTML(b.period)}</strong><span class="data-secondary">Resets ${escapeHTML(b.reset_at)}</span><span>${b.limit.requests?`${consoleNumber(b.remaining.requests)} requests remaining`:"Unlimited requests"} · ${b.limit.tokens?`${consoleNumber(b.remaining.tokens)} tokens remaining`:"Unlimited tokens"} · ${b.limit.estimated_cost?`$${Number(b.remaining.estimated_cost).toFixed(4)} remaining`:"Unlimited estimated cost"}</span></div>`).join("")}</div></details>`:""}<div class="benchmark-table-scroll"><table class="usage-table"><thead><tr><th scope="col">API key</th><th scope="col">Model</th><th scope="col">Client requests</th><th scope="col">Input / output tokens</th><th scope="col">Est. tokens</th><th scope="col">Est. USD</th></tr></thead><tbody>${rows.length?rows.map((r    )=>`<tr><td><strong>${escapeHTML(r.key_name||r.key_id)}</strong><span class="data-secondary">${escapeHTML(r.period)}</span></td><td>${escapeHTML(r.model||"Client request total")}${r.provider?`<span class="data-secondary">${escapeHTML(r.provider)}</span>`:""}</td><td class="numeric">${consoleNumber(r.requests||0)}</td><td class="numeric">${consoleNumber(r.input_tokens||0)} / ${consoleNumber(r.output_tokens||0)}</td><td class="numeric">${consoleNumber(r.estimated_tokens||0)}</td><td class="numeric">${Number(r.estimated_cost||0).toFixed(6)}${r.unknown_cost_attempts?'<span class="data-secondary">Plus unknown costs</span>':""}</td></tr>`).join(""):'<tr><td colspan="6"><div class="empty-state"><strong>No usage in this period</strong><p>Request and model totals appear after clients use the gateway.</p></div></td></tr>'}</tbody></table></div><p class="section-note">${escapeHTML(usageData.qualification||"Operator accounting; estimated values are not provider billing.")}</p>`;
+ const period=document.querySelector                   ("#usage-period") ;period.value=usagePeriod;period.addEventListener("change",()=>{usagePeriod=period.value;renderUsagePage();});
 }
-document.querySelector("#budget-scope") .addEventListener("change",renderBudgetEditor);
+async function loadUsagePage()              {
+ const output=document.querySelector             ("#usage-list") ;const login=consoleSession;const button=document.querySelector                   ("#refresh-usage") ;button.disabled=true;
+ try{
+ const keys=await gatewayFetch("/gateway/v1/admin/api-keys",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!keys.ok)throw new Error("Keys unavailable");const metadata=await keys.json();if(login!==consoleSession)return;usageKeyMetadata=metadata.api_keys||[];const selector=document.querySelector                   ("#budget-scope") ;const chosen=selector.value;
+ selector.innerHTML='<option value="*">Entire gateway</option>'+usageKeyMetadata.map((key    )=>`<option value="${escapeHTML(key.id)}">${escapeHTML(key.name)}</option>`).join("");selector.value=usageKeyMetadata.some(k=>k.id===chosen)?chosen:"*";renderBudgetEditor();
+ const response=await gatewayFetch("/gateway/v1/usage",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!response.ok)throw new Error("Usage accounting unavailable. Refresh to retry.");const data=await response.json();if(login!==consoleSession)return;usageData=data;overviewUsage=data.usage||[];renderUsagePage();renderOverview();
+ }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load usage</strong><p>${escapeHTML(error instanceof Error?error.message:"Usage unavailable")}</p></div>`;}finally{button.disabled=false;}
+}
+document.querySelector("#budget-scope") .addEventListener("change",()=>{renderBudgetEditor();renderUsagePage();});
 for(const period of ["daily","monthly"])for(const metric of ["requests","tokens","estimated_cost"]){document.querySelector                  (`#budget-${period}-${metric}`) .addEventListener("change",()=>{
  const scope=document.querySelector                   ("#budget-scope") .value||"*";const value=Number(document.querySelector                  (`#budget-${period}-${metric}`) .value);if(!Number.isFinite(value)||value<0){saveState.textContent="Budgets must be nonnegative";return;}
  let budgets                   ;if(scope==="*")budgets=budgetsDraft.gateway ||= {};else{budgetsDraft.keys ||= {};budgets=budgetsDraft.keys[scope] ||= {};}
@@ -317,18 +348,20 @@ let activityStream                 =null;
 let activityRows      =[];
 function stopActivity()     {activityStream?.close();activityStream=null;activityRows=[];document.querySelector("#activity-list") .textContent="";}
 function renderActivity()     {
- document.querySelector("#activity-list") .innerHTML=`<div class="benchmark-table-scroll"><table><thead><tr><th>Time / request</th><th>Event</th><th>API key</th><th>Requested → selected</th><th>Outcome</th><th>Duration</th><th>Tokens</th><th>Estimated USD</th></tr></thead><tbody>`+activityRows.slice(-200).reverse().map((e    )=>`<tr><td>${escapeHTML(e.at||"")}<br>${escapeHTML(e.request_id||"")}</td><td>${escapeHTML(e.kind)}</td><td>${escapeHTML(e.key_name||e.key_id||"")}</td><td>${escapeHTML(e.requested_model||"")} → ${escapeHTML(e.selected_model||"")}<br>${escapeHTML(e.provider||"")}</td><td>${escapeHTML(e.outcome||"")} ${e.status||""}</td><td>${e.duration_ms??""} ms</td><td>${e.input_tokens||0} / ${e.output_tokens||0}${e.estimated_tokens?" (estimated)":""}</td><td>${e.unknown_cost?"unknown":e.estimated_cost==null?"—":Number(e.estimated_cost).toFixed(6)}</td></tr>`).join("")+`</tbody></table></div>`;
+ const output=document.querySelector("#activity-list") ;
+ if(!activityRows.length){output.innerHTML='<div class="empty-state"><span class="empty-state-icon">↗</span><strong>Ready for your first request</strong><p>Request activity appears here as clients use the gateway. Only metadata is recorded.</p><a class="button secondary" href="#credentials">Manage client keys</a></div>';return;}
+ output.innerHTML=`<div class="benchmark-table-scroll"><table class="activity-table"><thead><tr><th scope="col">Time / request</th><th scope="col">Event</th><th scope="col">API key</th><th scope="col">Model selection</th><th scope="col">Outcome</th><th scope="col">Duration</th><th scope="col">Input / output</th><th scope="col">Est. USD</th></tr></thead><tbody>`+activityRows.slice(-200).reverse().map((e    )=>`<tr><td><time title="${escapeHTML(e.at||"")}">${consoleTime(e.at)}</time><span class="data-secondary request-id" title="${escapeHTML(e.request_id||"")}">${escapeHTML(e.request_id||"—")}</span></td><td>${escapeHTML(String(e.kind||"—").replace(/_/g," "))}</td><td>${escapeHTML(e.key_name||e.key_id||"—")}</td><td><strong>${escapeHTML(e.selected_model||e.requested_model||"—")}</strong><span class="data-secondary">${e.requested_model&&e.selected_model&&e.requested_model!==e.selected_model?`From ${escapeHTML(e.requested_model)} · `:""}${escapeHTML(e.provider||"")}</span></td><td><span class="status-badge ${e.outcome==="success"||e.status&&e.status<400?"success":e.outcome==="failure"||e.status>=400?"failure":"neutral"}">${escapeHTML(e.outcome||String(e.status||"Pending"))}</span>${e.outcome&&e.status?`<span class="data-secondary">HTTP ${escapeHTML(String(e.status))}</span>`:""}</td><td class="numeric">${typeof e.duration_ms==="number"?`${consoleNumber(e.duration_ms)} ms`:"—"}</td><td class="numeric">${consoleNumber(e.input_tokens||0)} / ${consoleNumber(e.output_tokens||0)}${e.estimated_tokens?'<span class="data-secondary">Estimated</span>':""}</td><td class="numeric">${e.unknown_cost?'<span class="data-secondary">Unknown</span>':e.estimated_cost==null?"—":Number(e.estimated_cost).toFixed(6)}</td></tr>`).join("")+`</tbody></table></div><p class="section-note">Showing the latest ${activityRows.length} events. Timestamps use your local time; cost is estimated.</p>`;
 }
 async function startActivity()              {
  if(activityStream || !consoleSession)return;
- const status=document.querySelector("#activity-status") ;
- try{const response=await gatewayFetch("/gateway/v1/activity?limit=200",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const history=await response.json();activityRows=history.events||[];renderActivity();
+ const status=document.querySelector("#activity-status") ;const login=consoleSession;
+ try{const response=await gatewayFetch("/gateway/v1/activity?limit=200",{headers:await authProvider.headers()});if(login!==consoleSession)return;if(!response.ok)throw new Error();const history=await response.json();if(login!==consoleSession)return;activityRows=history.events||[];renderActivity();
  if(location.hash!=="#activity" || !consoleSession)return;
  const last=activityRows.at(-1)?.id||0;const stream=new EventSource(`/gateway/v1/activity/events?after_id=${last}`);activityStream=stream;
- stream.onopen=()=>{status.textContent="Live · metadata only";};stream.onerror=()=>{status.textContent="Disconnected · reconnecting and replaying available events";};
+ stream.onopen=()=>{status.textContent="Live · metadata only";status.className="status-badge success";};stream.onerror=()=>{status.textContent="Reconnecting · replaying available events";status.className="status-badge neutral";};
  stream.addEventListener("activity",event=>{const e=JSON.parse((event                ).data);if(!activityRows.some(row=>row.id===e.id)){activityRows.push(e);activityRows=activityRows.slice(-200);renderActivity();}});
- stream.addEventListener("gap",()=>{status.textContent="History gap · events were pruned or a viewer/recording queue overflowed";});
- }catch{status.textContent="Activity unavailable. Sign in and retry.";}
+ stream.addEventListener("gap",()=>{status.textContent="History gap · some older events are unavailable";status.className="status-badge neutral";});
+ }catch{status.textContent="Activity unavailable. Sign in and reopen this page to retry.";status.className="status-badge failure";}
 }
 
 
@@ -366,6 +399,34 @@ function openProviderEditor(index       ,adding=false)     {editingProvider=inde
 function cancelProviderEditor()     {if(editingProvider===null)return;if(editingOriginal)providers[editingProvider]=editingOriginal;else providers.splice(editingProvider,1);editingProvider=null;editingOriginal=null;renderProviders();}
 let signedInUsername = "";
 let benchmarksEnabledSaved = false;
+let overviewModels           =null;
+let overviewUsage           =null;
+let overviewLoading=false;
+let overviewError="";
+function consoleNumber(raw        )       {return typeof raw==="number" && Number.isFinite(raw)?raw.toLocaleString():"—";}
+function consoleTime(raw        )       {const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});}
+function renderOverview()     {
+ const summary=document.querySelector("#overview-summary");const workspace=document.querySelector("#overview-workspace");if(!summary||!workspace)return;
+ const enabled=providers.filter(p=>p.enabled!==false).length;
+ const models=overviewModels?.filter(m=>m.enabled);
+ // Client request totals are stored in gateway rows with an empty model. Model
+ // attempt rows include classifier/retries and must never be added to requests.
+ const daily=overviewUsage?.filter(r=>r.key_id==="*" && !r.model && /^\d{4}-\d{2}-\d{2}$/.test(r.period));
+ const requests=daily?.reduce((sum,r)=>sum+Number(r.requests||0),0);
+ const routing=loadedConfiguration.router?.classifier?.type;
+ const metrics=[{label:"Enabled providers",value:configurationLoaded?String(enabled):"—",detail:configurationLoaded?`${providers.length} configured upstreams`:"Sign in to load configuration",href:"providers"},{label:"Available models",value:overviewModels?String(models?.length||0):"—",detail:overviewModels?`${overviewModels.length} discovered · enabled for routing`:overviewLoading?"Discovering model catalog…":"Model catalog not loaded",href:"models"},{label:"Requests today",value:overviewUsage?consoleNumber(requests):"—",detail:"Client requests · current UTC day",href:"activity"},{label:"Routing",value:configurationLoaded?(routing && routing!=="disabled"?"Smart":"Deterministic"):"—",detail:configurationLoaded?(routing && routing!=="disabled"?"Classifier-assisted selection":"Capability and policy selection"):"Configuration not loaded",href:"routing"}];
+ summary.className="metric-grid";summary.innerHTML=metrics.map(m=>`<a class="metric-card" href="#${m.href}"><span class="metric-label">${m.label}</span><strong class="metric-value">${escapeHTML(m.value)}</strong><span class="metric-detail">${escapeHTML(m.detail)}</span></a>`).join("");
+ workspace.className="overview-grid";
+ workspace.innerHTML=`<section class="overview-panel"><div class="section-heading"><h3>Connected providers</h3><a href="#providers">Manage providers →</a></div>${providers.length?providers.slice(0,6).map(p=>{const status=providerStatuses.get(p);const count=overviewModels?.filter(m=>m.provider_id===p.id).length;return `<div class="overview-provider-row"><span class="provider-avatar">${escapeHTML(String(p.id||"P").slice(0,1).toUpperCase())}</span><div><strong>${value(p,"id")}</strong><span class="data-secondary">${escapeHTML(providerTypeLabel(String(p.type)))}</span></div><span class="status-badge ${p.enabled===false?"neutral":status?.state||"neutral"}">${p.enabled===false?"Disabled":status?.state==="success"?"Connected":status?.state==="failure"?"Needs attention":status?.state==="pending"?"Checking…":"Not checked"}</span>${count===undefined?"":`<span class="data-secondary">${count} models</span>`}</div>`;}).join(""):`<div class="empty-state"><strong>${configurationLoaded?"Your gateway starts here":"Welcome to your control plane"}</strong><p>${configurationLoaded?"Connect an upstream to discover models and start routing requests.":"Sign in to manage providers, model access and routing."}</p><a class="button primary" href="${configurationLoaded?"#providers":"/login"}">${configurationLoaded?"Connect a provider":"Sign in"}</a></div>`}</section><section class="overview-panel"><h3>Your next step</h3><a class="workflow-link" href="#providers"><span class="workflow-number">01</span><span><strong>Connect your providers</strong><span class="data-secondary">API endpoints and subscription accounts</span></span><span>→</span></a><a class="workflow-link" href="#models"><span class="workflow-number">02</span><span><strong>Choose your model catalog</strong><span class="data-secondary">Inspect capabilities and control model access</span></span><span>→</span></a><a class="workflow-link" href="#routing"><span class="workflow-number">03</span><span><strong>Shape your routing policy</strong><span class="data-secondary">Choose intelligent or deterministic selection</span></span><span>→</span></a><a class="workflow-link" href="#credentials"><span class="workflow-number">04</span><span><strong>Create a client API key</strong><span class="data-secondary">Give each application its own gateway access</span></span><span>→</span></a></section>${overviewError?`<p class="notice" role="status">${escapeHTML(overviewError)}</p>`:""}`;
+}
+function providerTypeLabel(type       )       {return ({openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"}                         )[type]||type;}
+async function loadOverview()              {
+ if(!consoleSession||!configurationLoaded||overviewLoading)return;const login=consoleSession;overviewLoading=true;overviewError="";renderOverview();
+ const results=await Promise.allSettled([gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()}),gatewayFetch("/gateway/v1/usage",{headers:await authProvider.headers()})]);
+ if(login!==consoleSession){overviewLoading=false;return;}
+ for(let i=0;i<results.length;i++){const result=results[i];try{if(result.status!=="fulfilled"||!result.value.ok)throw new Error();const data=await result.value.json();if(login!==consoleSession)return;if(i===0)overviewModels=data.models||[];else overviewUsage=data.usage||[];}catch{overviewError="Some gateway data could not be loaded. Open Models or State & quota to retry.";}}
+ overviewLoading=false;renderOverview();
+}
 function updateConsoleIdentity()       {
   const signedIn = Boolean(consoleSession && signedInUsername);
   document.querySelector                   ("#console-login") .hidden = signedIn;
@@ -385,6 +446,7 @@ function signOutConsole()       {
   document.querySelector                   ("#create-key-dialog") .close();
   document.querySelector                  ("#client-key-name") .value = "";
   providers = [];
+  overviewModels=null;overviewUsage=null;overviewLoading=false;overviewError="";physicalModels=[];usageData=null;usageKeyMetadata=[];document.querySelector("#models-list") .textContent="";document.querySelector("#usage-list") .textContent="";
   configurationLoaded = false;
   classifierQuestionOverrides = {};
   classifierNoulThresholds = {};
@@ -511,6 +573,7 @@ function setProviderStatus(provider                                  , status   
   const button = providerList.querySelector                   (`[data-test="${index}"]`);
   if (button) button.disabled = status.state === "pending";
   updateClassifierOptions();
+  renderOverview();
 }
 
 function redactProviderKeys(message        )         {
@@ -565,9 +628,9 @@ function renderProviders()       {
   providers.forEach((provider, index) => { if (!provider.id && isKnownProvider(provider)) provider.id = knownProviderID(String(provider.type), index); });
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-avatar">${escapeHTML(String(provider.id||"P").slice(0,1).toUpperCase())}</span><div><span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span><span class="data-secondary">${escapeHTML(providerTypeLabel(String(provider.type)))}${provider.enabled===false?" · Disabled":""}</span></div></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
-      <dialog data-provider-dialog="${index}"><h3>${value(provider,"id") || "Add provider"}</h3><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+      <dialog class="provider-editor" data-provider-dialog="${index}" aria-label="Edit provider"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3>${value(provider,"id") || "Add provider"}</h3><p>Connect a model API or subscription to your gateway.</p></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
@@ -592,7 +655,7 @@ function renderProviders()       {
         <label data-tooltip="Maximum time allowed while discovering the provider model catalog. Use a Go duration such as 10s.">Discovery timeout<input data-provider="${index}" data-key="discovery_timeout" value="${value(provider,"discovery_timeout")}" placeholder="10s" /></label>
         <label class="checkbox" data-tooltip="When enabled, Torii queries the provider for its available models. Disable this only when you provide a static model list."><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label>
       </div></details>`}
-      <button class="button primary" type="button" data-confirm-provider="${index}">Save provider</button><button class="button quiet" type="button" data-cancel-provider="${index}">Cancel</button></dialog>
+      <div class="dialog-actions"><button class="button quiet" type="button" data-cancel-provider="${index}">Cancel</button><button class="button primary" type="button" data-confirm-provider="${index}">Save provider</button></div></dialog>
     </article>`).join("");
   providerList.querySelectorAll                   ("[data-edit]").forEach(button=>button.addEventListener("click",()=>{openProviderEditor(Number(button.dataset.edit));}));
   providerList.querySelectorAll                   ("[data-confirm-provider]").forEach(button=>button.addEventListener("click",async()=>{const dialog=button.closest("dialog") ;const index=editingProvider;editingProvider=null;markDirty();if(await saveConfig()){editingOriginal=null;dialog.close();}else{editingProvider=index;}}));
@@ -620,6 +683,7 @@ function renderProviders()       {
   });
   initializeTooltips();
   updateClassifierOptions();
+  renderOverview();
   if(editingProvider!==null)providerList.querySelector                   (`[data-provider-dialog="${editingProvider}"]`)?.showModal?.();
 }
 
@@ -770,6 +834,7 @@ async function loadServerConfig()                {
     applyConfig(configuration, response.headers.get("ETag") || "");
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
+    if((location.hash||"#overview")==="#overview")void loadOverview();
   } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
@@ -819,6 +884,7 @@ function navigate()       {
     page.setAttribute("aria-hidden", String(!active));
   });
   document.querySelectorAll                   (".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+  if(current==="overview"){renderOverview();if(configurationLoaded)void loadOverview();}
   if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models" && configurationLoaded)void loadModelsPage();

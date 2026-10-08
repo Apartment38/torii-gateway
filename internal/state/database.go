@@ -100,7 +100,7 @@ func openDatabase(path string, key []byte, target int, migrations []schemaMigrat
 	if err != nil {
 		return nil, errors.New("invalid database path")
 	}
-	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "_pragma=busy_timeout%285000%29&_pragma=foreign_keys%281%29&_pragma=synchronous%28FULL%29"}
+	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "_txlock=immediate&_pragma=busy_timeout%285000%29&_pragma=foreign_keys%281%29&_pragma=synchronous%28FULL%29"}
 	db, err := sql.Open("sqlite", dsn.String())
 	if err != nil {
 		return nil, errors.New("cannot open credential database")

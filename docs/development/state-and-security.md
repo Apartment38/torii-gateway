@@ -3,14 +3,11 @@
 Torii encrypts credential payloads with AES-256-GCM before storing them in
 SQLite. SQLite metadata is not encrypted: provider/service, purpose, owner,
 timestamps and opaque IDs are readable. No SQLCipher or external service is
-required. Non-sensitive configuration remains in YAML. Usage, the stable Codex
+required. Non-sensitive configuration and its revision are stored in SQLite. Usage, the stable Codex
 host ID, public benchmark observations and provenance share the database but are not
 encrypted. See [benchmark storage](intelligence.md#cache-management-and-refresh).
 
-The default database is `/data/torii.db`. Set `state.database_path` or override
-it with `TORII_DB_PATH` (use `./state/torii.db` for a local build). Database-path
-changes require an offline config edit and restart. SQLite uses WAL, a 5-second
-busy timeout, foreign keys and schema migrations. Database/WAL/SHM files are
+The default database is `/data/torii.db`. Select it with `--database` or `TORII_DB_PATH` (use `./state/torii.db` for a local build). Database-path changes require a startup-option change and restart. SQLite uses WAL, a 5-second busy timeout, immediate write transactions, foreign keys and schema migrations. Taking the write lock before transactional reads avoids snapshot-upgrade failures when activity/accounting pools write concurrently. Database/WAL/SHM files are
 owner-only. Mount local persistent storage, not a shared/network filesystem.
 
 
@@ -43,7 +40,7 @@ Administrator Basic login is protected by bounded hashing concurrency and a
 five-failed-attempts/minute/client limit. Passwords use salted PBKDF2-HMAC-SHA256
 with 600,000 iterations; username/hash/salt are inside an encrypted record.
 The stable internal owner is `default`; multiple administrators are not supported.
-Browser login remains in JS memory, not cookies or persistent browser storage.
+Browser login uses an opaque HttpOnly, SameSite=Lax cookie. Only token hashes and expiry are stored in SQLite; sessions survive restarts. Cookie mutations require a CSRF token and a matching origin. Administrator credential changes invalidate existing sessions. HTTPS sets Secure; forwarded HTTPS is trusted only for explicitly configured proxy networks.
 
 Named client keys use random 256-bit values, encrypted records, and indexed SHA-256
 digests. Authentication verifies the decrypted record; no plaintext cache.
@@ -59,15 +56,15 @@ See [API authentication](../reference/api.md#authentication) and
 ## Backup and security boundary
 
 For the simplest consistent backup, stop the gateway and copy `torii.db` together
-with any `torii.db-wal`/`torii.db-shm` files, plus non-sensitive YAML/state. For an
+with any `torii.db-wal`/`torii.db-shm` files, plus optional external certificates. For an
 online backup use SQLite's backup API or CLI `.backup`, not a live copy of the
 main file alone. Store the master-key backup separately with restricted access.
 Restore the database and original key together before restarting.
 
-The supported baseline is SQLite schema 4; the current schema is 5. Startup
-automatically adds the named-key metadata table transactionally when opening
+The supported baseline is SQLite schema 4; the current schema is 9. Startup
+automatically adds settings, sessions, accounting and activity tables transactionally when opening
 a schema-4 database, preserving existing credentials, admin, API key and state.
-No reset or manual migration is required. Future schema upgrades run after
+No reset is required; legacy YAML settings require an explicit import before normal startup. Future schema upgrades run after
 master-key verification and commit one transactional step at a time.
 Rollback requires restoring the pre-upgrade database and configuration,
 with their matching key and previous application binary/image.
@@ -104,7 +101,7 @@ can extend this window; pending totals are retained with rate-limited
 `usage_flush_failed` warnings. Shutdown drains HTTP requests and attempts a final
 flush with a separate ten-second deadline. Failed final writes report
 `usage_shutdown_flush_failed`. This is routing accounting, not an audit-grade
-billing ledger. Streamed responses still do not contribute usage counters.
+billing ledger. JSON and SSE also feed a separate durable reservation/settlement ledger. Budgets fail closed on storage errors; interrupted or unreported usage keeps conservative reservations. Activity retains metadata only, with bounded retention and storage.
 
 ## Maintaining future releases
 

@@ -263,7 +263,7 @@ freshness equations, raw-data retention, identity safeguards, and provenance.
 
 ## Model controls
 
-`model_enabled` maps provider-qualified model IDs to booleans; omitted IDs are enabled. Disabled IDs survive rediscovery/restarts, disappear from inference discovery, and cannot be dispatched directly or selected by Smart. Change an active classifier before disabling its model. `providers[].enabled` defaults to true. `providers[].treat_models_as_free` defaults to true for native Ollama and false otherwise. When true, routing and quotas use explicit zero estimated cost; false retains individual catalog pricing overrides.
+`model_enabled` maps provider-qualified model IDs to booleans; omitted IDs are enabled. Disabled IDs survive rediscovery/restarts, disappear from inference discovery, and cannot be dispatched directly or selected by Smart. Change an active classifier before disabling its model. `providers[].enabled` defaults to true. `providers[].treat_models_as_free` defaults to true for native Ollama and false otherwise. When true, routing and quotas use explicit zero estimated cost; false retains individual catalog pricing overrides. Locality alone does not make a model free or override its prices.
 
 ## Operator budgets
 

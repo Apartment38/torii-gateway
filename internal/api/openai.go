@@ -384,7 +384,7 @@ func (h *OpenAIHandler) actualCost(model string, input, output uint64) float64 {
 		return 0
 	}
 	descriptor, ok := h.catalog.Model(model)
-	if !ok || (descriptor.Local != nil && *descriptor.Local) {
+	if !ok {
 		return 0
 	}
 	if descriptor.Pricing.InputPerMillion == nil || descriptor.Pricing.OutputPerMillion == nil {

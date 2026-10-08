@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/router"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -49,18 +50,42 @@ func TestDisabledModelsExcludeDiscoverySmartAndDirect(t *testing.T) {
 	}
 }
 func TestFreePricingOverridesPreservePaidMetadataWhenOff(t *testing.T) {
-	input, output := float64(2), float64(4)
+	input, output, local := float64(2), float64(4), true
 	p := &controlledProvider{}
-	h, err := NewOpenAIHandlerWithOverrides([]provider.OpenAIProvider{p}, []catalog.Descriptor{{PublicID: "p/model", Pricing: catalog.Pricing{InputPerMillion: &input, OutputPerMillion: &output}}})
+	h, err := NewOpenAIHandlerWithOverrides([]provider.OpenAIProvider{p}, []catalog.Descriptor{{PublicID: "p/model", Local: &local, Endpoints: catalog.EndpointCapabilities{ChatCompletions: catalog.Supported}, Pricing: catalog.Pricing{InputPerMillion: &input, OutputPerMillion: &output}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.RefreshCatalog(context.Background())
 	h.SetModelControls(nil, map[string]bool{"p": true})
+	policy := router.DefaultSelectionPolicy()
+	policy.AllowPaidModels = false
+	selectControlled := func() error {
+		for _, m := range h.CatalogModels() {
+			if m.PublicID == "p/model" {
+				_, err := router.Select([]router.Candidate{{Model: m}}, router.RequestRequirements{Endpoint: router.EndpointChat}, "low", policy)
+				return err
+			}
+		}
+		t.Fatal("missing controlled model")
+		return nil
+	}
+	if err := selectControlled(); err != nil {
+		t.Fatalf("free provider ineligible: %v", err)
+	}
 	if *h.CatalogModels()[0].Pricing.InputPerMillion != 0 {
 		t.Fatal("free provider not zero")
 	}
+	if cost := h.actualCost("p/model", 1000000, 1000000); cost != 0 {
+		t.Fatalf("free cost=%v", cost)
+	}
 	h.SetModelControls(nil, nil)
+	if err := selectControlled(); err == nil {
+		t.Fatal("local paid model eligible with free flag off")
+	}
+	if cost := h.actualCost("p/model", 1000000, 1000000); cost != 6 {
+		t.Fatalf("local pricing ignored: %v", cost)
+	}
 	for _, m := range h.CatalogModels() {
 		if m.PublicID == "p/model" && *m.Pricing.InputPerMillion != 2 {
 			t.Fatal("free flag destroyed override")

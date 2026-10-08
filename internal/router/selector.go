@@ -178,16 +178,9 @@ func endpointState(m catalog.Descriptor, e Endpoint) catalog.TriState {
 	return catalog.Unsupported
 }
 func knownFree(m catalog.Descriptor) bool {
-	if m.Local != nil && *m.Local {
-		return true
-	}
 	return m.Pricing.InputPerMillion != nil && m.Pricing.OutputPerMillion != nil && *m.Pricing.InputPerMillion == 0 && *m.Pricing.OutputPerMillion == 0
 }
 func estimateCost(m catalog.Descriptor, r RequestRequirements, p SelectionPolicy) *float64 {
-	if m.Local != nil && *m.Local {
-		v := 0.0
-		return &v
-	}
 	if m.Pricing.InputPerMillion == nil || m.Pricing.OutputPerMillion == nil {
 		return nil
 	}

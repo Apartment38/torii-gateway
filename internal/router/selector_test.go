@@ -58,6 +58,7 @@ func TestSelectFreeOnlyExcludesUnknownPricing(t *testing.T) {
 	unknown.Pricing = catalog.Pricing{}
 	local := model("z/local")
 	local.Local = ptr(true)
+	local.Pricing = catalog.Pricing{InputPerMillion: ptr(0.0), OutputPerMillion: ptr(0.0)}
 	policy := router.DefaultSelectionPolicy()
 	policy.AllowPaidModels = false
 	got, err := router.Select([]router.Candidate{{Model: unknown}, {Model: local}}, router.RequestRequirements{Endpoint: router.EndpointChat}, "low", policy)
@@ -143,6 +144,29 @@ func TestSelectLatencyPreferenceStaysWithinHardConstraints(t *testing.T) {
 		}
 		if err != nil || decision.Model.PublicID != want {
 			t.Fatalf("sensitive=%v decision=%#v err=%v", sensitive, decision, err)
+		}
+	}
+}
+
+func TestLocalPricingControlsEligibilityAndCost(t *testing.T) {
+	local, cloud := model("a/local"), model("z/cloud")
+	local.Local = ptr(true)
+	local.Pricing = catalog.Pricing{InputPerMillion: ptr(10.0), OutputPerMillion: ptr(20.0)}
+	req := router.RequestRequirements{Endpoint: router.EndpointChat, EstimatedInputTokens: 1000, RequestedOutputTokens: 100}
+	policy := router.DefaultSelectionPolicy()
+	got, err := router.Select([]router.Candidate{{Model: local}, {Model: cloud}}, req, "low", policy)
+	if err != nil || got.Model.PublicID != cloud.PublicID {
+		t.Fatalf("local pricing ignored: %#v %v", got, err)
+	}
+	got, err = router.Select([]router.Candidate{{Model: local}}, req, "low", policy)
+	if err != nil || got.EstimatedCost == nil || *got.EstimatedCost != .012 {
+		t.Fatalf("local cost ignored: %#v %v", got, err)
+	}
+	policy.AllowPaidModels = false
+	for _, pricing := range []catalog.Pricing{local.Pricing, {}} {
+		local.Pricing = pricing
+		if _, err := router.Select([]router.Candidate{{Model: local}}, req, "low", policy); err == nil {
+			t.Fatal("locality bypassed free-only pricing")
 		}
 	}
 }

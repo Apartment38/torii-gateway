@@ -40,6 +40,7 @@ function updateConsoleIdentity(): void {
   document.querySelector("#signed-in-user")!.textContent = signedIn ? signedInUsername : "Not signed in";
 }
 function signOutConsole(): void {
+ stopActivity();
   consoleSession = "";csrfToken="";loadedConfiguration={};editingProvider=null;editingOriginal=null;
   configurationRevision = "";
   signedInUsername = "";
@@ -453,6 +454,7 @@ async function saveConfig(): Promise<boolean> {
       if(login!==consoleSession)return false;
       if(response.status===412 || response.status===428){saveConflict=true;throw new Error("Configuration changed · your draft is still here. Copy your edits, reload, and reconcile them.");}
       if(!response.ok)throw new Error(redactProviderKeys(`Save failed: ${await response.text()}`));
+      const result=await response.json();
       configurationRevision=response.headers.get("ETag")||"";
       const view=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});
       if(!view.ok)throw new Error("Saved; reload failed. Refresh configuration before editing again.");
@@ -463,7 +465,7 @@ async function saveConfig(): Promise<boolean> {
         loadedConfiguration=structuredClone(committed);
         providers.forEach(p=>{const submitted=configuration.providers.find((q:any)=>q.id===p.id);const stored=committed.providers.find((q:any)=>q.id===p.id);if(stored && submitted?.bearer_token?.value===p.api_key){p.bearer_token=stored.bearer_token;p.api_key="";}});
       }
-      saveState.textContent=saveQueued?"Saving…":"Saved";
+      saveState.textContent=saveQueued?"Saving…":result.restart_required?"Saved · restart required for listener or file logging changes":"Saved";
       document.querySelector<HTMLButtonElement>("#save-button")!.hidden=true;
       success=true;
     }
@@ -481,6 +483,7 @@ function navigate(): void {
     page.setAttribute("aria-hidden", String(!active));
   });
   document.querySelectorAll<HTMLAnchorElement>(".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+  if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models" && configurationLoaded)void loadModelsPage();
   if (current === "routing") updateClassifierOptions();

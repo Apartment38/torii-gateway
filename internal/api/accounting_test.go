@@ -3,9 +3,11 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Apartment38/torii-gateway/internal/accounting"
+	"github.com/Apartment38/torii-gateway/internal/activity"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"github.com/Apartment38/torii-gateway/internal/state"
@@ -165,4 +167,37 @@ func TestQuotaEnforcesRequestTokenCostAndStorageBeforeDispatch(t *testing.T) {
 	if call().Code != 429 || p.calls != 0 {
 		t.Fatal("unknown pricing admitted")
 	}
+}
+func TestActivityMetadataExcludesPromptAndResponse(t *testing.T) {
+	p := &accountingFixtureProvider{stream: true}
+	h, _ := accountingHandler(t, p, accounting.Settings{})
+	db, err := state.OpenDatabase(filepath.Join(t.TempDir(), "activity.db"), bytes.Repeat([]byte{2}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	events, err := activity.Open(db, activity.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetActivity(events)
+	ch, unsubscribe := events.Subscribe()
+	defer unsubscribe()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"p/model","max_tokens":10,"stream":true,"messages":[{"role":"user","content":"private prompt"}]}`)))
+	for range 3 {
+		select {
+		case e := <-ch:
+			data, _ := json.Marshal(e)
+			if bytes.Contains(data, []byte("private prompt")) || bytes.Contains(data, []byte("secret response")) {
+				t.Fatal("content leaked")
+			}
+			if e.Kind == "request_complete" && (e.InputTokens != 2 || e.OutputTokens != 3) {
+				t.Fatal("activity usage incomplete", e)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("missing activity")
+		}
+	}
+	events.Close()
 }

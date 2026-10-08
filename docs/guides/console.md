@@ -15,6 +15,7 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Routing | Smart routing, classifier selection/tuning, session failure policy |
 | Benchmarks | Enable sources, enter source keys, refresh and inspect scores |
 | Credentials | Create/revoke client API keys and rotate the default key |
+| Activity | Recent metadata-only request events and live routing/completion updates |
 | State & Quota | Inspect usage and allowance/quota state |
 
 The console supports light and dark themes. It loads the active configuration

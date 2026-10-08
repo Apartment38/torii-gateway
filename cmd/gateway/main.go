@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/accounting"
+	"github.com/Apartment38/torii-gateway/internal/activity"
 	"github.com/Apartment38/torii-gateway/internal/api"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
@@ -41,6 +43,7 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := runWithIO(ctx, os.Args[1:], os.Stdout); err != nil {
@@ -171,6 +174,16 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	if err != nil {
 		db.Close()
 		return err
+	}
+	if cfg.Activity.LogFile != "" {
+		options := cfg.Activity.Defaults()
+		writer, err := activity.NewRotatingWriter(options.LogFile, options.LogMaxBytes, options.LogBackups)
+		if err != nil {
+			db.Close()
+			return errors.New("cannot open activity log file")
+		}
+		defer writer.Close()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(io.MultiWriter(os.Stdout, writer), nil)))
 	}
 	if *listen != "" {
 		cfg.Server.Listen = *listen
@@ -461,6 +474,7 @@ type handlerRuntime struct {
 	usageMu         sync.Mutex
 	usageStore      *usage.Store
 	accountingStore *accounting.Store
+	activityStore   *activity.Store
 	setupDigest     [32]byte
 	setupExpires    time.Time
 	credentials     *state.Database
@@ -529,6 +543,9 @@ func (r *handlerRuntime) swap(handler http.Handler) {
 	r.mu.Lock()
 	r.handler = handler
 	r.mu.Unlock()
+	if next, ok := handler.(*catalogHandler); ok && next.onActivate != nil {
+		next.onActivate()
+	}
 	if next, ok := handler.(*catalogHandler); ok && r.background != nil {
 		next.startIntelligence(r.background)
 	}
@@ -542,6 +559,7 @@ type catalogHandler struct {
 	intelligence    *intelligence.Manager
 	ownedUsage      *usage.Store
 	ownedAccounting *accounting.Store
+	onActivate      func()
 	workerMu        sync.Mutex
 	workerCancel    context.CancelFunc
 	workerDone      chan struct{}
@@ -646,6 +664,15 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		}
 		openAI.SetAccountingOverrides(cfg.Router.CatalogOverrides)
 		providers = openAI.ConfigureAccounting(accountingStore, cfg.Budgets, providers)
+	}
+	if runtime != nil && database != nil {
+		if runtime.activityStore == nil {
+			runtime.activityStore, err = activity.Open(database, cfg.Activity)
+			if err != nil {
+				return nil, fmt.Errorf("initialize activity: %w", err)
+			}
+		}
+		openAI.SetActivity(runtime.activityStore)
 	}
 	var configuredClassifier classifier.Classifier
 	decisionOptions := classifier.DecisionOptions{Questions: cfg.Router.Classifier.Questions, NoulThresholds: cfg.Router.Classifier.NoulThresholds}
@@ -827,6 +854,8 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			protect("/gateway/v1/admin/api-keys", runtime.gatewayKeysAPI)
 			protect("/gateway/v1/admin/api-keys/", runtime.gatewayKeysAPI)
 		}
+		protect("GET /gateway/v1/activity", runtime.activityAPI)
+		protect("GET /gateway/v1/activity/events", runtime.activityAPI)
 		protect("GET /gateway/v1/usage", openAI.UsageAPI)
 		protect("GET /gateway/v1/quotas", openAI.UsageAPI)
 		protect("PUT /gateway/v1/quotas", runtime.setBudgets)
@@ -853,6 +882,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	mux.Handle("/gateway/v1/", managementBoundary(benchmarkAuth, openAI))
 	mux.Handle("/", web.Handler())
 	handler := &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}
+	if runtime != nil && runtime.activityStore != nil {
+		handler.onActivate = func() { runtime.activityStore.Configure(cfg.Activity) }
+	}
 	if runtime == nil {
 		handler.ownedAccounting = accountingStore
 		handler.ownedUsage = usageStore
@@ -878,6 +910,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 func (r *handlerRuntime) closeUsage() error {
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
+	if r.activityStore != nil {
+		defer r.activityStore.Close()
+	}
 	if r.accountingStore != nil {
 		defer r.accountingStore.Close()
 	}
@@ -1025,7 +1060,7 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 	committed, _ := r.configRevision(&next)
 	w.Header().Set("ETag", committed)
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = io.WriteString(w, `{"status":"saved","reloaded":true}`+"\n")
+	writeJSON(w, 200, map[string]any{"status": "saved", "reloaded": true, "restart_required": current.Server.Listen != next.Server.Listen || current.Activity.LogFile != next.Activity.LogFile || current.Activity.LogMaxBytes != next.Activity.LogMaxBytes || current.Activity.LogBackups != next.Activity.LogBackups})
 }
 
 func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) {

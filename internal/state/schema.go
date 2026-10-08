@@ -9,7 +9,7 @@ import (
 // BaselineSchemaVersion is the first database-only release. Older installations
 // must be recreated once; all subsequent upgrades preserve their database.
 const BaselineSchemaVersion = 4
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 type schemaMigration struct {
 	Version int
@@ -29,6 +29,12 @@ CREATE TABLE admin_sessions (token_hash BLOB PRIMARY KEY CHECK(length(token_hash
 CREATE TABLE accounting_lock(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT INTO accounting_lock VALUES(1,0);
 CREATE TABLE accounting_totals(key_id TEXT NOT NULL,key_name TEXT NOT NULL,period TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,requests INTEGER NOT NULL,input_tokens INTEGER NOT NULL,output_tokens INTEGER NOT NULL,cost REAL NOT NULL,unknown_cost INTEGER NOT NULL,estimated_tokens INTEGER NOT NULL,PRIMARY KEY(key_id,period,provider,model));
 CREATE TABLE accounting_reservations(id TEXT PRIMARY KEY,key_id TEXT NOT NULL,key_name TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,day TEXT NOT NULL,month TEXT NOT NULL,requests INTEGER NOT NULL,input_tokens INTEGER NOT NULL,output_tokens INTEGER NOT NULL,cost REAL NOT NULL,unknown_cost INTEGER NOT NULL,estimated_tokens INTEGER NOT NULL,status TEXT NOT NULL);
+`}, {Version: 9, SQL: `
+CREATE TABLE activity_storage(id INTEGER PRIMARY KEY CHECK(id=1),bytes INTEGER NOT NULL); INSERT INTO activity_storage VALUES(1,0);
+CREATE TABLE activity_events(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,document BLOB NOT NULL,size INTEGER NOT NULL);
+CREATE INDEX activity_time ON activity_events(at,id);
+CREATE TRIGGER activity_insert AFTER INSERT ON activity_events BEGIN UPDATE activity_storage SET bytes=bytes+NEW.size WHERE id=1; END;
+CREATE TRIGGER activity_delete AFTER DELETE ON activity_events BEGIN UPDATE activity_storage SET bytes=bytes-OLD.size WHERE id=1; END;
 `}}
 
 const credentialSchema = `

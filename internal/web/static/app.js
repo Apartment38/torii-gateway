@@ -1,4 +1,4 @@
-// Generated from benchmarks.ts, models.ts, accounting.ts and app.ts by scripts/build-console.mjs.
+// Generated from benchmarks.ts, models.ts, accounting.ts, activity.ts and app.ts by scripts/build-console.mjs.
 const benchmarkDefinitions = [{"name":"Artificial Analysis","requires_api_key":true,"note":"Imports published capability, pricing and speed measurements. Requires an Artificial Analysis API key.","settings":{"id":"artificial-analysis","type":"artificial_analysis","enabled":false,"url":"https://artificialanalysis.ai/api/v2/data/llms/models"}},{"name":"BenchLM.ai","requires_api_key":false,"note":"Imports public supported benchmark evidence; estimated scores do not influence capabilities. Commercial use requires a BenchLM licence.","settings":{"id":"benchlm","type":"benchlm","enabled":false,"url":"https://benchlm.ai/data/models.json"}},{"name":"Hugging Face leaderboards","requires_api_key":false,"note":"Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required.","settings":{"id":"huggingface","type":"huggingface","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"open-llm-leaderboard/contents","config":"default","split":"train","model_field":"fullname","version":"Open LLM Leaderboard v2","metrics":{"IFEval Raw":{"category":"instruction_following","max":1},"BBH Raw":{"category":"reasoning","max":1},"MATH Lvl 5 Raw":{"category":"math","max":1},"GPQA Raw":{"category":"knowledge","max":1},"MUSR Raw":{"category":"reasoning","max":1},"MMLU-PRO Raw":{"category":"knowledge","max":1}}}]}},{"name":"LMArena","requires_api_key":false,"note":"Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.","settings":{"id":"lmarena","type":"lmarena","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"lmarena-ai/leaderboard-dataset","config":"text_style_control","split":"latest","model_field":"model_name","date_field":"leaderboard_publish_date"}]}},{"name":"LiveBench","requires_api_key":false,"note":"Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.","settings":{"id":"livebench","type":"livebench","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"livebench/model_judgment","config":"default","split":"leaderboard","model_field":"model","date_field":"tstamp"}]}}];
 // Source forms and cached evidence views. No browser persistence or dependencies.
 
@@ -313,6 +313,24 @@ for(const period of ["daily","monthly"])for(const metric of ["requests","tokens"
 });}
 document.querySelector("#refresh-usage") .addEventListener("click",()=>{void loadUsagePage();});
 
+let activityStream                 =null;
+let activityRows      =[];
+function stopActivity()     {activityStream?.close();activityStream=null;activityRows=[];document.querySelector("#activity-list") .textContent="";}
+function renderActivity()     {
+ document.querySelector("#activity-list") .innerHTML=`<div class="benchmark-table-scroll"><table><thead><tr><th>Time / request</th><th>Event</th><th>API key</th><th>Requested → selected</th><th>Outcome</th><th>Duration</th><th>Tokens</th><th>Estimated USD</th></tr></thead><tbody>`+activityRows.slice(-200).reverse().map((e    )=>`<tr><td>${escapeHTML(e.at||"")}<br>${escapeHTML(e.request_id||"")}</td><td>${escapeHTML(e.kind)}</td><td>${escapeHTML(e.key_name||e.key_id||"")}</td><td>${escapeHTML(e.requested_model||"")} → ${escapeHTML(e.selected_model||"")}<br>${escapeHTML(e.provider||"")}</td><td>${escapeHTML(e.outcome||"")} ${e.status||""}</td><td>${e.duration_ms??""} ms</td><td>${e.input_tokens||0} / ${e.output_tokens||0}${e.estimated_tokens?" (estimated)":""}</td><td>${e.unknown_cost?"unknown":e.estimated_cost==null?"—":Number(e.estimated_cost).toFixed(6)}</td></tr>`).join("")+`</tbody></table></div>`;
+}
+async function startActivity()              {
+ if(activityStream || !consoleSession)return;
+ const status=document.querySelector("#activity-status") ;
+ try{const response=await gatewayFetch("/gateway/v1/activity?limit=200",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const history=await response.json();activityRows=history.events||[];renderActivity();
+ if(location.hash!=="#activity" || !consoleSession)return;
+ const last=activityRows.at(-1)?.id||0;const stream=new EventSource(`/gateway/v1/activity/events?after_id=${last}`);activityStream=stream;
+ stream.onopen=()=>{status.textContent="Live · metadata only";};stream.onerror=()=>{status.textContent="Disconnected · reconnecting and replaying available events";};
+ stream.addEventListener("activity",event=>{const e=JSON.parse((event                ).data);if(!activityRows.some(row=>row.id===e.id)){activityRows.push(e);activityRows=activityRows.slice(-200);renderActivity();}});
+ stream.addEventListener("gap",()=>{status.textContent="History gap · events were pruned or a viewer/recording queue overflowed";});
+ }catch{status.textContent="Activity unavailable. Sign in and retry.";}
+}
+
 
 
 // Browser authentication uses an HttpOnly cookie. Only the CSRF token is in memory.
@@ -355,6 +373,7 @@ function updateConsoleIdentity()       {
   document.querySelector("#signed-in-user") .textContent = signedIn ? signedInUsername : "Not signed in";
 }
 function signOutConsole()       {
+ stopActivity();
   consoleSession = "";csrfToken="";loadedConfiguration={};editingProvider=null;editingOriginal=null;
   configurationRevision = "";
   signedInUsername = "";
@@ -768,6 +787,7 @@ async function saveConfig()                   {
       if(login!==consoleSession)return false;
       if(response.status===412 || response.status===428){saveConflict=true;throw new Error("Configuration changed · your draft is still here. Copy your edits, reload, and reconcile them.");}
       if(!response.ok)throw new Error(redactProviderKeys(`Save failed: ${await response.text()}`));
+      const result=await response.json();
       configurationRevision=response.headers.get("ETag")||"";
       const view=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});
       if(!view.ok)throw new Error("Saved; reload failed. Refresh configuration before editing again.");
@@ -778,7 +798,7 @@ async function saveConfig()                   {
         loadedConfiguration=structuredClone(committed);
         providers.forEach(p=>{const submitted=configuration.providers.find((q    )=>q.id===p.id);const stored=committed.providers.find((q    )=>q.id===p.id);if(stored && submitted?.bearer_token?.value===p.api_key){p.bearer_token=stored.bearer_token;p.api_key="";}});
       }
-      saveState.textContent=saveQueued?"Saving…":"Saved";
+      saveState.textContent=saveQueued?"Saving…":result.restart_required?"Saved · restart required for listener or file logging changes":"Saved";
       document.querySelector                   ("#save-button") .hidden=true;
       success=true;
     }
@@ -796,6 +816,7 @@ function navigate()       {
     page.setAttribute("aria-hidden", String(!active));
   });
   document.querySelectorAll                   (".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+  if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models" && configurationLoaded)void loadModelsPage();
   if (current === "routing") updateClassifierOptions();

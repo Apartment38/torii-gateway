@@ -28,6 +28,7 @@
           <a class="nav-link" href="#routing">Routing</a>
           <a class="nav-link" href="#intelligence">Benchmarks</a>
           <a class="nav-link" href="#credentials">Credentials</a>
+          <a class="nav-link" href="#activity">Activity</a>
           <a class="nav-link" href="#state">State &amp; quota</a>
         </nav>
         <section class="sidebar-account" aria-label="Current user"><p class="eyebrow">Account</p><span id="signed-in-user" role="status" aria-live="polite">Not signed in</span></section>
@@ -143,6 +144,8 @@
               <div class="benchmark-pagination"><button id="benchmark-previous" class="button quiet" type="button">Previous</button><span id="benchmark-page-label" role="status"></span><button id="benchmark-next" class="button quiet" type="button">Next</button></div>
             </section>
           </section>
+
+          <section id="activity" class="page section-block"><h2>Activity</h2><p>Recent request metadata only. Prompts, responses and credentials are excluded. Usage and costs may be conservative estimates.</p><p id="activity-status" role="status">Connecting…</p><div id="activity-list"></div></section>
 
           <section id="state" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>

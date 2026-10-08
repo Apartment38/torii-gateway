@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/accounting"
+	"github.com/Apartment38/torii-gateway/internal/activity"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/fault"
@@ -30,6 +31,7 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
+	activity            *activity.Store
 	accounting          *accounting.Store
 	accountingOverrides []catalog.Descriptor
 	budgets             accounting.Settings
@@ -244,6 +246,17 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	activityStarted := time.Now()
+	activitySelected := ""
+	activityInterrupted := false
+	tracked := &statusWriter{ResponseWriter: w, status: 200}
+	w = tracked
+	if h.activity != nil {
+		h.activity.Emit(h.activityEvent(r, "request_start", fields.Model, ""))
+	}
+	defer func() {
+		h.completeActivity(r, fields.Model, activitySelected, activityStarted, tracked.status, activityInterrupted)
+	}()
 	r, err = h.beginAccounting(r)
 	if err != nil {
 		writeBudgetError(w, err)
@@ -279,6 +292,10 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fault.New(fault.ModelNotFound, "model"))
 		return
 	}
+	activitySelected = requestedModel
+	if h.activity != nil {
+		h.activity.Emit(h.activityEvent(r, "routing", fields.Model, requestedModel))
+	}
 	started := time.Now()
 	response, err := upstream.Forward(r.Context(), r.URL.Path, body, modelID)
 	h.recordLatency(requestedModel, time.Since(started))
@@ -295,6 +312,10 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 				}
 				providerID, modelID, _ = provider.ParseModelID(alternate)
 				requestedModel, upstream = alternate, h.byID[providerID]
+				activitySelected = requestedModel
+				if h.activity != nil {
+					h.activity.Emit(h.activityEvent(r, "routing", fields.Model, requestedModel))
+				}
 				started = time.Now()
 				response, err = upstream.Forward(r.Context(), r.URL.Path, body, modelID)
 				h.recordLatency(requestedModel, time.Since(started))
@@ -339,6 +360,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		observer := accounting.NewObserver(true)
 		relayErr := relayStream(w, io.TeeReader(response.Body, observer))
 		observer.Finish()
+		activityInterrupted = relayErr != nil
 		if relayErr == nil && observer.Reported && h.usage != nil {
 			h.usage.Add(requestedModel, uint64(observer.Input), uint64(observer.Output), h.actualCost(requestedModel, uint64(observer.Input), uint64(observer.Output)))
 		}
@@ -348,6 +370,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	observer := accounting.NewObserver(false)
 	_, relayErr := io.Copy(w, io.TeeReader(response.Body, observer))
 	observer.Finish()
+	activityInterrupted = relayErr != nil
 	if relayErr == nil && observer.Reported && h.usage != nil {
 		h.usage.Add(requestedModel, uint64(observer.Input), uint64(observer.Output), h.actualCost(requestedModel, uint64(observer.Input), uint64(observer.Output)))
 	}

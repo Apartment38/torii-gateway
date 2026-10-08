@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/accounting"
+	"github.com/Apartment38/torii-gateway/internal/activity"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/provider"
@@ -25,6 +26,7 @@ import (
 // Additional sections must not be added until their behavior is implemented;
 // the decoder rejects keys that are not represented here.
 type Config struct {
+	Activity     activity.Options    `yaml:"activity,omitempty"`
 	Budgets      accounting.Settings `yaml:"budgets,omitempty"`
 	ModelEnabled map[string]bool     `yaml:"model_enabled,omitempty"`
 	Credentials  *state.Database     `yaml:"-"`
@@ -174,6 +176,9 @@ func Decode(r io.Reader) (*Config, error) {
 // Validate checks configuration invariants without performing network or
 // filesystem access.
 func (c Config) Validate() error {
+	if err := c.Activity.Validate(); err != nil {
+		return err
+	}
 	if err := c.Budgets.Validate(); err != nil {
 		return err
 	}

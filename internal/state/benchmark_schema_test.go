@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -42,7 +43,7 @@ func TestUnversionedLookalikeInternalTableIsNotAnEmptyDatabase(t *testing.T) {
 }
 func TestPreBaselineAndNewerSchemasRejectedUnchanged(t *testing.T) {
 	for _, version := range []int{0, 1, 2, 3, SchemaVersion + 1} {
-		t.Run(string(rune('0'+version)), func(t *testing.T) {
+		t.Run(strconv.Itoa(version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "existing.db")
 			db, err := sql.Open("sqlite", path)
 			if err != nil {
@@ -52,7 +53,7 @@ func TestPreBaselineAndNewerSchemasRejectedUnchanged(t *testing.T) {
 			if _, err := db.Exec("CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('original')"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.Exec("PRAGMA user_version=" + string(rune('0'+version))); err != nil {
+			if _, err := db.Exec("PRAGMA user_version=" + strconv.Itoa(version)); err != nil {
 				t.Fatal(err)
 			}
 			bad, err := OpenDatabase(path, bytes.Repeat([]byte{7}, 32))

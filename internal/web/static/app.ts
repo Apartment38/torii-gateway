@@ -645,32 +645,30 @@ async function loginProvider(index: number, button: HTMLButtonElement): Promise<
     button.disabled = false;
   }
 }
+const helperAssets=["torii-auth-linux-amd64","torii-auth-linux-arm64","torii-auth-darwin-amd64","torii-auth-darwin-arm64","torii-auth-windows-amd64.exe"];
+function detectedHelperAsset():string {
+ const platform=navigator.platform.toLowerCase(),agent=navigator.userAgent.toLowerCase();
+ if(platform.includes("win"))return helperAssets[4];
+ if(platform.includes("mac")||agent.includes("macintosh"))return agent.includes("arm")?helperAssets[3]:helperAssets[2];
+ return agent.includes("aarch64")||agent.includes("arm64")?helperAssets[1]:helperAssets[0];
+}
+function quoteShell(value:string,windows=false):string{return "'"+value.replace(/'/g,windows?"''":"'\\''")+"'";}
+function helperCommand(asset:string,sessionURL:string,pairingToken:string):string {
+ if(!helperAssets.includes(asset))throw new Error("Select a supported helper platform");
+ const windows=asset.endsWith(".exe");
+ const executable=windows?`& ${quoteShell(".\\"+asset,true)}`:`./${asset}`;
+ return (windows?"":`chmod +x ./${asset}\n`)+`${executable} --session-url ${quoteShell(sessionURL,windows)} --pairing-token ${quoteShell(pairingToken,windows)}`;
+}
 function renderHelperInstructions(result: HTMLDivElement, sessionURL: string, pairingToken: string): void {
-  const command = `torii-auth --session-url ${sessionURL} --pairing-token ${pairingToken}`;
-  result.className = "provider-result pending provider-helper";
-  const downloadURL = helperDownloadURL();
-  result.innerHTML = `<strong>Download and run the one-shot helper on the computer with your browser.</strong><a href="${downloadURL}" download>Download torii-auth for this computer</a><span>${escapeHTML(command)}</span><button class="copy-helper button quiet" type="button">Copy command</button><small>Browsers cannot launch executables automatically. Run the downloaded helper once; it opens OpenAI login locally, imports the credential, then exits. This pairing expires in 10 minutes.</small>`;
-  result.querySelector<HTMLAnchorElement>("a")?.addEventListener("click",async event=>{if(!downloadURL.startsWith("/"))return;event.preventDefault();try{const response=await fetch(downloadURL,{headers:await authProvider.headers()});if(!response.ok)throw new Error();const url=URL.createObjectURL(await response.blob());const a=document.createElement("a");a.href=url;a.download=downloadURL.split("/").pop()!;a.click();URL.revokeObjectURL(url);}catch{toast("Helper download failed; sign in and retry");}});
-  result.querySelector<HTMLButtonElement>(".copy-helper")?.addEventListener("click", async event => {
-    const button = event.currentTarget as HTMLButtonElement;
-    try {
-      await navigator.clipboard.writeText(command);
-      button.textContent = "Copied";
-    } catch {
-      button.textContent = "Copy unavailable";
-    }
-  });
+ let asset=detectedHelperAsset();let command=helperCommand(asset,sessionURL,pairingToken);
+ result.className="provider-result pending provider-helper";
+ result.innerHTML=`<strong>Download and run the helper on the computer with your browser.</strong><label>Operating system / architecture<select class="helper-platform">${helperAssets.map(name=>`<option value="${name}" ${name===asset?"selected":""}>${name.replace("torii-auth-","")}</option>`).join("")}</select></label><a class="helper-download" href="${helperDownloadURL(asset)}" download="${asset}">Download ${asset}</a><p>Open a terminal in the folder containing the download (usually Downloads). Run these commands there:</p><pre class="helper-command">${escapeHTML(command)}</pre><button class="copy-helper button quiet" type="button">Copy commands</button><small>Check the platform selection; browser detection may not identify your processor. The helper opens OpenAI login locally, imports the credential and prints “Codex login imported into Torii successfully.” Then it exits. Pairing expires in 10 minutes and is single use. After expiry or failure, click Log in again for a fresh token and rerun the updated commands. Keep the token private.</small><a href="https://github.com/Apartment38/torii-gateway/releases/latest" target="_blank" rel="noopener noreferrer">Gateway releases</a>`;
+ const link=result.querySelector<HTMLAnchorElement>(".helper-download");
+ result.querySelector<HTMLSelectElement>(".helper-platform")?.addEventListener("change",event=>{asset=(event.target as HTMLSelectElement).value;command=helperCommand(asset,sessionURL,pairingToken);if(link){link.href=helperDownloadURL(asset);link.download=asset;link.textContent=`Download ${asset}`;}result.querySelector(".helper-command")!.textContent=command;});
+ link?.addEventListener("click",async event=>{event.preventDefault();try{const response=await gatewayFetch(helperDownloadURL(asset),{headers:await authProvider.headers()});if(!response.ok)throw new Error();const url=URL.createObjectURL(await response.blob());const a=document.createElement("a");a.href=url;a.download=asset;a.click();URL.revokeObjectURL(url);}catch{toast("Helper download failed; sign in and retry");}});
+ result.querySelector<HTMLButtonElement>(".copy-helper")?.addEventListener("click",async event=>{const button=event.currentTarget as HTMLButtonElement;try{await navigator.clipboard.writeText(command);button.textContent="Copied";}catch{button.textContent="Copy unavailable";}});
 }
-function helperDownloadURL(): string {
-  const platform = navigator.platform.toLowerCase();
-  const agent = navigator.userAgent.toLowerCase();
-  let asset = "";
-  if (platform.includes("win")) asset = "torii-auth-windows-amd64.exe";
-  else if (platform.includes("mac") || agent.includes("macintosh")) asset = agent.includes("arm") ? "torii-auth-darwin-arm64" : "torii-auth-darwin-amd64";
-  else if (agent.includes("aarch64") || agent.includes("arm64")) asset = "torii-auth-linux-arm64";
-  else if (platform.includes("linux")) asset = "torii-auth-linux-amd64";
-  return asset ? `/gateway/v1/providers/login/helper/${asset}` : "https://github.com/Apartment38/torii-router/releases/latest";
-}
+function helperDownloadURL(asset=detectedHelperAsset()):string{return helperAssets.includes(asset)?`/gateway/v1/providers/login/helper/${asset}`:"https://github.com/Apartment38/torii-gateway/releases/latest";}
 async function pollProviderLogin(provider: Record<string, string | boolean>, result: HTMLDivElement, button: HTMLButtonElement, openedURL = "", helperPending = false): Promise<void> {
   const providerID = String(provider.id);
   for (let attempt = 0; attempt < 180; attempt += 1) {
@@ -706,7 +704,7 @@ document.querySelector("#save-button")!.addEventListener("click", () => { void s
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
 form.addEventListener("input", markDirty);
-form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!target.closest("dialog") && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
+form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });

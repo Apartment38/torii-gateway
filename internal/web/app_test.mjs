@@ -1226,3 +1226,13 @@ test("provider dialogs keep incomplete drafts out of unrelated automatic saves",
  app.run('cancelProviderEditor()');
  assert.equal(app.run('providers[0].api_url'),"https://openai_compatible.example/v1");
 });
+test("helper commands match platform downloads and quote shell arguments",()=>{
+ const app=consoleFixture(()=>response({}));
+ const linux=app.run(`helperCommand("torii-auth-linux-amd64","https://gateway.test/session?x=1&y=2","token")`);
+ assert.equal(linux,"chmod +x ./torii-auth-linux-amd64\n./torii-auth-linux-amd64 --session-url 'https://gateway.test/session?x=1&y=2' --pairing-token 'token'");
+ assert.equal(app.run(`quoteShell("a'b")`),"'a'\\''b'");
+ const windows=app.run(`helperCommand("torii-auth-windows-amd64.exe","https://gateway.test/session","a'b")`);
+ assert.equal(windows,"& '.\\torii-auth-windows-amd64.exe' --session-url 'https://gateway.test/session' --pairing-token 'a''b'");
+ for(const asset of ["torii-auth-linux-arm64","torii-auth-darwin-amd64","torii-auth-darwin-arm64"]){app.context.asset=asset;assert.match(app.run('helperCommand(asset,"url","token")'),new RegExp(asset));assert.ok(app.run('helperDownloadURL(asset)').endsWith(asset));}
+ const source=readFileSync(new URL("./static/app.ts",import.meta.url),"utf8");assert.match(source,/helper-platform/);assert.doesNotMatch(source,/torii-router\/releases/);
+});

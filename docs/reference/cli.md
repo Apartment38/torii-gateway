@@ -69,12 +69,16 @@ Source partial failures appear in `partial_failure` even on exit zero.
 ## Remote login helper
 
 ```sh
-torii-auth --session-url https://gateway.example.com/gateway/v1/providers/login/session   --pairing-token 'ONE_TIME_TOKEN_FROM_CONSOLE'
+chmod +x ./torii-auth-linux-amd64
+./torii-auth-linux-amd64 --session-url 'https://gateway.example.com/gateway/v1/providers/login/session' \
+  --pairing-token 'ONE_TIME_TOKEN_FROM_CONSOLE'
 ```
 
 Run the OS/architecture-matching helper on the computer with your browser.
+Open a terminal in the downloaded file’s folder (usually Downloads). Use the
+console platform selector to correct browser OS/architecture detection.
 Both flags are required; use the exact pending session URL/token from the console.
 The helper opens login locally, receives the loopback callback, transfers the
 credential, and exits. The token expires in 10 minutes and is single use. It must
 not be shared. `torii-auth version` prints build metadata. The helper needs no
-local gateway database/master key and does not keep running after success.
+local gateway database/master key. Success prints `Codex login imported into Torii successfully.` and exits; failure or expiry requires a fresh console Log in token and updated command. The console generates matching POSIX or PowerShell quoting and filenames.

@@ -130,7 +130,7 @@ catalog, or uses configured fallback models. The served catalog refreshes on
 requests after one minute and immediately after a successful web login.
 Connection tests report the actual
 discovery error instead of claiming the fallback is a successful connection.
-Use `gateway models --config ./config.yaml` to inspect the catalog.
+Use `gateway models --database ./state/torii.db` to inspect the catalog.
 
 ## Remote Codex login
 
@@ -138,19 +138,24 @@ When the gateway runs on another computer, the Providers page cannot complete
 OpenAI's loopback OAuth callback directly in the container. Click **Log in**
 for the `openai-codex` provider and run the displayed one-shot helper on the
 computer where your browser is running. The container serves a matching
-`torii-auth` binary for the detected operating system; download it from the
-console, then run the command shown there:
+binary for the selected operating system and architecture. Check the manual
+platform selector, download it from the console, then open a terminal in the
+download folder (usually Downloads). On Linux amd64 run:
 
 ```sh
-torii-auth --session-url https://gateway.example.com/gateway/v1/providers/login/session \
+chmod +x ./torii-auth-linux-amd64
+./torii-auth-linux-amd64 --session-url 'https://gateway.example.com/gateway/v1/providers/login/session' \
   --pairing-token '<one-time-token-from-the-console>'
 ```
 
 The helper opens OpenAI login locally, receives the callback on `127.0.0.1`,
 transfers the protected credential to the pending gateway session, and exits.
 The pairing token expires after 10 minutes and can be used only once. The
-gateway stores and refreshes the credential; the helper does not need to keep
-running. Use HTTPS for the console in production because the helper transfers
+gateway stores and refreshes the credential. Success prints `Codex login imported
+into Torii successfully.` and the helper exits. After failure or expiry, click
+**Log in** for a fresh session/token and rerun the newly generated commands.
+Linux arm64 and macOS commands use their selected filename; Windows uses the
+PowerShell command shown by the console without `chmod`. Use HTTPS for the console in production because the helper transfers
 OAuth credentials to the gateway over the session connection.
 
 For images built before the helper endpoint was added, rebuild the container:

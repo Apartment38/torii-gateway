@@ -146,6 +146,10 @@
 
           <section id="state" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">04 / Operations</p><h2>State &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
+            <p>Operator accounting, not provider billing. Limits of 0 are disabled. Token budgets include classifier calls and retries. Missing usage retains conservative estimates; monetary budgets require reliable pricing or a provider marked free.</p>
+            <label>Budget scope<select id="budget-scope"><option value="*">Entire gateway</option></select></label>
+            <div class="grid three"><label>Daily requests<input id="budget-daily-requests" type="number" min="0" step="1" value="0"></label><label>Daily tokens<input id="budget-daily-tokens" type="number" min="0" step="1" value="0"></label><label>Daily estimated USD<input id="budget-daily-estimated_cost" type="number" min="0" step="0.01" value="0"></label><label>Monthly requests<input id="budget-monthly-requests" type="number" min="0" step="1" value="0"></label><label>Monthly tokens<input id="budget-monthly-tokens" type="number" min="0" step="1" value="0"></label><label>Monthly estimated USD<input id="budget-monthly-estimated_cost" type="number" min="0" step="0.01" value="0"></label></div>
+            <button id="refresh-usage" type="button" class="button secondary">Refresh usage</button><div id="usage-list"></div>
             <div class="grid two">
               <label data-tooltip="How long quota results remain cached before being refreshed. Use a Go duration such as 1m or 30s.">Quota cache TTL<input name="router.quota.cache_ttl" value="1m" placeholder="1m" /></label>
               <label data-tooltip="How long an inactive routing session remains associated with its model. Use a Go duration such as 30m.">Session inactivity timeout<input name="router.sessions.inactivity_timeout" placeholder="30m" /></label>

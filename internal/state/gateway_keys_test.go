@@ -164,3 +164,28 @@ func TestSchemaFourUpgradePreservesExistingCredentials(t *testing.T) {
 		d.Close()
 	}
 }
+func TestResolvedGatewayKeysHaveStableIndividualIdentities(t *testing.T) {
+	d, _, _ := testDB(t)
+	defaultKey, err := d.CreateAdmin("admin", "administrator-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, key, err := d.CreateGatewayAPIKey("Client One")
+	if err != nil {
+		t.Fatal(err)
+	}
+	named, err := d.ResolveGatewayAPIKey(key)
+	if err != nil || named.ID != first.ID || named.Name != "Client One" {
+		t.Fatal("named identity collapsed", named, err)
+	}
+	base, err := d.ResolveGatewayAPIKey(defaultKey)
+	if err != nil || base.ID != GatewayAPIKeyID || base.ID == named.ID {
+		t.Fatal("default identity collapsed", base, err)
+	}
+	if err = d.DeleteGatewayAPIKey(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.ResolveGatewayAPIKey(key); err == nil {
+		t.Fatal("revoked identity accepted")
+	}
+}

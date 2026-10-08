@@ -187,3 +187,7 @@ Cookies are Secure on direct HTTPS and when the immediate peer belongs to an exp
 ## Model management
 
 Administrator `GET /gateway/v1/models` returns discovered physical models, enabled state, catalog capabilities/pricing, and safely matched benchmark intelligence with source, freshness and missing-score metadata. It uses the existing identity/alias resolver; approximate display matches supply no scores. `PUT` accepts `{id,enabled}` and requires the configuration `If-Match` revision; its successful `ETag` is the newly committed settings revision. Full config changes can also set `model_enabled`.
+
+## Usage and quotas
+
+Administrator `GET /gateway/v1/usage` and `/gateway/v1/quotas` return current UTC day/month totals by key/provider/physical model, reported versus estimated tokens, unknown-cost counts, configured budgets, remaining limits and reset times (bounded to 10,000 usage rows). `PUT /gateway/v1/quotas` accepts the `budgets` settings object and requires `If-Match`; full configuration saves can also edit budgets. Named inference keys resolve to their stable credential IDs and names. Quota failures return OpenAI-compatible HTTP 429 (`insufficient_quota`, `quota_exceeded`) with `Retry-After` and `X-Quota-Reset`. Quota storage failures return HTTP 503 before dispatch for requests subject to limits. Smart filters candidates against budgets and may retry a different eligible model before response commitment.

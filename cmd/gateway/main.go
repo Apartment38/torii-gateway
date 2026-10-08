@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/api"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
@@ -453,24 +454,25 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
-	adminBasic    *api.BasicAdminAuthenticator
-	configMu      sync.Mutex
-	configKey     []byte
-	configVersion uint64
-	usageMu       sync.Mutex
-	usageStore    *usage.Store
-	setupDigest   [32]byte
-	setupExpires  time.Time
-	credentials   *state.Database
-	background    context.Context
-	swapMu        sync.Mutex
-	mu            sync.RWMutex
-	handler       http.Handler
-	configPath    string
-	loginMu       sync.Mutex
-	logins        map[string]providerLogin
-	loginFlows    map[string]providerLoginFlow
-	loginSessions map[string]providerLoginSession
+	adminBasic      *api.BasicAdminAuthenticator
+	configMu        sync.Mutex
+	configKey       []byte
+	configVersion   uint64
+	usageMu         sync.Mutex
+	usageStore      *usage.Store
+	accountingStore *accounting.Store
+	setupDigest     [32]byte
+	setupExpires    time.Time
+	credentials     *state.Database
+	background      context.Context
+	swapMu          sync.Mutex
+	mu              sync.RWMutex
+	handler         http.Handler
+	configPath      string
+	loginMu         sync.Mutex
+	logins          map[string]providerLogin
+	loginFlows      map[string]providerLoginFlow
+	loginSessions   map[string]providerLoginSession
 }
 
 type providerLogin struct {
@@ -536,12 +538,13 @@ func (r *handlerRuntime) swap(handler http.Handler) {
 // rejected configuration save cannot redirect login refreshes to a discarded one.
 type catalogHandler struct {
 	http.Handler
-	refresh      func(context.Context) error
-	intelligence *intelligence.Manager
-	ownedUsage   *usage.Store
-	workerMu     sync.Mutex
-	workerCancel context.CancelFunc
-	workerDone   chan struct{}
+	refresh         func(context.Context) error
+	intelligence    *intelligence.Manager
+	ownedUsage      *usage.Store
+	ownedAccounting *accounting.Store
+	workerMu        sync.Mutex
+	workerCancel    context.CancelFunc
+	workerDone      chan struct{}
 }
 
 func (h *catalogHandler) RefreshCatalog(ctx context.Context) error {
@@ -577,7 +580,13 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	var authenticator api.ClientAuthenticator = api.NoAuthAuthenticator{}
 	var managementAuth api.ClientAuthenticator = authenticator
 	if database != nil {
-		authenticator = api.CredentialBearerAuthenticator{Verify: database.VerifyGatewayAPIKey}
+		authenticator = api.CredentialBearerAuthenticator{Identify: func(token string) (*api.ClientIdentity, error) {
+			key, err := database.ResolveGatewayAPIKey(token)
+			if err != nil {
+				return nil, api.ErrUnauthorized
+			}
+			return &api.ClientIdentity{ID: key.ID, Name: key.Name}, nil
+		}}
 		basic := api.NewBasicAdminAuthenticator(database.VerifyAdmin)
 		if runtime != nil {
 			if runtime.adminBasic == nil {
@@ -622,6 +631,22 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	if err := openAI.RefreshCatalog(context.Background()); err != nil {
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
 	}
+	var accountingStore *accounting.Store
+	if database != nil {
+		if runtime != nil {
+			if runtime.accountingStore == nil {
+				runtime.accountingStore, err = accounting.Open(database)
+			}
+			accountingStore = runtime.accountingStore
+		} else {
+			accountingStore, err = accounting.Open(database)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("initialize accounting: %w", err)
+		}
+		openAI.SetAccountingOverrides(cfg.Router.CatalogOverrides)
+		providers = openAI.ConfigureAccounting(accountingStore, cfg.Budgets, providers)
+	}
 	var configuredClassifier classifier.Classifier
 	decisionOptions := classifier.DecisionOptions{Questions: cfg.Router.Classifier.Questions, NoulThresholds: cfg.Router.Classifier.NoulThresholds}
 	if cfg.Router.Classifier.Type == "jev" {
@@ -650,6 +675,13 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			if cfg.Credentials != nil {
 				apiKey = "database-managed"
 				client.Transport = &secretTransport{base: http.DefaultTransport, headers: map[string]config.SecretRef{"Authorization": *cfg.Router.Classifier.APIKey}, bearer: true}
+			}
+			if accountingStore != nil {
+				base := client.Transport
+				if base == nil {
+					base = http.DefaultTransport
+				}
+				client.Transport = &accounting.Transport{Base: base, Store: accountingStore, Settings: cfg.Budgets, Describe: openAI.AccountingDescriptor}
 			}
 			configuredClassifier, err = classifier.NewJevWithOptions(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, client, decisionOptions)
 			if err != nil {
@@ -795,6 +827,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			protect("/gateway/v1/admin/api-keys", runtime.gatewayKeysAPI)
 			protect("/gateway/v1/admin/api-keys/", runtime.gatewayKeysAPI)
 		}
+		protect("GET /gateway/v1/usage", openAI.UsageAPI)
+		protect("GET /gateway/v1/quotas", openAI.UsageAPI)
+		protect("PUT /gateway/v1/quotas", runtime.setBudgets)
 		protect("GET /gateway/v1/models", openAI.ManagementModels)
 		protect("PUT /gateway/v1/models", runtime.setModel)
 		protect("GET /gateway/v1/config", runtime.getConfig)
@@ -819,6 +854,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	mux.Handle("/", web.Handler())
 	handler := &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}
 	if runtime == nil {
+		handler.ownedAccounting = accountingStore
 		handler.ownedUsage = usageStore
 	}
 	if runtime != nil && database != nil {
@@ -842,6 +878,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 func (r *handlerRuntime) closeUsage() error {
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
+	if r.accountingStore != nil {
+		defer r.accountingStore.Close()
+	}
 	if r.usageStore == nil {
 		return nil
 	}
@@ -853,6 +892,9 @@ func (r *handlerRuntime) closeUsage() error {
 // Close is used by standalone handler owners; runtime handlers share usage.
 func (h *catalogHandler) Close() error {
 	h.stopIntelligence()
+	if h.ownedAccounting != nil {
+		defer h.ownedAccounting.Close()
+	}
 	if h.ownedUsage == nil {
 		return nil
 	}

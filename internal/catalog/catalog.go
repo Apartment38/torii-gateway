@@ -74,20 +74,21 @@ type Provenance struct {
 // Descriptor is the normalized metadata for one physical model. Snapshots
 // contain values only, so callers cannot mutate catalog-owned state.
 type Descriptor struct {
-	PublicID      string               `json:"id" yaml:"id"`
-	ProviderID    string               `json:"provider_id" yaml:"provider_id"`
-	UpstreamID    string               `json:"upstream_id" yaml:"upstream_id"`
-	Created       int64                `json:"created,omitempty" yaml:"created,omitempty"`
-	OwnedBy       string               `json:"owned_by,omitempty" yaml:"owned_by,omitempty"`
-	Endpoints     EndpointCapabilities `json:"endpoints" yaml:"endpoints"`
-	Capabilities  ModelCapabilities    `json:"capabilities" yaml:"capabilities"`
-	Modalities    Modalities           `json:"modalities" yaml:"modalities"`
-	ContextWindow *int64               `json:"context_window,omitempty" yaml:"context_window,omitempty"`
-	Pricing       Pricing              `json:"pricing" yaml:"pricing"`
-	Quality       Quality              `json:"quality" yaml:"quality"`
-	Local         *bool                `json:"local,omitempty" yaml:"local,omitempty"`
-	Availability  Availability         `json:"availability" yaml:"availability"`
-	Metadata      Provenance           `json:"metadata" yaml:"metadata"`
+	PublicID        string               `json:"id" yaml:"id"`
+	ProviderID      string               `json:"provider_id" yaml:"provider_id"`
+	UpstreamID      string               `json:"upstream_id" yaml:"upstream_id"`
+	Created         int64                `json:"created,omitempty" yaml:"created,omitempty"`
+	OwnedBy         string               `json:"owned_by,omitempty" yaml:"owned_by,omitempty"`
+	Endpoints       EndpointCapabilities `json:"endpoints" yaml:"endpoints"`
+	Capabilities    ModelCapabilities    `json:"capabilities" yaml:"capabilities"`
+	Modalities      Modalities           `json:"modalities" yaml:"modalities"`
+	MaxOutputTokens *int64               `json:"max_output_tokens,omitempty" yaml:"max_output_tokens,omitempty"`
+	ContextWindow   *int64               `json:"context_window,omitempty" yaml:"context_window,omitempty"`
+	Pricing         Pricing              `json:"pricing" yaml:"pricing"`
+	Quality         Quality              `json:"quality" yaml:"quality"`
+	Local           *bool                `json:"local,omitempty" yaml:"local,omitempty"`
+	Availability    Availability         `json:"availability" yaml:"availability"`
+	Metadata        Provenance           `json:"metadata" yaml:"metadata"`
 }
 
 //go:embed capabilities.json
@@ -271,6 +272,7 @@ func bundledForProvider(records []Descriptor, providerID string, now time.Time) 
 }
 
 func clone(d Descriptor) Descriptor {
+	d.MaxOutputTokens = copyInt(d.MaxOutputTokens)
 	d.ContextWindow = copyInt(d.ContextWindow)
 	d.Pricing.InputPerMillion = copyFloat(d.Pricing.InputPerMillion)
 	d.Pricing.OutputPerMillion = copyFloat(d.Pricing.OutputPerMillion)
@@ -302,6 +304,9 @@ func mergeMatching(base Descriptor, records []Descriptor, source string) Descrip
 		base.Modalities = mergeModalities(base.Modalities, overlay.Modalities)
 		if overlay.ContextWindow != nil {
 			base.ContextWindow = copyInt(overlay.ContextWindow)
+		}
+		if overlay.MaxOutputTokens != nil {
+			base.MaxOutputTokens = copyInt(overlay.MaxOutputTokens)
 		}
 		if overlay.Pricing.InputPerMillion != nil {
 			base.Pricing.InputPerMillion = copyFloat(overlay.Pricing.InputPerMillion)

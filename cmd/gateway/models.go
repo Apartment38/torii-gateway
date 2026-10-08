@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"gopkg.in/yaml.v3"
 	"io"
@@ -34,6 +35,30 @@ func (r *handlerRuntime) setModel(w http.ResponseWriter, req *http.Request) {
 		cfg.ModelEnabled = map[string]bool{}
 	}
 	cfg.ModelEnabled[input.ID] = *input.Enabled
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		writeConfigError(w, 500, err)
+		return
+	}
+	clone := req.Clone(req.Context())
+	clone.Body = io.NopCloser(bytes.NewReader(data))
+	clone.ContentLength = int64(len(data))
+	r.putConfig(w, clone)
+}
+func (r *handlerRuntime) setBudgets(w http.ResponseWriter, req *http.Request) {
+	var input accounting.Settings
+	decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil || input.Validate() != nil {
+		writeConfigError(w, 400, errors.New("invalid budgets"))
+		return
+	}
+	cfg, err := r.loadConfig()
+	if err != nil {
+		writeConfigError(w, 503, errors.New("configuration unavailable"))
+		return
+	}
+	cfg.Budgets = input
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		writeConfigError(w, 500, err)

@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/fault"
 	"github.com/Apartment38/torii-gateway/internal/provider"
@@ -22,6 +23,8 @@ import (
 type smartRouting struct {
 	identity          session.Identity
 	classification    classifier.Classification
+	body              []byte
+	endpoint          string
 	requirements      router.RequestRequirements
 	policy            router.SelectionPolicy
 	pinnedModel       string
@@ -37,7 +40,7 @@ type smartRouting struct {
 
 func (h *OpenAIHandler) prepareSmartRouting(r *http.Request, body []byte) (*smartRouting, error) {
 	started := time.Now()
-	routing := &smartRouting{identity: smartIdentityInfo(r, body, r.URL.Path), policy: h.policy, toolContinuation: smartToolContinuation(body), classifierSource: "not_configured"}
+	routing := &smartRouting{body: body, endpoint: r.URL.Path, identity: smartIdentityInfo(r, body, r.URL.Path), policy: h.policy, toolContinuation: smartToolContinuation(body), classifierSource: "not_configured"}
 	defer func() { routing.elapsed += time.Since(started) }()
 	if err := h.ensureCatalog(r.Context()); err != nil {
 		return routing, fault.Wrap(fault.ProviderUnavailable, "discover smart models", err)
@@ -100,6 +103,7 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 	started := time.Now()
 	defer func() { routing.elapsed += time.Since(started) }()
 	candidates := make([]router.Candidate, 0)
+	var budgetErr error
 	for _, model := range h.CatalogModels() {
 		if model.PublicID == excluded || !h.enabled(model.PublicID) {
 			continue
@@ -108,6 +112,17 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 		if err != nil || h.byID[providerID] == nil {
 			continue
 		}
+		if subject := accounting.SubjectFrom(ctx); subject != nil && h.accounting != nil && h.budgets.Limited(subject.Key) {
+			amount, supported := accounting.Estimate(routing.body, routing.endpoint, model)
+			if !supported && (h.budgets.TokenLimited(subject.Key) || h.budgets.CostLimited(subject.Key)) {
+				budgetErr = accounting.UnknownCapacity()
+				continue
+			}
+			if err := h.accounting.CanReserve(subject.Key, h.budgets, amount); err != nil {
+				budgetErr = err
+				continue
+			}
+		}
 		candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID), Intelligence: h.modelIntelligence(model.PublicID)}
 		if h.quota != nil {
 			if status, quotaErr := h.quota.Get(ctx, model.PublicID); quotaErr == nil {
@@ -115,6 +130,9 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 			}
 		}
 		candidates = append(candidates, candidate)
+	}
+	if len(candidates) == 0 && budgetErr != nil {
+		return "", budgetErr
 	}
 	if excluded == "" && routing.pinnedModel != "" {
 		for _, candidate := range candidates {

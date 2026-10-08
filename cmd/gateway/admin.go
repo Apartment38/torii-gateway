@@ -25,10 +25,14 @@ import (
 type benchmarkAuthenticator struct{ basic, bearer api.ClientAuthenticator }
 
 func (a benchmarkAuthenticator) Authenticate(r *http.Request) (*api.ClientIdentity, error) {
-	if strings.HasPrefix(r.Header.Get("Authorization"), "Basic ") {
+	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 		return a.basic.Authenticate(r)
 	}
-	return a.bearer.Authenticate(r)
+	id, err := a.bearer.Authenticate(r)
+	if err == nil {
+		id = &api.ClientIdentity{ID: state.Owner, Name: id.Name}
+	}
+	return id, err
 }
 
 func (r *handlerRuntime) initializeAdminPrompt(output io.Writer) error {

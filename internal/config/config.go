@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/provider"
@@ -24,13 +25,14 @@ import (
 // Additional sections must not be added until their behavior is implemented;
 // the decoder rejects keys that are not represented here.
 type Config struct {
-	ModelEnabled map[string]bool    `yaml:"model_enabled,omitempty"`
-	Credentials  *state.Database    `yaml:"-"`
-	Server       ServerConfig       `yaml:"server"`
-	State        StateConfig        `yaml:"state"`
-	Providers    []ProviderConfig   `yaml:"providers"`
-	Router       RouterConfig       `yaml:"router,omitempty"`
-	Intelligence IntelligenceConfig `yaml:"intelligence,omitempty"`
+	Budgets      accounting.Settings `yaml:"budgets,omitempty"`
+	ModelEnabled map[string]bool     `yaml:"model_enabled,omitempty"`
+	Credentials  *state.Database     `yaml:"-"`
+	Server       ServerConfig        `yaml:"server"`
+	State        StateConfig         `yaml:"state"`
+	Providers    []ProviderConfig    `yaml:"providers"`
+	Router       RouterConfig        `yaml:"router,omitempty"`
+	Intelligence IntelligenceConfig  `yaml:"intelligence,omitempty"`
 }
 
 type RouterConfig struct {
@@ -172,6 +174,19 @@ func Decode(r io.Reader) (*Config, error) {
 // Validate checks configuration invariants without performing network or
 // filesystem access.
 func (c Config) Validate() error {
+	if err := c.Budgets.Validate(); err != nil {
+		return err
+	}
+	for _, d := range c.Router.CatalogOverrides {
+		for _, rate := range []*float64{d.Pricing.InputPerMillion, d.Pricing.OutputPerMillion} {
+			if rate != nil && (*rate < 0 || math.IsNaN(*rate) || math.IsInf(*rate, 0)) {
+				return errors.New("catalog pricing requires finite nonnegative rates")
+			}
+		}
+		if d.MaxOutputTokens != nil && (*d.MaxOutputTokens <= 0 || *d.MaxOutputTokens > 1e12) {
+			return errors.New("invalid supported maximum output tokens")
+		}
+	}
 	physical := c.Router.Classifier.Model
 	if c.Router.Classifier.Provider != "" {
 		physical = c.Router.Classifier.Provider + "/" + physical

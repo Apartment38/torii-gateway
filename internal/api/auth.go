@@ -17,7 +17,8 @@ var ErrUnauthorized = errors.New("unauthorized")
 
 // ClientIdentity identifies an authenticated gateway client.
 type ClientIdentity struct {
-	ID string
+	ID   string
+	Name string
 }
 
 // ClientAuthenticator authenticates a request and returns its client identity.

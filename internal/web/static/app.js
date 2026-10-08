@@ -1,4 +1,4 @@
-// Generated from benchmarks.ts, models.ts and app.ts by scripts/build-console.mjs.
+// Generated from benchmarks.ts, models.ts, accounting.ts and app.ts by scripts/build-console.mjs.
 const benchmarkDefinitions = [{"name":"Artificial Analysis","requires_api_key":true,"note":"Imports published capability, pricing and speed measurements. Requires an Artificial Analysis API key.","settings":{"id":"artificial-analysis","type":"artificial_analysis","enabled":false,"url":"https://artificialanalysis.ai/api/v2/data/llms/models"}},{"name":"BenchLM.ai","requires_api_key":false,"note":"Imports public supported benchmark evidence; estimated scores do not influence capabilities. Commercial use requires a BenchLM licence.","settings":{"id":"benchlm","type":"benchlm","enabled":false,"url":"https://benchlm.ai/data/models.json"}},{"name":"Hugging Face leaderboards","requires_api_key":false,"note":"Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required.","settings":{"id":"huggingface","type":"huggingface","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"open-llm-leaderboard/contents","config":"default","split":"train","model_field":"fullname","version":"Open LLM Leaderboard v2","metrics":{"IFEval Raw":{"category":"instruction_following","max":1},"BBH Raw":{"category":"reasoning","max":1},"MATH Lvl 5 Raw":{"category":"math","max":1},"GPQA Raw":{"category":"knowledge","max":1},"MUSR Raw":{"category":"reasoning","max":1},"MMLU-PRO Raw":{"category":"knowledge","max":1}}}]}},{"name":"LMArena","requires_api_key":false,"note":"Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.","settings":{"id":"lmarena","type":"lmarena","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"lmarena-ai/leaderboard-dataset","config":"text_style_control","split":"latest","model_field":"model_name","date_field":"leaderboard_publish_date"}]}},{"name":"LiveBench","requires_api_key":false,"note":"Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.","settings":{"id":"livebench","type":"livebench","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"livebench/model_judgment","config":"default","split":"leaderboard","model_field":"model","date_field":"tstamp"}]}}];
 // Source forms and cached evidence views. No browser persistence or dependencies.
 
@@ -289,6 +289,29 @@ async function loadModelsPage()              {
 }
 
 document.querySelector("#refresh-models") .addEventListener("click",()=>{void loadModelsPage();});
+
+let budgetsDraft                   ={};
+function renderBudgetEditor()      {
+ const scope=document.querySelector                   ("#budget-scope") .value||"*";
+ const budgets=scope==="*"?budgetsDraft.gateway:budgetsDraft.keys?.[scope];
+ for(const period of ["daily","monthly"])for(const metric of ["requests","tokens","estimated_cost"]){document.querySelector                  (`#budget-${period}-${metric}`) .value=String(budgets?.[period]?.[metric]||0);}
+}
+async function loadUsagePage()              {
+ const output=document.querySelector             ("#usage-list") ;
+ try{
+ const keys=await gatewayFetch("/gateway/v1/admin/api-keys",{headers:await authProvider.headers()});if(!keys.ok)throw new Error("Keys unavailable");const metadata=await keys.json();const selector=document.querySelector                   ("#budget-scope") ;const chosen=selector.value;
+ selector.innerHTML='<option value="*">Entire gateway</option>'+(metadata.api_keys||[]).map((key    )=>`<option value="${escapeHTML(key.id)}">${escapeHTML(key.name)}</option>`).join("");selector.value=chosen||"*";renderBudgetEditor();
+ const response=await gatewayFetch("/gateway/v1/usage",{headers:await authProvider.headers()});if(!response.ok)throw new Error("Usage accounting unavailable");const data=await response.json();
+ output.innerHTML=`<p>${escapeHTML(data.qualification||"")}</p><h3>Budgets and resets</h3>`+(data.budgets||[]).filter((b    )=>b.limit.requests||b.limit.tokens||b.limit.estimated_cost).map((b    )=>`<p>${escapeHTML(b.key_id==="*"?"Gateway":((metadata.api_keys||[]).find((k    )=>k.id===b.key_id)?.name||b.key_id))} · ${escapeHTML(b.period)} · resets ${escapeHTML(b.reset_at)} · remaining requests ${b.limit.requests?b.remaining.requests:"unlimited"}, tokens ${b.limit.tokens?b.remaining.tokens:"unlimited"}, estimated USD ${b.limit.estimated_cost?Number(b.remaining.estimated_cost).toFixed(6):"unlimited"}</p>`).join("")+`<h3>Current UTC usage</h3><div class="benchmark-table-scroll"><table><thead><tr><th>Key</th><th>Period</th><th>Model</th><th>Client requests</th><th>Input / output tokens</th><th>Estimated tokens</th><th>Estimated USD</th></tr></thead><tbody>`+(data.usage||[]).filter((r    )=>r.key_id!=="*").map((r    )=>`<tr><td>${escapeHTML(r.key_name||r.key_id)}</td><td>${escapeHTML(r.period)}</td><td>${escapeHTML(r.model||"Client requests")}</td><td>${r.requests}</td><td>${r.input_tokens} / ${r.output_tokens}</td><td>${r.estimated_tokens}</td><td>${Number(r.estimated_cost).toFixed(6)}${r.unknown_cost_attempts?" + unknown costs":""}</td></tr>`).join("")+`</tbody></table></div>`;
+ }catch(error){output.textContent=error instanceof Error?error.message:"Usage unavailable";}
+}
+document.querySelector("#budget-scope") .addEventListener("change",renderBudgetEditor);
+for(const period of ["daily","monthly"])for(const metric of ["requests","tokens","estimated_cost"]){document.querySelector                  (`#budget-${period}-${metric}`) .addEventListener("change",()=>{
+ const scope=document.querySelector                   ("#budget-scope") .value||"*";const value=Number(document.querySelector                  (`#budget-${period}-${metric}`) .value);if(!Number.isFinite(value)||value<0){saveState.textContent="Budgets must be nonnegative";return;}
+ let budgets                   ;if(scope==="*")budgets=budgetsDraft.gateway ||= {};else{budgetsDraft.keys ||= {};budgets=budgetsDraft.keys[scope] ||= {};}
+ (budgets[period] ||= {})[metric]=value;markDirty();void saveConfig();
+});}
+document.querySelector("#refresh-usage") .addEventListener("click",()=>{void loadUsagePage();});
 
 
 
@@ -647,7 +670,7 @@ function isSetupPlaceholder(provider                     )          {
 
 function applyConfig(config                     , revision = "")       {
   configurationRevision = revision;
-  loadedConfiguration=structuredClone(config);modelEnabledDraft={...config.model_enabled};saveConflict=false;
+  loadedConfiguration=structuredClone(config);modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
   legacyClassifier = null;
@@ -773,6 +796,7 @@ function navigate()       {
     page.setAttribute("aria-hidden", String(!active));
   });
   document.querySelectorAll                   (".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+  if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models" && configurationLoaded)void loadModelsPage();
   if (current === "routing") updateClassifierOptions();
   if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
@@ -831,7 +855,7 @@ function readConfig()                      {
   const config                      = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  config.model_enabled={...modelEnabledDraft};
+  config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
@@ -994,7 +1018,7 @@ document.querySelector("#save-button") .addEventListener("click", () => { void s
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle") .addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
 form.addEventListener("input", markDirty);
-form.addEventListener("change",event=>{const target=event.target               ;if(!target.closest("dialog") && !["classifier-question","classifier-question-option"].includes(target.id)){void saveConfig();}});
+form.addEventListener("change",event=>{const target=event.target               ;if(!target.closest("dialog") && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });

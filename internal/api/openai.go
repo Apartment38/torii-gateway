@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/fault"
@@ -30,22 +30,25 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
-	modelEnabled     map[string]bool
-	freeProviders    map[string]bool
-	byID             map[string]provider.OpenAIProvider
-	catalog          *catalog.Catalog
-	refreshMu        sync.Mutex
-	ready            bool
-	refreshedAt      time.Time
-	sessions         *session.Manager
-	classifier       classifier.Runner
-	policy           router.SelectionPolicy
-	usage            *usage.Store
-	quota            *quota.Cache
-	intelligence     *intelligence.Manager
-	latencyMu        sync.Mutex
-	latency          map[string]time.Duration
-	rerouteOnFailure bool
+	accounting          *accounting.Store
+	accountingOverrides []catalog.Descriptor
+	budgets             accounting.Settings
+	modelEnabled        map[string]bool
+	freeProviders       map[string]bool
+	byID                map[string]provider.OpenAIProvider
+	catalog             *catalog.Catalog
+	refreshMu           sync.Mutex
+	ready               bool
+	refreshedAt         time.Time
+	sessions            *session.Manager
+	classifier          classifier.Runner
+	policy              router.SelectionPolicy
+	usage               *usage.Store
+	quota               *quota.Cache
+	intelligence        *intelligence.Manager
+	latencyMu           sync.Mutex
+	latency             map[string]time.Duration
+	rerouteOnFailure    bool
 }
 
 func NewOpenAIHandler(providers []provider.OpenAIProvider) (*OpenAIHandler, error) {
@@ -241,18 +244,28 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	r, err = h.beginAccounting(r)
+	if err != nil {
+		writeBudgetError(w, err)
+		return
+	}
 	requestedModel := fields.Model
 	var routing *smartRouting
 	if requestedModel == "smart" {
 		routing, err = h.prepareSmartRouting(r, body)
 		defer routing.logEvidence(r.Context())
+		if subject := accounting.SubjectFrom(r.Context()); subject != nil && subject.BudgetFailure() != nil {
+			err = subject.BudgetFailure()
+		}
 		if err == nil {
 			requestedModel, err = h.selectSmartModel(r.Context(), routing, "")
 		}
 		if err != nil {
 			routing.errorKind, _ = fault.KindOf(err)
 			routing.writeHeaders(w.Header(), "")
-			writeError(w, err)
+			if !writeBudgetError(w, err) {
+				writeError(w, err)
+			}
 			return
 		}
 	}
@@ -293,6 +306,12 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		err = errors.New("upstream returned no response body")
 	}
 	if err != nil {
+		if writeBudgetError(w, err) {
+			if response != nil && response.Body != nil {
+				response.Body.Close()
+			}
+			return
+		}
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
@@ -317,27 +336,23 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(response.StatusCode)
 	if fields.Stream {
-		relayErr := relayStream(w, response.Body)
+		observer := accounting.NewObserver(true)
+		relayErr := relayStream(w, io.TeeReader(response.Body, observer))
+		observer.Finish()
+		if relayErr == nil && observer.Reported && h.usage != nil {
+			h.usage.Add(requestedModel, uint64(observer.Input), uint64(observer.Output), h.actualCost(requestedModel, uint64(observer.Input), uint64(observer.Output)))
+		}
 		h.finishSmartRouting(routing, requestedModel, response.StatusCode, relayErr)
 		return
 	}
-	if h.usage != nil {
-		data, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<20))
-		if readErr == nil {
-			if input, output, ok := usage.ExtractResponseUsage(data); ok {
-				if err := h.usage.Add(requestedModel, input, output, h.actualCost(requestedModel, input, output)); err != nil {
-					slog.Warn("usage_update_rejected", "error", err)
-				}
-			}
-			_, writeErr := w.Write(data)
-			h.finishSmartRouting(routing, requestedModel, response.StatusCode, writeErr)
-			return
-		}
-		h.finishSmartRouting(routing, requestedModel, response.StatusCode, readErr)
-		return
+	observer := accounting.NewObserver(false)
+	_, relayErr := io.Copy(w, io.TeeReader(response.Body, observer))
+	observer.Finish()
+	if relayErr == nil && observer.Reported && h.usage != nil {
+		h.usage.Add(requestedModel, uint64(observer.Input), uint64(observer.Output), h.actualCost(requestedModel, uint64(observer.Input), uint64(observer.Output)))
 	}
-	_, relayErr := io.Copy(w, response.Body)
 	h.finishSmartRouting(routing, requestedModel, response.StatusCode, relayErr)
+
 }
 
 func (h *OpenAIHandler) actualCost(model string, input, output uint64) float64 {

@@ -9,7 +9,7 @@ import (
 // BaselineSchemaVersion is the first database-only release. Older installations
 // must be recreated once; all subsequent upgrades preserve their database.
 const BaselineSchemaVersion = 4
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 type schemaMigration struct {
 	Version int
@@ -25,6 +25,10 @@ CREATE TABLE gateway_api_keys (
 CREATE TABLE gateway_settings (id INTEGER PRIMARY KEY CHECK(id=1), document BLOB NOT NULL, revision INTEGER NOT NULL);
 `}, {Version: 7, SQL: `
 CREATE TABLE admin_sessions (token_hash BLOB PRIMARY KEY CHECK(length(token_hash)=32), csrf TEXT NOT NULL, username TEXT NOT NULL, expires_at INTEGER NOT NULL, admin_fingerprint BLOB NOT NULL);
+`}, {Version: 8, SQL: `
+CREATE TABLE accounting_lock(id INTEGER PRIMARY KEY,value INTEGER NOT NULL); INSERT INTO accounting_lock VALUES(1,0);
+CREATE TABLE accounting_totals(key_id TEXT NOT NULL,key_name TEXT NOT NULL,period TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,requests INTEGER NOT NULL,input_tokens INTEGER NOT NULL,output_tokens INTEGER NOT NULL,cost REAL NOT NULL,unknown_cost INTEGER NOT NULL,estimated_tokens INTEGER NOT NULL,PRIMARY KEY(key_id,period,provider,model));
+CREATE TABLE accounting_reservations(id TEXT PRIMARY KEY,key_id TEXT NOT NULL,key_name TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,day TEXT NOT NULL,month TEXT NOT NULL,requests INTEGER NOT NULL,input_tokens INTEGER NOT NULL,output_tokens INTEGER NOT NULL,cost REAL NOT NULL,unknown_cost INTEGER NOT NULL,estimated_tokens INTEGER NOT NULL,status TEXT NOT NULL);
 `}}
 
 const credentialSchema = `

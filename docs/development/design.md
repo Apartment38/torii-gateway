@@ -87,8 +87,13 @@ are independently revocable; default rotation leaves named/provider keys intact.
 Saved secret values are not returned by management. Console login uses random opaque cookies; SQLite stores only token hashes and
 bounded session metadata. CSRF tokens and origin checks protect cookie mutations. Static asset availability does not waive API authentication.
 
-Keep usage additions in memory and flush absolute aggregates asynchronously.
-This is routing accounting, not audit-grade billing; streamed usage is not counted.
+Legacy model routing counters flush asynchronously. Operator per-key accounting
+uses synchronous SQLite reservations and settlements with UTC period totals.
+One client request includes classifier and retry attempts. Bounded JSON/SSE
+observation preserves forwarded bytes; missing usage retains conservative estimates.
+Quota checks acquire a SQLite writer lock before reading totals and fail closed
+when storage is unavailable for limited requests. This is estimated operator
+accounting, not provider billing.
 Benchmarks stage bounded source generations and publish pointers atomically,
 retaining previous good data on failure. No multi-process writer guarantee.
 

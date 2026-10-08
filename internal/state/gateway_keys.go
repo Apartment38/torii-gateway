@@ -81,8 +81,12 @@ func (d *Database) ListGatewayAPIKeys() ([]GatewayKeyMetadata, error) {
 // VerifyGatewayAPIKey keeps no plaintext cache and rechecks the encrypted
 // credential after indexed lookup. Deletions take effect on the next request.
 func (d *Database) VerifyGatewayAPIKey(key string) bool {
+	_, err := d.ResolveGatewayAPIKey(key)
+	return err == nil
+}
+func (d *Database) ResolveGatewayAPIKey(key string) (GatewayKeyMetadata, error) {
 	if key == "" || len(key) > 1024 || strings.ContainsAny(key, " \t\r\n") {
-		return false
+		return GatewayKeyMetadata{}, ErrCredentialNotFound
 	}
 	digest := sha256.Sum256([]byte(key))
 	var id string
@@ -91,14 +95,23 @@ func (d *Database) VerifyGatewayAPIKey(key string) bool {
 	if errors.Is(err, sql.ErrNoRows) {
 		id = GatewayAPIKeyID
 	} else if err != nil {
-		return false
+		return GatewayKeyMetadata{}, ErrCredentialNotFound
 	}
 	stored, err := d.Get(id, Owner)
 	if err != nil {
-		return false
+		return GatewayKeyMetadata{}, ErrCredentialNotFound
 	}
 	want := sha256.Sum256(stored)
-	return subtle.ConstantTimeCompare(digest[:], want[:]) == 1
+	if subtle.ConstantTimeCompare(digest[:], want[:]) != 1 {
+		return GatewayKeyMetadata{}, ErrCredentialNotFound
+	}
+	name := "Default gateway key"
+	if id != GatewayAPIKeyID {
+		if err = d.db.QueryRow("SELECT name FROM gateway_api_keys WHERE credential_id=?", id).Scan(&name); err != nil {
+			return GatewayKeyMetadata{}, ErrCredentialNotFound
+		}
+	}
+	return GatewayKeyMetadata{ID: id, Name: name}, nil
 }
 
 // DeleteGatewayAPIKey physically removes both the encrypted record and its

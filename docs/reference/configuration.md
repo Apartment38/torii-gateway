@@ -263,3 +263,20 @@ freshness equations, raw-data retention, identity safeguards, and provenance.
 ## Model controls
 
 `model_enabled` maps provider-qualified model IDs to booleans; omitted IDs are enabled. Disabled IDs survive rediscovery/restarts, disappear from inference discovery, and cannot be dispatched directly or selected by Smart. Change an active classifier before disabling its model. `providers[].enabled` defaults to true. `providers[].treat_models_as_free` defaults to true for native Ollama and false otherwise. When true, routing and quotas use explicit zero estimated cost; false retains individual catalog pricing overrides.
+
+## Operator budgets
+
+All budgets default to disabled. `budgets.gateway` applies to every client together; `budgets.keys` maps stable credential IDs (from the API key list) to per-key limits. Each has `daily` and `monthly` objects with `requests`, `tokens` (input plus output), and `estimated_cost` (USD). Nonnegative zero disables a limit; request/token limits are integers at most 10^15. UTC midnight and the first of each UTC month reset periods.
+
+Example settings excerpt:
+
+```yaml
+budgets:
+  gateway:
+    monthly: {estimated_cost: 100}
+  keys:
+    gateway/api-key:
+      daily: {requests: 1000, tokens: 1000000}
+```
+
+Reservations count one client request and every upstream attempt, including classifier calls and retries. Text input reserves one token per request-body byte; multimodal input conservatively reserves the known context capacity. An explicit positive output limit is reserved; omitted limits reserve `max_output_tokens` from a reliable catalog override or the known context capacity as an upper bound. Token/cost budgets reject requests without a supported bound. Embedding and typed-decision transports reserve zero generation tokens. Missing/cancelled usage retains estimates; complete reported JSON/SSE usage replaces them. Unknown prices remain unknown, and monetary limits reject them unless the provider is marked free or reliable pricing overrides exist. Outstanding reservations and committed totals survive restarts. Storage failures deny limited requests; unlimited inference can continue with an accounting warning. These figures are operator accounting, not provider billing.

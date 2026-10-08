@@ -7,16 +7,14 @@ services:
     container_name: torii-gateway
     restart: unless-stopped
     working_dir: /data
-    command: ["serve", "--config", "/config/config.yaml"]
+    command: ["serve"]
     environment:
       TORII_DB_KEY: ${TORII_DB_KEY:-}
-      TORII_CONFIG_BOOTSTRAP: "true"
     extra_hosts:
       - "host.containers.internal:host-gateway"
     ports:
       - "${TORII_PORT:-8080}:8080"
     volumes:
-      - "./config:/config:rw,Z,U"
       - "torii_gateway_database:/data:Z"
     healthcheck:
       test: ["CMD", "/gateway", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]

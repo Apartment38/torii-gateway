@@ -44,14 +44,7 @@ func openCredentials(cfg *config.Config, path string) (*state.Database, error) {
 	return db, nil
 }
 func (r *handlerRuntime) loadConfig() (*config.Config, error) {
-	cfg, err := config.Load(r.configPath)
-	if err != nil {
-		return nil, err
-	}
-	if r.credentials != nil {
-		err = cfg.BindSecrets(r.credentials)
-	}
-	return cfg, err
+	return loadDatabaseSettings(r.credentials)
 }
 func (r *handlerRuntime) oauthStore() (state.CredentialStore, error) {
 	if r.credentials != nil {
@@ -182,10 +175,10 @@ func (r *handlerRuntime) credentialAPI(w http.ResponseWriter, req *http.Request)
 }
 func runCredentials(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: gateway credentials <replace|delete> --config PATH --id ID [--secret-file PATH]; administrator authentication required")
+		return errors.New("usage: gateway credentials <replace|delete> --database PATH --id ID [--secret-file PATH]; administrator authentication required")
 	}
 	f := flag.NewFlagSet("credentials", flag.ContinueOnError)
-	path := f.String("config", "/config/config.yaml", "configuration path")
+	path := f.String("database", "", "SQLite database path")
 	id := f.String("id", "", "credential ID")
 	secretFile := f.String("secret-file", "", "read replacement from a protected file instead of prompting")
 	if err := f.Parse(args[1:]); err != nil {
@@ -194,14 +187,16 @@ func runCredentials(ctx context.Context, args []string, output io.Writer) error 
 	if f.NArg() != 0 {
 		return errors.New("unexpected arguments")
 	}
-	cfg, err := config.Load(*path)
+	db, err := openSettingsDatabase(*path)
 	if err != nil {
 		return err
 	}
-	db, err := openCredentials(cfg, *path)
+	cfg, err := loadDatabaseSettings(db)
 	if err != nil {
+		db.Close()
 		return err
 	}
+	_ = cfg
 	defer db.Close()
 	if strings.HasPrefix(*id, "__") || state.IsGatewayAPIKeyID(*id) {
 		return errors.New("protected system credential; use admin api-key")

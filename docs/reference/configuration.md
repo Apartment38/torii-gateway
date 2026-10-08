@@ -1,5 +1,9 @@
 # Configuration reference
 
+Settings and their revisions are stored in SQLite. Use `gateway config import --config PATH --database PATH` once to migrate a legacy YAML installation before starting this version. Import refuses an established settings document and keeps existing credential references and model IDs. Normal commands use `--database` or `TORII_DB_PATH` (default `/data/torii.db`), never a YAML file. Fresh databases use an empty provider list and first-run administrator setup. `serve --listen` / `TORII_LISTEN` overrides the listener; listener changes require restart. The master key still comes from `TORII_DB_KEY_FILE` / `TORII_DB_KEY`.
+
+`router.catalog_overrides` stores the same descriptor array previously read from `router.catalog_file`; import reads and embeds that file. Optional CA files remain external resources. Configuration mutations validate a candidate runtime and atomically commit its settings, revision, and submitted encrypted credentials before publishing it. Failed changes preserve persisted and active settings.
+
 Torii reads one YAML document. Unknown fields and multiple documents are rejected.
 The [complete example](../../config.example.yaml) is a starting point; a native
 installation must change its `/data/torii.db` path to writable local storage.

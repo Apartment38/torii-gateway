@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/api"
-	"github.com/Apartment38/torii-gateway/internal/config"
 	"github.com/Apartment38/torii-gateway/internal/state"
 	"golang.org/x/term"
 )
@@ -224,10 +223,10 @@ func authenticateLocalAdmin(db *state.Database, output io.Writer) error {
 }
 func runAdmin(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: gateway admin <create|api-key> --config PATH [--username NAME]; passwords are prompted securely or read from stdin")
+		return errors.New("usage: gateway admin <create|api-key> --database PATH [--username NAME]; passwords are prompted securely or read from stdin")
 	}
 	f := flag.NewFlagSet("admin", flag.ContinueOnError)
-	path := f.String("config", "/config/config.yaml", "configuration path")
+	path := f.String("database", "", "SQLite database path")
 	username := f.String("username", "", "administrator username")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
@@ -235,14 +234,16 @@ func runAdmin(ctx context.Context, args []string, output io.Writer) error {
 	if f.NArg() != 0 {
 		return errors.New("unexpected arguments")
 	}
-	cfg, err := config.Load(*path)
+	db, err := openSettingsDatabase(*path)
 	if err != nil {
 		return err
 	}
-	db, err := openCredentials(cfg, *path)
+	cfg, err := loadDatabaseSettings(db)
 	if err != nil {
+		db.Close()
 		return err
 	}
+	_ = cfg
 	defer db.Close()
 	if args[0] == "create" {
 		required, err := db.AdminRequired()

@@ -121,33 +121,23 @@ func TestConfigRevisionConcurrentSavesAndReload(t *testing.T) {
 	}
 }
 
-func TestConfigRevisionExternalEditAndRestart(t *testing.T) {
+func TestConfigRevisionIgnoresYAMLAndSurvivesRestart(t *testing.T) {
 	r, _ := credentialRuntime(t)
 	tag := currentConfigRevision(t, r)
-	data, err := os.ReadFile(r.configPath)
-	if err != nil {
+	if err := os.WriteFile(r.configPath, []byte("invalid YAML"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	edited := bytes.Replace(data, []byte("models: [model]"), []byte("models: [repaired]"), 1)
-	if bytes.Equal(data, edited) {
-		t.Fatal("fixture edit missed")
+	restarted := &handlerRuntime{configPath: r.configPath, credentials: r.credentials}
+	if got := currentConfigRevision(t, restarted); got != tag {
+		t.Fatal("persistent revision changed", got, tag)
 	}
-	if err := os.WriteFile(r.configPath, edited, 0600); err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodPut, "/gateway/v1/config", bytes.NewReader(data))
-	req.Header.Set("If-Match", tag)
+	req := configSaveRequest(t, r, `{"server":{"listen":"127.0.0.1:8080"},"providers":[]}`)
 	w := httptest.NewRecorder()
 	r.putConfig(w, req)
-	if w.Code != 412 {
-		t.Fatal("external edit overwritten", w.Code)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
 	}
-	current := currentConfigRevision(t, r)
-	restarted := &handlerRuntime{configPath: r.configPath, credentials: r.credentials}
-	req.Header.Set("If-Match", current)
-	w = httptest.NewRecorder()
-	restarted.putConfig(w, req)
-	if w.Code != 412 {
-		t.Fatal("pre-restart revision accepted", w.Code)
+	if currentConfigRevision(t, restarted) == tag {
+		t.Fatal("revision did not advance")
 	}
 }

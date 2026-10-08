@@ -15,6 +15,10 @@ import (
 // opaque and invalidates old tabs after restart. Canonical configuration bytes
 // detect edits made outside the API; the version also advances on no-op saves.
 func (r *handlerRuntime) configRevision(cfg *config.Config) (string, error) {
+	if r.credentials != nil {
+		_, revision, err := r.credentials.Settings()
+		return `"` + revision + `"`, err
+	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return "", err

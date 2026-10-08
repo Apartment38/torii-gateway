@@ -127,7 +127,7 @@ func TestConsoleBootstrapWithoutProvidersCanServeAndReload(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"reloaded":true`) {
 		t.Fatalf("empty provider save/reload failed: HTTP %d %s", w.Code, w.Body.String())
 	}
-	reloaded, err := config.Load(path)
+	reloaded, err := r.loadConfig()
 	if err != nil || len(reloaded.Providers) != 0 {
 		t.Fatalf("empty providers did not persist: cfg=%+v err=%v", reloaded, err)
 	}
@@ -304,7 +304,7 @@ func TestConsoleDirectProviderKeyPersistsReloadsAndAuthenticates(t *testing.T) {
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
 		t.Fatalf("save direct provider key = HTTP %d", put.Code)
 	}
-	cfg, err := config.Load(path)
+	cfg, err := r.loadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,6 +420,9 @@ providers:
 	if err := db.Put(state.GatewayAPIKeyID, state.Owner, "gateway", "authentication", []byte("process-secret")); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.CommitSettings([]byte(configuration), "", nil); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 
 	binary := filepath.Join(directory, "gateway")
@@ -432,7 +435,7 @@ providers:
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "serve", "--config", configPath)
+	command := exec.CommandContext(ctx, binary, "serve", "--database", filepath.Join(directory, "torii.db"))
 	command.Env = append(os.Environ(), "TEST_GATEWAY_API_KEY=process-secret", "TORII_DB_KEY="+strings.Repeat("18", 32), "TORII_DB_PATH="+filepath.Join(directory, "torii.db"))
 	output := new(strings.Builder)
 	command.Stdout, command.Stderr = output, output
@@ -575,7 +578,7 @@ providers:
 	if put.Code != http.StatusOK || !strings.Contains(put.Body.String(), `"reloaded":true`) {
 		t.Fatalf("PUT config = %d %s", put.Code, put.Body.String())
 	}
-	reloaded, err := config.Load(configPath)
+	reloaded, err := runtime.loadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -735,10 +738,13 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 	if _, err = db.CreateAdmin("cli-admin", "cli-admin-password"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.CommitSettings([]byte(configuration), "", nil); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 	var output strings.Builder
 	passwordStdin(t, "cli-admin-password")
-	if err := runWithIO(context.Background(), []string{"auth", "login", "openai", "--config", configPath, "--access-token-env", "CLI_ACCESS_TOKEN", "--refresh-token-env", "CLI_REFRESH_TOKEN", "--expires-at", "2099-01-01T00:00:00Z"}, &output); err != nil {
+	if err := runWithIO(context.Background(), []string{"auth", "login", "openai", "--database", os.Getenv("TORII_DB_PATH"), "--access-token-env", "CLI_ACCESS_TOKEN", "--refresh-token-env", "CLI_REFRESH_TOKEN", "--expires-at", "2099-01-01T00:00:00Z"}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(output.String(), "secret") || !strings.Contains(output.String(), "logged in") {
@@ -746,7 +752,7 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 	}
 	output.Reset()
 	passwordStdin(t, "cli-admin-password")
-	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--config", configPath}, &output); err != nil {
+	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--database", os.Getenv("TORII_DB_PATH")}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != "provider openai: logged in\n" {
@@ -754,12 +760,12 @@ func TestAuthCLIImportStatusAndLogoutNeverPrintTokens(t *testing.T) {
 	}
 	output.Reset()
 	passwordStdin(t, "cli-admin-password")
-	if err := runWithIO(context.Background(), []string{"auth", "logout", "openai", "--config", configPath}, &output); err != nil {
+	if err := runWithIO(context.Background(), []string{"auth", "logout", "openai", "--database", os.Getenv("TORII_DB_PATH")}, &output); err != nil {
 		t.Fatal(err)
 	}
 	output.Reset()
 	passwordStdin(t, "cli-admin-password")
-	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--config", configPath}, &output); err != nil {
+	if err := runWithIO(context.Background(), []string{"auth", "status", "openai", "--database", os.Getenv("TORII_DB_PATH")}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != "provider openai: logged out\n" {

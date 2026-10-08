@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"gopkg.in/yaml.v3"
@@ -32,13 +33,14 @@ type Config struct {
 }
 
 type RouterConfig struct {
-	ModelName       string           `yaml:"model_name,omitempty"`
-	CatalogFile     string           `yaml:"catalog_file,omitempty"`
-	AllowPaidModels *bool            `yaml:"allow_paid_models,omitempty"`
-	Classifier      ClassifierConfig `yaml:"classifier,omitempty"`
-	Sessions        SessionConfig    `yaml:"sessions,omitempty"`
-	Quota           QuotaConfig      `yaml:"quota,omitempty"`
-	Selection       SelectionConfig  `yaml:"selection,omitempty"`
+	ModelName        string               `yaml:"model_name,omitempty"`
+	CatalogOverrides []catalog.Descriptor `yaml:"catalog_overrides,omitempty"`
+	CatalogFile      string               `yaml:"catalog_file,omitempty"`
+	AllowPaidModels  *bool                `yaml:"allow_paid_models,omitempty"`
+	Classifier       ClassifierConfig     `yaml:"classifier,omitempty"`
+	Sessions         SessionConfig        `yaml:"sessions,omitempty"`
+	Quota            QuotaConfig          `yaml:"quota,omitempty"`
+	Selection        SelectionConfig      `yaml:"selection,omitempty"`
 }
 
 type ClassifierConfig struct {

@@ -20,8 +20,7 @@ This replaces the historical Version 1 implementation specification.
 - Ollama inference defaults to a configurable five-minute whole-request deadline,
   including response consumption. Its ten-second discovery budget is independent.
 - Full configuration saves require the revision from the preceding read. A
-  runtime-keyed opaque tag covers the canonical configuration and a save counter;
-  external configuration changes and restarts invalidate older revisions.
+  persistent SQLite revision advances with each committed save and survives restarts.
   Serialize checking through publication, before storing submitted credentials.
   Conflicts preserve console drafts rather than silently retrying them.
 
@@ -76,7 +75,9 @@ Handoff metadata must be explicit without breaking required JSON/SSE semantics.
 
 ## Persistence and authentication
 
-All durable data lives in the same embedded SQLite database; YAML remains config.
+All durable data, including validated settings and their revision, lives in SQLite.
+YAML is accepted only for explicit import and validation. Listener/database/master-key
+bootstrap options remain CLI/environment inputs. Catalog overrides are stored in settings.
 Encrypt credential payloads with AES-256-GCM and a separately supplied master key.
 Verify the key before schema upgrades. Future migrations are immutable sequential
 transactions; no silent reset/import/downgrade. Schema baseline 4 is retained.

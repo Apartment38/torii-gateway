@@ -144,7 +144,7 @@ func TestAdminCLIAndLegacyEnvironmentIgnored(t *testing.T) {
 	t.Setenv("TORII_API_KEY", "legacy-env-key")
 	passwordStdin(t, "chosen-admin-password")
 	var output bytes.Buffer
-	if err := runAdmin(context.Background(), []string{"create", "--config", path, "--username", "custom-name"}, &output); err != nil {
+	if err := runAdmin(context.Background(), []string{"create", "--database", os.Getenv("TORII_DB_PATH"), "--username", "custom-name"}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(output.String(), "legacy-env-key") {
@@ -166,12 +166,12 @@ func TestAdminCLIAndLegacyEnvironmentIgnored(t *testing.T) {
 	db.Close()
 	// A pipe is consumed once; reset it for each command.
 	passwordStdin(t, "wrong-password")
-	if err := runAdmin(context.Background(), []string{"api-key", "--config", path}, io.Discard); err == nil {
+	if err := runAdmin(context.Background(), []string{"api-key", "--database", os.Getenv("TORII_DB_PATH")}, io.Discard); err == nil {
 		t.Fatal("unauthorized terminal rotation")
 	}
 	passwordStdin(t, "chosen-admin-password")
 	output.Reset()
-	if err := runAdmin(context.Background(), []string{"api-key", "--config", path}, &output); err != nil {
+	if err := runAdmin(context.Background(), []string{"api-key", "--database", os.Getenv("TORII_DB_PATH")}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "displayed only once") || !strings.Contains(output.String(), "torii_") {

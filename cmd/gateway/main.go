@@ -90,6 +90,9 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		return nil
 	}
 	if len(args) > 0 && args[0] == "config" {
+		if len(args) > 1 && args[1] == "import" {
+			return runConfigImport(args[2:], output)
+		}
 		if len(args) < 2 || args[1] != "validate" {
 			return errors.New("usage: gateway config validate --config <path>")
 		}
@@ -109,19 +112,20 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 	}
 	if len(args) > 0 && args[0] == "models" {
 		flags := flag.NewFlagSet("models", flag.ContinueOnError)
-		configPath := flags.String("config", "/config/config.yaml", "path to the YAML configuration")
+		databasePath := flags.String("database", "", "SQLite database path")
 		if err := flags.Parse(args[1:]); err != nil {
 			return err
 		}
 		if flags.NArg() != 0 {
-			return errors.New("usage: gateway models --config <path>")
+			return errors.New("usage: gateway models --database <path>")
 		}
-		cfg, err := config.Load(*configPath)
+		db, err := openSettingsDatabase(*databasePath)
 		if err != nil {
 			return err
 		}
-		db, err := openCredentials(cfg, *configPath)
+		cfg, err := loadDatabaseSettings(db)
 		if err != nil {
+			db.Close()
 			return err
 		}
 		defer db.Close()
@@ -150,35 +154,39 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		return errors.New("usage: gateway <serve|admin|credentials|auth|models|benchmarks|healthcheck> [options]")
 	}
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
-	configPath := flags.String("config", "/config/config.yaml", "path to the YAML configuration")
+	databasePath := flags.String("database", "", "SQLite database path (or TORII_DB_PATH)")
+	listen := flags.String("listen", os.Getenv("TORII_LISTEN"), "listener override; requires restart")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: gateway serve --config <path>")
+		return errors.New("usage: gateway serve [--database PATH] [--listen ADDRESS]")
 	}
-
-	bootstrap := strings.EqualFold(strings.TrimSpace(os.Getenv("TORII_CONFIG_BOOTSTRAP")), "true") || os.Getenv("TORII_CONFIG_BOOTSTRAP") == "1"
-	if err := initializeConfigPath(*configPath, os.Getenv("TORII_CONFIG_TEMPLATE"), bootstrap); err != nil {
-		return err
-	}
-	cfg, err := config.Load(*configPath)
+	db, err := openSettingsDatabase(*databasePath)
 	if err != nil {
 		return err
 	}
-	db, err := openCredentials(cfg, *configPath)
+	cfg, err := loadDatabaseSettings(db)
 	if err != nil {
+		db.Close()
+		return err
+	}
+	if *listen != "" {
+		cfg.Server.Listen = *listen
+	}
+	if err = cfg.Validate(); err != nil {
+		db.Close()
 		return err
 	}
 	defer db.Close()
-	runtime := &handlerRuntime{configPath: *configPath, background: ctx, credentials: db}
+	runtime := &handlerRuntime{configPath: "database", background: ctx, credentials: db}
 	// Install cleanup before construction so startup/listen failures also release
 	// shared state. Normal shutdown drains HTTP before the final usage flush.
 	defer runtime.closeUsage()
 	if err := runtime.initializeAdminPrompt(output); err != nil {
 		return err
 	}
-	handler, err := buildHandlerWithRuntime(cfg, *configPath, runtime)
+	handler, err := buildHandlerWithRuntime(cfg, "database", runtime)
 	if err != nil {
 		return err
 	}
@@ -255,11 +263,11 @@ func initializeConfigPath(path, template string, bootstrap bool) error {
 
 func runAuth(args []string, output io.Writer) error {
 	if len(args) < 2 {
-		return errors.New("usage: gateway auth <login|logout|status> <provider> --config <path>")
+		return errors.New("usage: gateway auth <login|logout|status> <provider> --database <path>")
 	}
 	action, providerID := args[0], args[1]
 	flags := flag.NewFlagSet("auth "+action, flag.ContinueOnError)
-	configPath := flags.String("config", "/config/config.yaml", "path to the YAML configuration")
+	databasePath := flags.String("database", "", "SQLite database path")
 	accessEnv := flags.String("access-token-env", "", "environment variable containing the access token")
 	accessFile := flags.String("access-token-file", "", "file containing the access token")
 	refreshEnv := flags.String("refresh-token-env", "", "environment variable containing the refresh token")
@@ -274,7 +282,12 @@ func runAuth(args []string, output io.Writer) error {
 	if flags.NArg() != 0 {
 		return errors.New("unexpected authentication arguments")
 	}
-	cfg, err := config.Load(*configPath)
+	store, err := openSettingsDatabase(*databasePath)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	cfg, err := loadDatabaseSettings(store)
 	if err != nil {
 		return err
 	}
@@ -291,11 +304,6 @@ func runAuth(args []string, output io.Writer) error {
 	if *browser && providerConfig.Type != "openai-codex" {
 		return errors.New("--browser is supported only for openai-codex")
 	}
-	store, err := openCredentials(cfg, *configPath)
-	if err != nil {
-		return err
-	}
-	defer store.Close()
 	if err := authenticateLocalAdmin(store, output); err != nil {
 		return err
 	}
@@ -580,7 +588,11 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		}
 		providers = append(providers, upstream)
 	}
-	overrides, err := loadCatalogOverrides(cfg.Router.CatalogFile)
+	overrides := cfg.Router.CatalogOverrides
+	var err error
+	if cfg.Router.CatalogFile != "" {
+		overrides, err = loadCatalogOverrides(cfg.Router.CatalogFile)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -787,6 +799,21 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	if runtime == nil {
 		handler.ownedUsage = usageStore
 	}
+	if runtime != nil && database != nil {
+		data, _, err := database.Settings()
+		if err != nil {
+			return nil, err
+		}
+		if len(data) == 0 {
+			data, err = yaml.Marshal(cfg)
+			if err != nil {
+				return nil, err
+			}
+			if _, err = database.CommitSettings(data, "", nil); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return handler, nil
 }
 
@@ -895,30 +922,44 @@ func (r *handlerRuntime) putConfig(w http.ResponseWriter, req *http.Request) {
 		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("validate configuration: %w", err))
 		return
 	}
-	if r.credentials != nil {
-		if current.State.DatabasePath != next.State.DatabasePath {
-			writeConfigError(w, 400, errors.New("database path changes require an offline configuration edit and restart"))
-			return
-		}
-		if err := config.StoreSubmittedCredentials(&next, r.credentials); err != nil {
-			writeConfigError(w, 400, err)
-			return
-		}
+	if current.State.DatabasePath != next.State.DatabasePath {
+		writeConfigError(w, 400, errors.New("database path is a bootstrap option; restart with --database"))
+		return
+	}
+	if next.Router.CatalogFile != "" {
+		writeConfigError(w, 400, errors.New("use catalog_overrides in database settings"))
+		return
+	}
+	overlay, secrets, err := prepareSettings(&next, r.credentials, false)
+	if err != nil {
+		writeConfigError(w, 400, err)
+		return
 	}
 	newHandler, err := buildHandlerWithRuntime(&next, r.configPath, r)
 	if err != nil {
-		writeConfigError(w, http.StatusBadRequest, fmt.Errorf("initialize configuration: %w", err))
+		writeConfigError(w, 400, fmt.Errorf("initialize configuration: %w", err))
 		return
 	}
-	if err := persistConfig(r.configPath, &next); err != nil {
-		if h, ok := newHandler.(*catalogHandler); ok {
-			h.stopIntelligence()
-		}
-		writeConfigError(w, http.StatusInternalServerError, err)
+	data, err := yaml.Marshal(&next)
+	if err != nil {
+		writeConfigError(w, 500, err)
 		return
 	}
+	expected := strings.Trim(revision, `"`)
+	_, _, err = r.credentials.Settings()
+	if err == nil {
+		_, err = r.credentials.CommitSettings(data, expected, secrets)
+	}
+	if err != nil {
+		newHandler.(*catalogHandler).stopIntelligence()
+		writeConfigError(w, 500, errors.New("cannot commit configuration"))
+		return
+	}
+	overlay.committed()
 	r.swap(newHandler)
 	r.configVersion++
+	committed, _ := r.configRevision(&next)
+	w.Header().Set("ETag", committed)
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = io.WriteString(w, `{"status":"saved","reloaded":true}`+"\n")
 }
@@ -937,18 +978,14 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 		writeConfigError(w, http.StatusBadRequest, errors.New("provider.id is required"))
 		return
 	}
-	_, err := r.loadConfig()
-	if err != nil {
-		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("load current configuration: %w", err))
-		return
-	}
+	var err error
 	if request.Provider.Type != "ollama" {
 		discover := true
 		request.Provider.DiscoverModels = &discover
 	}
 	if r.credentials != nil {
 		draft := config.Config{Providers: []config.ProviderConfig{request.Provider}}
-		if err := config.StoreSubmittedCredentials(&draft, r.credentials); err != nil {
+		if _, _, err := prepareSettings(&draft, r.credentials, false); err != nil {
 			writeConfigError(w, 400, err)
 			return
 		}
@@ -1508,7 +1545,7 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		secretHeaders = map[string]config.SecretRef{}
 		if cfg.BearerToken != nil {
 			ref := *cfg.BearerToken
-			ref.Bind(db)
+			ref.BindDefault(db)
 			name := "Authorization"
 			if cfg.Type == "anthropic" {
 				name = "x-api-key"
@@ -1520,7 +1557,7 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 			if strings.EqualFold(name, "Authorization") {
 				bearerAuth = false
 			}
-			ref.Bind(db)
+			ref.BindDefault(db)
 			secretHeaders[name] = ref
 		}
 		cfg.Headers = nil

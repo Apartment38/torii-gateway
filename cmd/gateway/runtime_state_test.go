@@ -6,9 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,27 +35,11 @@ func TestUsageSharedAcrossReloadAndDiscardedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("discarded candidate", func(t *testing.T) {
-		if os.Geteuid() == 0 || runtime.GOOS == "windows" {
-			t.Skip("requires Unix non-root permission enforcement")
-		}
-		// The alias is readable for candidate construction, but its directory
-		// cannot accept the temporary file used by atomic configuration saving.
-		originalPath := r.configPath
-		defer func() { r.configPath = originalPath }()
-		dir := t.TempDir()
-		alias := filepath.Join(dir, "config-alias.yaml")
-		if err := os.Symlink(originalPath, alias); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(dir, 0500); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Chmod(dir, 0700)
-		r.configPath = alias
-		w = httptest.NewRecorder()
-		r.putConfig(w, configSaveRequest(t, r, body))
-		if w.Code != 500 || r.usageStore != original {
-			t.Fatalf("rejected save=%d %s", w.Code, w.Body.String())
+		bad := strings.Replace(body, `"type":"openai_compatible"`, `"type":"unknown"`, 1)
+		w := httptest.NewRecorder()
+		r.putConfig(w, configSaveRequest(t, r, bad))
+		if w.Code != 400 || r.usageStore != original {
+			t.Fatal("discarded candidate mutated shared usage", w.Code)
 		}
 	})
 	if err := r.usageStore.Add("p/model", 30, 15, .75); err != nil {

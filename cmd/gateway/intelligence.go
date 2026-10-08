@@ -110,10 +110,10 @@ func buildIntelligence(cfg *config.Config, models []catalog.Descriptor) (*intell
 // against its cache. This shares authentication and refresh serialization.
 func runBenchmarkCommand(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 || args[0] != "refresh" {
-		return errors.New("usage: gateway benchmarks refresh --config <path> [--url <gateway-origin>]")
+		return errors.New("usage: gateway benchmarks refresh --database <path> [--url <gateway-origin>]")
 	}
 	flags := flag.NewFlagSet("benchmarks refresh", flag.ContinueOnError)
-	path := flags.String("config", "/config/config.yaml", "path to YAML configuration")
+	path := flags.String("database", "", "SQLite database path")
 	origin := flags.String("url", "", "running gateway origin")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
@@ -121,14 +121,16 @@ func runBenchmarkCommand(ctx context.Context, args []string, output io.Writer) e
 	if flags.NArg() != 0 {
 		return errors.New("unexpected benchmark command arguments")
 	}
-	cfg, err := config.Load(*path)
+	db, err := openSettingsDatabase(*path)
 	if err != nil {
 		return err
 	}
-	db, err := openCredentials(cfg, *path)
+	cfg, err := loadDatabaseSettings(db)
 	if err != nil {
+		db.Close()
 		return err
 	}
+	_ = cfg
 	defer db.Close()
 	if *origin == "" {
 		host, port, _ := net.SplitHostPort(cfg.Server.Listen)

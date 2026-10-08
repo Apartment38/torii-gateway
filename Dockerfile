@@ -42,4 +42,4 @@ EXPOSE 8080
 USER nonroot:nonroot
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD ["/gateway", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
 ENTRYPOINT ["/gateway"]
-CMD ["serve", "--config", "/config/config.yaml"]
+CMD ["serve"]

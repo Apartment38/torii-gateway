@@ -23,6 +23,11 @@ type SecretStore interface {
 }
 
 func (r *SecretRef) Bind(store SecretStore) { r.store = store }
+func (r *SecretRef) BindDefault(store SecretStore) {
+	if r.store == nil {
+		r.store = store
+	}
+}
 
 // Validate checks that the reference selects exactly one non-blank source.
 func (r SecretRef) Validate() error {

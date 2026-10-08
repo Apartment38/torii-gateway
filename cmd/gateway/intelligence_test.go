@@ -95,7 +95,7 @@ func TestBenchmarkManagementAuthenticationCLIAndSourceFailureIsolation(t *testin
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	if err := runWithIO(context.Background(), []string{"benchmarks", "refresh", "--config", path, "--url", server.URL}, &output); err != nil {
+	if err := runWithIO(context.Background(), []string{"benchmarks", "refresh", "--database", filename, "--url", server.URL}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if calls.Load() != 2 || !strings.Contains(output.String(), `"partial_failure":true`) {

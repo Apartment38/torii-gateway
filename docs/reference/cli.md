@@ -10,20 +10,22 @@ commands exit zero. A successful benchmark refresh may still report partial fail
 | Invocation | Purpose, output, and requirements |
 | --- | --- |
 | `gateway version` | Print build version, commit/time, and supported SQLite schema range; no config/master key needed |
-| `gateway serve --config PATH` | Validate config, open database, perform first admin setup, discover providers, serve until shutdown |
+| `gateway serve --database PATH` | Open database settings, perform first admin setup, discover providers, serve until shutdown |
 | `gateway config validate --config PATH` | Strict YAML/schema validation without starting the server or querying providers; stored references are checked structurally |
-| `gateway models --config PATH` | Open database, query configured providers, print their model IDs and `smart`; discovery failures fail command; may include classifier-provider models unlike public inference catalog |
+| `gateway models --database PATH` | Open database, query configured providers, print their model IDs and `smart`; discovery failures fail command; may include classifier-provider models unlike public inference catalog |
 | `gateway healthcheck --url URL` | Query health URL (default `http://127.0.0.1:8080/healthz`); nonzero on failure |
-| `gateway admin create --config PATH [--username NAME]` | Create the one administrator, prompt/confirm password, display newly created API key once; fails if admin already exists |
-| `gateway admin api-key --config PATH [--username NAME]` | Verify admin password, rotate only default gateway key, display it once |
-| `gateway credentials replace --config PATH --id ID [--secret-file PATH]` | Verify administrator and replace provider secret using secure prompt or file |
-| `gateway credentials delete --config PATH --id ID` | Verify administrator and delete generic provider credential; protected system records are denied |
-| `gateway auth login PROVIDER --config PATH [LOGIN_FLAGS]` | Verify administrator, authenticate configured subscription provider or import token into encrypted store |
-| `gateway auth status PROVIDER --config PATH` | Verify administrator; report logged in, expired, or logged out without token values |
-| `gateway auth logout PROVIDER --config PATH` | Verify administrator and remove provider OAuth credential |
-| `gateway benchmarks refresh --config PATH [--url ORIGIN]` | Load default gateway key from database and POST refresh to running gateway; print JSON summary |
+| `gateway admin create --database PATH [--username NAME]` | Create the one administrator, prompt/confirm password, display newly created API key once; fails if admin already exists |
+| `gateway admin api-key --database PATH [--username NAME]` | Verify admin password, rotate only default gateway key, display it once |
+| `gateway credentials replace --database PATH --id ID [--secret-file PATH]` | Verify administrator and replace provider secret using secure prompt or file |
+| `gateway credentials delete --database PATH --id ID` | Verify administrator and delete generic provider credential; protected system records are denied |
+| `gateway auth login PROVIDER --database PATH [LOGIN_FLAGS]` | Verify administrator, authenticate configured subscription provider or import token into encrypted store |
+| `gateway auth status PROVIDER --database PATH` | Verify administrator; report logged in, expired, or logged out without token values |
+| `gateway auth logout PROVIDER --database PATH` | Verify administrator and remove provider OAuth credential |
+| `gateway benchmarks refresh --database PATH [--url ORIGIN]` | Load database settings and default gateway key from database and POST refresh to running gateway; print JSON summary |
 
-`--config` defaults to `/config/config.yaml` everywhere it is supported.
+`--database` uses `TORII_DB_PATH`, then `/data/torii.db`. Normal commands never read YAML.
+`gateway config import --config PATH --database PATH` validates and explicitly imports a legacy configuration and its credentials in one transaction; it refuses established database settings.
+`serve --listen ADDRESS` or `TORII_LISTEN` overrides the listener until the next restart.
 Commands opening the database need the original master key and accessible data
 path. Native relative paths resolve from the working directory. Local management
 passwords are prompted securely in a terminal; automation reads them from stdin,
@@ -47,9 +49,9 @@ Import values from protected files/environment references, not literal CLI args.
 Login-only token/account flags are rejected by `status` and `logout`.
 
 ```sh
-./bin/gateway auth login openai-codex --config ./config.yaml
-./bin/gateway auth status openai-codex --config ./config.yaml
-./bin/gateway auth logout openai-codex --config ./config.yaml
+./bin/gateway auth login openai-codex --database ./state/torii.db
+./bin/gateway auth status openai-codex --database ./state/torii.db
+./bin/gateway auth logout openai-codex --database ./state/torii.db
 ```
 
 Replace `openai-codex` with the configured provider ID. For browser login add

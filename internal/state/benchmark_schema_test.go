@@ -126,8 +126,8 @@ func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.Close()
-	steps := append(append([]schemaMigration{}, schemaMigrations...), schemaMigration{6, "CREATE TABLE future_state(value TEXT)"})
-	if bad, err := openDatabase(path, bytes.Repeat([]byte{9}, 32), 6, steps); err == nil {
+	steps := append(append([]schemaMigration{}, schemaMigrations...), schemaMigration{SchemaVersion + 1, "CREATE TABLE future_state(value TEXT)"})
+	if bad, err := openDatabase(path, bytes.Repeat([]byte{9}, 32), SchemaVersion+1, steps); err == nil {
 		bad.Close()
 		t.Fatal("wrong key accepted")
 	}
@@ -141,7 +141,7 @@ func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 		t.Fatal("migration ran before authentication")
 	}
 	original.Close()
-	upgraded, err := openDatabase(path, key, 6, steps)
+	upgraded, err := openDatabase(path, key, SchemaVersion+1, steps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,18 +150,18 @@ func TestUpgradeAuthenticatesBeforeMigrationAndFreshUsesSamePath(t *testing.T) {
 		t.Fatal("upgrade lost credential", err)
 	}
 	upgraded.Close()
-	restarted, err := openDatabase(path, key, 6, steps)
+	restarted, err := openDatabase(path, key, SchemaVersion+1, steps)
 	if err != nil {
 		t.Fatal("upgrade restart", err)
 	}
 	restarted.Close()
-	fresh, err := openDatabase(filepath.Join(t.TempDir(), "fresh.db"), key, 6, steps)
+	fresh, err := openDatabase(filepath.Join(t.TempDir(), "fresh.db"), key, SchemaVersion+1, steps)
 	if err != nil {
 		t.Fatal("fresh upgrade", err)
 	}
 	defer fresh.Close()
 	var version int
-	if err := fresh.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
+	if err := fresh.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SchemaVersion+1 {
 		t.Fatal("fresh skipped migration", err)
 	}
 	if _, err := fresh.db.Exec("SELECT value FROM future_state"); err != nil {

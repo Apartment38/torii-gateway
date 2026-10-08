@@ -53,7 +53,7 @@ transactional database migrations. Unsupported newer schemas are also rejected.
 All durable application state uses `state.database_path`, default
 `/data/torii.db`: encrypted administrator/credential/API-key/OAuth records,
 public benchmark observations and provenance, usage aggregates and Codex host
-identity. Nonsensitive configuration remains in YAML; the master key stays
+identity. Configuration now lives in SQLite; the master key stays
 outside the database. Sessions, live quota caches and pending login flows remain
 memory-only. There is no `state.directory` or flat-file credential/cache importer.
 

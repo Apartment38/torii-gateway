@@ -106,7 +106,7 @@ class BenchmarkList extends Element {
 const response = (body, ok = true, revision = '"fixture"', status = ok ? 200 : 400) => ({ ok, status, headers: { get: name => name.toLowerCase() === "etag" ? revision : null }, json: async () => body, text: async () => JSON.stringify(body) });
 const models = count => ({ models: Array.from({ length: count }, (_, i) => ({ id: `model-${i}` })) });
 const draft = (type, id = type) => ({ id, type, api_url: type === "openai-codex" ? "https://chatgpt.com/backend-api/codex" : `https://${type}.example/v1` });
-function consoleFixture(handler) {
+function consoleFixture(handler, {mobile=false} = {}) {
   const list = new ProviderList();
   const nodes = new Map([["#providers-list", list], ["#credential-list", new KeyList()], ["#benchmark-sources-list", new BenchmarkList()]]);
   const element = name => {
@@ -127,7 +127,7 @@ function consoleFixture(handler) {
     localStorage: { getItem: () => null, setItem(...args) {storageWrites.push(args);} },
     sessionStorage: {setItem(...args){storageWrites.push(args);}},
     navigator: { platform: "Linux", userAgent: "linux" },
-    matchMedia: () => ({ matches: false }),
+    matchMedia: query => ({ matches: mobile && query.includes("max-width") }),
     HTMLInputElement: Element,
     FormData: class { forEach() {} },
     fixtureRevision: '"fixture"', URL, Error, TextEncoder, TextDecoder, AbortController, structuredClone, btoa, confirm:()=>true,
@@ -202,7 +202,7 @@ test("connection tests disclose when discovered models will not be used after sa
   const app = consoleFixture(() => response(models(3)));
   app.setProviders([{ ...draft("openai_compatible"), discover: false, models: "setup" }]);
   await app.run("testProvider(0)");
-  assert.equal(app.status(0).textContent, "Connected · Working · 3 models discovered · Discovery disabled: Save & reload uses the static model list");
+  assert.equal(app.status(0).textContent, "Connected · Working · 3 models discovered · Discovery disabled: saved configuration uses the static model list");
   assert.equal(app.run("readProviderConfig(providers[0]).discover_models"), false);
   assert.deepEqual(Array.from(app.run("readProviderConfig(providers[0]).models")), ["setup"]);
   app.run("providers[0].discover = true");
@@ -369,12 +369,12 @@ test("routing discovers only classifier-provider models and saves provider trans
   assert.equal(app.run("readConfig().router.classifier.model"), "english");
 });
 
-test("routing warns and redirects to providers when no classifiers are available", async () => {
+test("routing remains available with a classifier notice for deterministic policy", async () => {
   const app = consoleFixture(() => response(models(1)));
   app.setProviders([draft("ollama")]);
   app.run('configurationLoaded = true; location.hash = "#routing";');
   await app.run("testAllProviders()");
-  assert.equal(app.run("location.hash"), "#providers");
+  assert.equal(app.run("location.hash"), "#routing");
   assert.equal(app.run('document.querySelector("#classifier-provider-notice").hidden'), false);
   assert.match(app.run('document.querySelector("#classifier-notice-message").textContent'), /No classifier models are available/);
   assert.equal(app.run("readConfig().router.classifier.type"), undefined);
@@ -401,7 +401,7 @@ test("failed classifier discovery never supplies selectable fallback models", as
   app.setProviders([{ ...draft("jev_compatible", "laya"), models:"fake-success" }]);
   app.run('configurationLoaded = true; location.hash = "#routing";');
   await app.run("testAllProviders()");
-  assert.equal(app.run("location.hash"), "#providers");
+  assert.equal(app.run("location.hash"), "#routing");
   assert.doesNotMatch(app.run("classifierSelect.innerHTML"), /fake-success/);
 });
 
@@ -736,6 +736,7 @@ test("saving an unchecked paid-model policy preserves false after reload", async
 
 test("setup status selects initial administrator setup or existing-account login",async()=>{
   const app=consoleFixture(()=>response({setup_required:true}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#setup-dialog").open'),true);
+  let prevented=false;app.run('document.querySelector("#setup-dialog").listeners.cancel')( {preventDefault(){prevented=true;} });assert.equal(prevented,true);assert.equal(app.run('document.querySelector("#setup-dialog").open'),true);
   app.setFetch(url=>url==="/gateway/v1/session"?response({},false,null,401):response({setup_required:false}));await app.run("checkSetup()");assert.equal(app.context.redirect,"/login");
 });
 test("administrator setup clears password fields and reveals only its newly generated key",async()=>{
@@ -771,7 +772,7 @@ test("benchmark enable toggle persists without dropping source configuration", a
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/Enable benchmark intelligence/);
   app.run('document.querySelector("#intelligence-enabled").checked=true;document.querySelector("#intelligence-enabled").listeners.change()');
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'),true);
-  assert.match(app.run('document.querySelector("#benchmark-enable-notice").textContent'),/Save & reload/);
+  assert.match(app.run('document.querySelector("#benchmark-enable-notice").textContent'),/wait for Saved/i);
   await app.run("saveConfig()");
   assert.equal(config.intelligence.enabled,true);
   assert.equal(config.intelligence.sources[0].id,"cache");
@@ -1063,7 +1064,7 @@ test("credential cards group wrapping metadata separately from their delete acti
   await app.run("loadCredentialMetadata()");
   const html = app.run('document.querySelector("#credential-list").innerHTML');
   assert.equal([...html.matchAll(/class="credential-card"/g)].length,2);
-  assert.match(html, /<div class="credential-card-content"><h3 class="credential-card-name">Hermes &lt;client&gt; &quot;work&quot;<\/h3><p class="credential-card-meta">Created 2026-10-02T12:34:56\.123456789Z<\/p><\/div><button/);
+  assert.match(html, /<div class="credential-card-content"><h3 class="credential-card-name">Hermes &lt;client&gt; &quot;work&quot;<\/h3><p class="credential-card-meta">Created <time title="2026-10-02T12:34:56\.123456789Z">[^<]+<\/time><\/p><\/div><button/);
   assert.ok(html.includes(`<h3 class="credential-card-name">${longName}</h3>`));
   assert.match(html,/class="button quiet credential-card-delete"[^>]*aria-label="Delete API key Hermes &lt;client&gt; &quot;work&quot;"/);
   assert.doesNotMatch(html, /class="card"/);
@@ -1256,7 +1257,7 @@ test("overview request counts exclude model attempts and monthly totals",()=>{
  app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"local",type:"ollama"}];overviewModels=[{id:"local/a",enabled:true},{id:"local/b",enabled:false}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:3},{key_id:"*",period:"2026-10-08",model:"local/a",requests:12},{key_id:"*",period:"2026-10",model:"",requests:99},{key_id:"client",period:"2026-10-08",model:"",requests:3}];renderOverview()');
  const summary=app.run('document.querySelector("#overview-summary").innerHTML');
  assert.match(summary,/Requests today<\/span><strong class="metric-value">3<\/strong>/);
- assert.match(summary,/Available models<\/span><strong class="metric-value">1<\/strong>/);
+ assert.match(summary,/Enabled models<\/span><strong class="metric-value">1<\/strong>/);
  assert.match(summary,/href="#models"/);
 });
 
@@ -1285,9 +1286,125 @@ test("empty activity and unavailable metadata stay explicit",()=>{
  const app=consoleFixture(()=>response({}));
  app.run('renderActivity()');
  assert.match(app.run('document.querySelector("#activity-list").innerHTML'),/Ready for your first request/);
- app.run('activityRows=[{at:"invalid",request_id:"<unsafe>",kind:"request",unknown_cost:true}];renderActivity()');
- const html=app.run('document.querySelector("#activity-list").innerHTML');
+ app.run('activityRows=[{at:"invalid",request_id:"<unsafe>",kind:"request_complete",unknown_cost:true}];renderActivity()');
+ const html=app.run('document.querySelector("#activity-results").innerHTML');
  assert.match(html,/&lt;unsafe&gt;/);
  assert.match(html,/Unknown/);
  assert.doesNotMatch(html,/<unsafe>/);
+});
+
+test("display filters never dirty or save configuration while settings still autosave",async()=>{
+ const app=consoleFixture(()=>response({providers:[],router:{classifier:{type:"disabled"}}}));
+ await app.run('loadServerConfig()');
+ const initial=app.run('editGeneration');
+ for(const id of ["budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","usage-period","activity-search","activity-outcome","activity-page-size","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"]){
+  app.context.filterId=id;
+  app.run('form.listeners.input({target:{id:filterId}});form.listeners.change({target:{id:filterId,dataset:{},closest(){return null;}}})');
+ }
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(app.run('editGeneration'),initial);
+ assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,0);
+ app.run('form.listeners.input({target:{id:"listen-address"}});form.listeners.change({target:{id:"listen-address",dataset:{},closest(){return null;}}})');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(app.run('editGeneration'),initial+1);
+ assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,1);
+});
+
+test("activity defaults to completed requests and all-event stages are never pending",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('activityRows=[{id:1,request_id:"r1",kind:"request_start"},{id:2,request_id:"r1",kind:"routing"},{id:3,request_id:"r1",kind:"request_complete",outcome:"success"}];renderActivity()');
+ assert.equal(app.run('visibleActivityRows().length'),1);
+ assert.doesNotMatch(app.run('document.querySelector("#activity-list").innerHTML'),/Pending/);
+ app.run('activityView="all";renderActivity()');
+ assert.equal(app.run('visibleActivityRows().length'),3);
+ assert.equal(app.run('activityOutcome(activityRows[0])'),"Started");
+ assert.equal(app.run('activityOutcome(activityRows[1])'),"Model selected");
+});
+
+test("canceling a provider editor restores draft state, status, and provider identity",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.setProviders([draft("openai_compatible","p")]);
+ app.run('const originalProvider=providers[0];setProviderStatus(originalProvider,{state:"success",message:"Connected"});classifierCatalogs.set(originalProvider,["p/model"]);saveState.textContent="Saved";openProviderEditor(0);providers[0].api_url="invalid";markDirty();cancelProviderEditor()');
+ assert.equal(app.run('providers[0]===originalProvider'),true);
+ assert.equal(app.run('providers[0].api_url'),"https://openai_compatible.example/v1");
+ assert.equal(app.run('editGeneration'),0);
+ assert.equal(app.run('saveState.textContent'),"Saved");
+ assert.equal(app.status(0).textContent,"Connected");
+ assert.deepEqual(Array.from(app.run('classifierCatalogs.get(providers[0])')),["p/model"]);
+});
+
+test("overview model distribution excludes monthly and duplicated client rows",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('overviewUsage=[{key_id:"*",period:"2026-10-08",model:"p/a",provider:"p",input_tokens:100,output_tokens:20,estimated_cost:.5},{key_id:"client",period:"2026-10-08",model:"p/a",input_tokens:100,output_tokens:20,estimated_cost:.5},{key_id:"*",period:"2026-10",model:"p/a",input_tokens:900,output_tokens:20,estimated_cost:4}]');
+ assert.equal(app.run('overviewModelUsage()[0].tokens'),120);
+ assert.equal(app.run('overviewModelUsage()[0].cost'),.5);
+ assert.equal(app.run('overviewModelUsage().length'),1);
+});
+
+test("model pages preserve complete model records, clamp ranges, and sort enabled models first",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.largeCatalog=Array.from({length:23},(_,index)=>({id:`p/model-${String(index).padStart(2,"0")}`,provider_id:"p",enabled:index%2===0,pricing:{input_per_million:.0001}}));
+ app.run('physicalModels=largeCatalog;renderModelsPage()');
+ assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/<tr>/g)].length,10);
+ assert.equal(app.run('document.querySelector("#model-count").textContent'),"1–10 of 23 models");
+ assert.match(app.run('document.querySelector("#model-table-body").innerHTML'),/\$0\.0001/);
+ app.run('modelPage=2;renderModelRows()');
+ assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/<tr>/g)].length,3);
+ assert.equal(app.run('document.querySelector("#model-next").disabled'),true);
+ app.run('modelPage=-1;renderModelRows()');
+ assert.equal(app.run('modelPage'),0);
+ app.run('modelSort="enabled"');
+ assert.equal(app.run('filteredPhysicalModels().slice(0,12).every(model=>model.enabled)'),true);
+ app.run('modelSearch="model-22";modelPage=20;renderModelRows()');
+ assert.equal(app.run('modelPage'),0);
+ assert.equal(app.run('document.querySelector("#model-count").textContent'),"1–1 of 1 models · 23 total");
+});
+
+test("activity investigation filters request, model, key and outcome before pagination",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.largeActivity=Array.from({length:55},(_,index)=>({id:index,kind:"request_complete",request_id:`request-${index}`,selected_model:index%2?"p/fast":"p/deep",key_name:index%2?"Research":"Development",outcome:index%3?"success":"error"}));
+ app.run('activityRows=largeActivity;renderActivity()');
+ assert.equal([...app.run('document.querySelector("#activity-results").innerHTML').matchAll(/<tr><td data-label/g)].length,20);
+ assert.equal(app.run('document.querySelector("#activity-count").textContent'),"1–20 of 55 requests");
+ app.run('activityPage=2;renderActivity()');
+ assert.equal([...app.run('document.querySelector("#activity-results").innerHTML').matchAll(/<tr><td data-label/g)].length,15);
+ app.run('activitySearch="RESEARCH";activityOutcomeFilter="error";renderActivity()');
+ assert.equal(app.run('visibleActivityRows().every(event=>event.key_name==="Research"&&event.outcome==="error")'),true);
+ app.run('activitySearch="request-54";activityOutcomeFilter="";renderActivity()');
+ assert.equal(app.run('visibleActivityRows().length'),1);
+ assert.equal(app.run('activityPage'),0);
+ app.run('activitySearch="missing-model";renderActivity()');
+ assert.match(app.run('document.querySelector("#activity-results").innerHTML'),/No requests match this view/);
+});
+
+test("overview period changes use exact monthly totals and qualify bounded activity counts",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"p"}];overviewModels=[{id:"p/a",enabled:true}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:2},{key_id:"*",period:"2026-10",model:"",requests:17},{key_id:"*",period:"2026-10-08",model:"p/a",input_tokens:100,output_tokens:20,estimated_cost:.5},{key_id:"*",period:"2026-10",model:"p/a",input_tokens:1000,output_tokens:300,estimated_cost:4},{key_id:"client",period:"2026-10",model:"p/a",input_tokens:1000,output_tokens:300,estimated_cost:4}];overviewRecent=[{kind:"request_start"},{kind:"request_complete",outcome:"success"},{kind:"request_complete",outcome:"error",status:500}];renderOverview()');
+ assert.equal(app.run('overviewModelUsage()[0].tokens'),120);
+ assert.match(app.run('renderOverviewMonitoring()'),/2 completed · 1 errors in last 3 recorded events/);
+ app.run('overviewPeriod="monthly";renderOverview()');
+ assert.equal(app.run('overviewModelUsage()[0].tokens'),1300);
+ assert.equal(app.run('overviewModelUsage()[0].cost'),4);
+ assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/Requests this month<\/span><strong class="metric-value">17<\/strong>/);
+ assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/Enabled models<\/span><strong class="metric-value">1<\/strong>/);
+ assert.match(app.run('renderOverviewMonitoring()'),/Current UTC month/);
+});
+
+test("small-screen model and activity views start with five complete records per page",()=>{
+ const app=consoleFixture(()=>response({}),{mobile:true});
+ assert.equal(app.run('modelPageSize'),5);
+ assert.equal(app.run('activityPageSize'),5);
+ app.context.records=Array.from({length:12},(_,index)=>({id:`p/m${index}`,provider_id:"p",enabled:true}));
+ app.run('physicalModels=records;renderModelsPage()');
+ assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/data-model-enabled=/g)].length,5);
+});
+
+test("pagination boundaries move keyboard focus to the remaining enabled page action",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.focusHits=[];
+ app.context.records=Array.from({length:12},(_,index)=>({id:`p/m${index}`,provider_id:"p",enabled:true,kind:"request_complete"}));
+ app.run('physicalModels=records;document.querySelector("#model-previous").focus=()=>focusHits.push("model-previous");document.activeElement={id:"model-next"};modelPage=1;renderModelRows()');
+ assert.deepEqual(Array.from(app.context.focusHits),["model-previous"]);
+ app.run('activityRows=records;activityPageSize=5;activityPage=2;document.querySelector("#activity-previous").focus=()=>focusHits.push("activity-previous");document.activeElement={id:"activity-next"};renderActivity()');
+ assert.deepEqual(Array.from(app.context.focusHits),["model-previous","activity-previous"]);
 });

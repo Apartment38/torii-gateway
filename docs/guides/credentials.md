@@ -32,8 +32,8 @@ local administrator creation without a restart. Browser login uses an HttpOnly c
 
 ## Give each client its own key
 
-1. Sign in and open **Credentials**.
-2. Click **Add credential**, enter the client name, and generate its key.
+1. Sign in and open **API keys**.
+2. Click **Create API key**, enter the client name, and generate its key.
 3. Copy the one-time value into your client's API-key setting before closing.
 4. To revoke access, delete that named key. Subsequent requests using it fail;
    already-authorized requests are not cancelled.
@@ -44,7 +44,7 @@ an older backup can reactivate keys revoked after that backup; revoke them again
 
 ## Replace a lost or compromised default API key
 
-Use **Credentials → Generate new API key**, or run:
+Use **API keys → Rotate the default gateway key → Rotate default key**, or run:
 
 ```sh
 ./bin/gateway admin api-key --database ./state/torii.db

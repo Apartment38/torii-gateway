@@ -200,8 +200,8 @@ Smart Routing fills its classifier-model selector from successful provider
 checks, retains the saved choice, and selects the first discovered classifier
 when none was configured. URLs, keys, and transport are no longer configured
 on that page. If no models are available, the console explains how to add a
-classifier and redirects Smart Routing visitors to Providers. Deterministic
-routing still works without a classifier. The selected classifier and completed field edits save automatically; wait for **Saved**. Legacy direct Jev configuration
+classifier while keeping **Smart routing** available for deterministic policy
+settings. Deterministic routing still works without a classifier. The selected classifier and completed field edits save automatically; wait for **Saved**. Legacy direct Jev configuration
 is moved into a provider draft, preserving its key reference; save to persist
 the migration.
 

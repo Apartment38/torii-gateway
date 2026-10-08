@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#071a35" />
     <title>Torii Gateway Console</title>
     <link rel="icon" href="/web/torii-gateway-icon.png" />
-    <script>try{document.documentElement.dataset.theme=localStorage.getItem("torii-theme")||"light"}catch{}</script>
+    <script>try{document.documentElement.dataset.theme=localStorage.getItem("torii-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch{document.documentElement.dataset.theme=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}</script>
     <link rel="stylesheet" href="/web/styles.css?v=13" />
   </head>
   <body>
@@ -18,7 +18,7 @@
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#overview" aria-label="Torii Gateway home"><img src="/web/torii-gateway-icon.png" alt="" /><span>Torii Gateway<small>MODEL CONTROL PLANE</small></span></a>
-        <div class="workspace-label"><span class="workspace-avatar">T</span><span>Gateway workspace<small>Administrator console</small></span><span class="workspace-chevron">⌄</span></div>
+        <div class="workspace-label"><span class="workspace-avatar">T</span><span>Gateway workspace<small>Administrator console</small></span></div>
         <nav id="nav" aria-label="Configuration sections"><p class="nav-caption">Workspace</p>
           <a class="nav-link active" href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
           <a class="nav-link" href="#providers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4m8-8 4 4-4 4M14 5l-4 14"/></svg><span>Providers</span></a>
@@ -38,7 +38,7 @@
         </div>
       </aside>
       <main id="top" class="content">
-        <header class="topbar"><div class="topbar-context"><span class="context-icon">T</span><span>Workspace</span><span class="context-separator">/</span><strong>Gateway</strong></div>
+        <header class="topbar"><div class="topbar-context"><span class="context-icon">T</span><span>Workspace</span><span class="context-separator">/</span><strong id="current-page-title">Overview</strong></div>
           <div class="top-actions">
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme" title="Toggle light and dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 13a9 9 0 0 1-9.8-9.8A9 9 0 1 0 20.8 13Z"/></svg></button>
             <button id="console-login" class="button secondary" type="button">Sign in</button>
@@ -49,18 +49,17 @@
         </header>
 
         <section id="overview" class="page overview-page">
-          <div class="section-heading page-heading"><div><p class="eyebrow">Your model infrastructure, at a glance</p><h2>Overview</h2><p class="page-description">A clear view of your gateway, from connected providers to every request.</p></div><a class="button secondary" href="#providers">Manage providers <span aria-hidden="true">↗</span></a></div>
+          <div class="section-heading page-heading"><div><p class="eyebrow">Your model infrastructure, at a glance</p><h2>Overview</h2><p class="page-description">A clear view of your gateway, from connected providers to every request.</p></div><div class="overview-actions"><label for="overview-period" class="inline-filter"><span class="sr-only">Reporting period</span><select id="overview-period" aria-label="Overview reporting period"><option value="daily">Today · UTC</option><option value="monthly">This month · UTC</option></select></label><a class="button secondary" href="#providers">Manage providers <span aria-hidden="true">↗</span></a></div></div>
           <div id="overview-summary" aria-label="Gateway summary"></div>
           <div id="overview-workspace"></div>
         </section>
 
         <form id="config-form" novalidate>
           <section id="credentials" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Client access</p><h2>Gateway API keys</h2></div><button id="refresh-credentials" class="button secondary" type="button">Refresh keys</button></div>
+            <div class="section-heading"><div><p class="eyebrow">Client access</p><h2>Gateway API keys</h2></div><div class="section-actions"><button id="refresh-credentials" class="button quiet" type="button">Refresh keys</button><button id="create-credential" class="button primary" type="button">Create API key</button></div></div>
             <p>Create a named API key for each client connecting to Torii. Keys are displayed only once; deleting a key immediately blocks subsequent requests using it. Provider credentials are configured on the Providers page.</p>
             <div id="credential-list" class="grid credential-list"></div>
-            <button id="create-credential" class="button secondary" type="button">Add credential</button>
-            <div class="subcard"><p>Rotate the default gateway API key. The previous default key stops working immediately; named client keys are unaffected.</p><div><p>Gateway API key</p><button id="generate-api-key" class="button secondary" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Generate new API key</button></div></div>
+            <details class="settings-disclosure"><summary><span><strong>Rotate the default gateway key</strong><span class="data-secondary">Replace the original inference key</span></span><span class="disclosure-chevron" aria-hidden="true">⌄</span></summary><div class="settings-disclosure-content"><p class="section-note">The previous default key stops working immediately. Named client keys are unaffected.</p><button id="generate-api-key" class="button quiet danger-action" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Rotate default key</button></div></details>
           </section>
           <section id="server" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
@@ -73,7 +72,7 @@
           </section>
 
           <section id="providers" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Connections</p><h2>Providers</h2></div><button id="add-provider" class="button secondary" type="button">＋ Add provider</button></div>
+            <div class="section-heading"><div><p class="eyebrow">Connections</p><h2>Providers</h2></div><button id="add-provider" class="button primary" type="button">＋ Add provider</button></div>
             <div id="providers-empty-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span>No providers have been configured. Click <strong>Add provider</strong> to connect an API or sign in to a subscription. Models will become available after you configure a provider and save.</span></div>
             <div id="classifier-provider-notice" class="notice" role="status" hidden><span>◎</span><span>No classifier models are available. Add a provider with type <strong>TypeSafe AI · Jev</strong> or <strong>Jev compatible · Laya / custom</strong>, then test its connection to discover models for Smart Routing.</span></div>
             <div id="providers-list" class="provider-list"></div>
@@ -83,10 +82,10 @@
 
           <section id="routing" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
+            <p class="page-description">Torii checks capabilities, availability, and your policy before selecting a model. Add an optional classifier to tailor selection to each request.</p>
             <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
               <label data-tooltip="The virtual model name clients use to invoke smart routing. Keep this as smart unless your client contract requires another name.">Virtual model name<input name="router.model_name" value="smart" /></label>
-              <p>Catalog metadata overrides are stored in database settings. See the configuration reference for descriptor fields.</p>
               <label data-tooltip="Classifier models are discovered from connected TypeSafe Jev or Jev-compatible providers. Connection URLs and credentials are configured on the Providers page.">Classifier model<select id="classifier-model"><option value="">Discovering classifier models…</option></select></label>
               <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
               <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="capability_fallback">Fallback</option><option value="fail">Fail</option></select></label>
@@ -110,10 +109,13 @@
             <div class="grid three compact-fields">
               <label data-tooltip="The maximum fraction of a model context window that routing may consume. Lower values leave more room for the model response.">Max context utilization<input name="router.selection.context_utilization_limit" type="number" min="0" max="1" step="0.01" placeholder="0.85" /></label>
               <label data-tooltip="The output-token estimate used when comparing model context limits. Increase it for long expected responses.">Expected output tokens<input name="router.selection.default_expected_output_tokens" type="number" min="0" placeholder="1024" /></label>
-              <label data-tooltip="Prefers models in a location class when set. Supported values are neutral, local, and cloud.">Location preference<input name="router.selection.location_preference" placeholder="local" /></label>
-              <label data-tooltip="JSON quality thresholds for deterministic selection. Each score must be between 0 and 1.">Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
+              <label data-tooltip="Choose whether to prefer local models, cloud models, or neither. Capability and policy requirements still apply.">Location preference<select name="router.selection.location_preference"><option value="">Use default preference</option><option value="neutral">No preference</option><option value="local">Prefer local models</option><option value="cloud">Prefer cloud models</option></select></label>
+
             </div>
             <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid models</label></div>
+            <details class="advanced-fields"><summary>Advanced quality thresholds</summary><p class="section-note">Optional quality floors use scores from 0 to 1. Catalog metadata overrides remain in database settings; see the <a href="https://github.com/Apartment38/torii-gateway/blob/main/docs/reference/configuration.md" target="_blank" rel="noopener noreferrer">configuration reference</a> for descriptor fields.</p>
+              <label data-tooltip="JSON quality thresholds for deterministic selection. Each score must be between 0 and 1.">Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
+            </details>
           </section>
 
           <section id="intelligence" class="page section-block">
@@ -147,21 +149,26 @@
 
           <section id="state" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">Operations</p><h2>Usage &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
-            <p>Operator accounting, not provider billing. Limits of 0 are disabled. Token budgets include classifier calls and retries. Missing usage retains conservative estimates; monetary budgets require reliable pricing or a provider marked free.</p>
-            <label>Budget scope<select id="budget-scope"><option value="*">Entire gateway</option></select></label>
+            <p class="page-description">Monitor requests, token usage, and estimated cost across your gateway.</p>
+            <div class="usage-toolbar"><label>Usage scope<select id="budget-scope"><option value="*">Entire gateway</option></select></label><button id="refresh-usage" type="button" class="button secondary">Refresh usage</button></div>
+            <div id="usage-list"></div>
+            <details class="settings-disclosure"><summary><span><strong>Budget limits</strong><span class="data-secondary">Set daily and monthly guardrails for the selected scope</span></span><span class="disclosure-chevron" aria-hidden="true">⌄</span></summary><div class="settings-disclosure-content">
+              <p class="section-note">Limits of 0 are disabled. Token budgets include classifier calls and retries. Missing usage retains conservative estimates; monetary budgets require reliable pricing or a provider marked free.</p>
             <div class="grid three"><label>Daily requests<input id="budget-daily-requests" type="number" min="0" step="1" value="0"></label><label>Daily tokens<input id="budget-daily-tokens" type="number" min="0" step="1" value="0"></label><label>Daily estimated USD<input id="budget-daily-estimated_cost" type="number" min="0" step="0.01" value="0"></label><label>Monthly requests<input id="budget-monthly-requests" type="number" min="0" step="1" value="0"></label><label>Monthly tokens<input id="budget-monthly-tokens" type="number" min="0" step="1" value="0"></label><label>Monthly estimated USD<input id="budget-monthly-estimated_cost" type="number" min="0" step="0.01" value="0"></label></div>
-            <button id="refresh-usage" type="button" class="button secondary">Refresh usage</button><div id="usage-list"></div>
+            </div></details>
+            <details class="settings-disclosure"><summary><span><strong>Advanced quota &amp; session settings</strong><span class="data-secondary">Cache duration, session affinity, and local model allowances</span></span><span class="disclosure-chevron" aria-hidden="true">⌄</span></summary><div class="settings-disclosure-content">
             <div class="grid two">
               <label data-tooltip="How long quota results remain cached before being refreshed. Use a Go duration such as 1m or 30s.">Quota cache TTL<input name="router.quota.cache_ttl" value="1m" placeholder="1m" /></label>
               <label data-tooltip="How long an inactive routing session remains associated with its model. Use a Go duration such as 30m.">Session inactivity timeout<input name="router.sessions.inactivity_timeout" placeholder="30m" /></label>
             </div>
             <div class="subcard"><label class="quota-field" data-tooltip="Optional estimated cost limits keyed by provider/model. Enter one model = amount pair per line."><span class="subcard-title">Local quota allowances</span><span class="muted">Optional model-to-cost limits, one entry per line.</span><textarea name="router.quota.allowances" rows="4" placeholder="provider/model = 10.00"></textarea></label></div>
+            </div></details>
           </section>
         </form>
         <footer class="footer"><span>Changes save automatically</span><span id="save-state">Ready</span></footer>
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=12"></script>
+    <script type="module" src="/web/app.js?v=13"></script>
   </body>
 </html>

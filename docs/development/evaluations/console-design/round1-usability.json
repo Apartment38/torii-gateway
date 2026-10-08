@@ -1,0 +1,188 @@
+{
+  "tests": [
+    {
+      "task": "Edit existing provider",
+      "result": "Editor opens; no changes saved",
+      "text": "Skip to workspace\nTorii Gateway\nMODEL CONTROL PLANE\nT\nGateway workspace\nAdministrator console\n\nWORKSPACE\n\nOverview\nProviders\nModels\nSmart routing\nBenchmarks\n\nOPERATIONS\n\nActivity\nUsage & quota\nAPI keys\nServer\nreviewer\nAdministrator\nTorii Gateway / console\nT\nWorkspace\n/\nProviders\nSign out\nRefresh\n\nCONNECTIONS\n\nProviders\n＋ Add provider\n◎\nNo classifier models are available. Add a provider with type TypeSafe AI · Jev or Jev compatible · Laya / custom, then test its connection to discover models for Smart Routing.\nL\nlocal\nOllama\nhttp://127.0.0.1:18084\nModels →\nTest connection\nEdit\nRemove\nConnected · Working · 6 models discovered\nUPSTREAM CONNECTION\nlocal\n\nConnect a model API or subscription to your gateway.\n\nProvider enabled\nTreat models as free\nProvider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.\nType\nOpenAI compatible\nTypeSafe AI · Jev\nJev compatible · Laya / custom\nOpenRouter\nGemini\nxAI\nAnthropic\nOpenAI\nOpenAI Codex\nOllama\nNous\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.\nAPI URL\n?\nThe complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field.\nRequest timeout\n?\nTime allowed for model loading and the complete response, including streaming. Leave blank for 5 minutes. Client cancellation still applies.\nAdvanced provider options\nCancel\nSave provider\nL\nlab\nOllama\nhttp://127.0.0.1:18084\nModels →\nTest connection\nEdit\nRemove\nConnected · Working · 6 models discovered\nChanges save automatically\nLoaded from gateway"
+    },
+    {
+      "task": "Find qwen model",
+      "result": "2 of 12 matches visible"
+    },
+    {
+      "task": "Filter by local provider",
+      "result": "6 of 12 matches visible"
+    },
+    {
+      "task": "Filter to disabled models",
+      "result": "No matches; empty result visible"
+    },
+    {
+      "task": "Inspect benchmark metadata",
+      "result": "Disclosure expands",
+      "text": "Skip to workspace\nTorii Gateway\nMODEL CONTROL PLANE\nT\nGateway workspace\nAdministrator console\n\nWORKSPACE\n\nOverview\nProviders\nModels\nSmart routing\nBenchmarks\n\nOPERATIONS\n\nActivity\nUsage & quota\nAPI keys\nServer\nreviewer\nAdministrator\nTorii Gateway / console\nT\nWorkspace\n/\nModels\nSign out\nRefresh\n\nMODEL CATALOG\n\nModels\nRefresh models\n\nEnable eligible models for discovery and Smart routing. Benchmark scores use established identities and explicit aliases; missing data stays unknown.\n\nSearch models\nProvider\nAll providers\nlab\nlocal\nStatus\nAll models\nEnabled\nDisabled\n12 of 12 models\nMODEL / PROVIDER\tCAPABILITIES\tINPUT / 1M TOKENS\tBENCHMARK EVIDENCE\tACCESS\nlab/codestral:22b\nlab\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\nCapabilities\nstreaming: supported · tools: supported · vision: unsupported · structured output: unknown · reasoning: unsupported\n\nContext window 32,768 tokens\n\n\t\nEnabled\n\nlab/deepseek-r1:14b\nlab\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlab/gemma3:27b\nlab\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlab/llama3.3:70b\nlab\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlab/mistral-small:24b\nlab\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlab/qwen3:8b\nlab\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlocal/codestral:22b\nlocal\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlocal/deepseek-r1:14b\nlocal\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlocal/gemma3:27b\nlocal\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlocal/llama3.3:70b\nlocal\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlocal/mistral-small:24b\nlocal\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nlocal/qwen3:8b\nlocal\n\t\nstreaming\ntools\n\t$0.00\n$0.00 output\n\t\nNo matched benchmark data\nInspect metadata\n\t\nEnabled\n\nPrices are estimated USD per million tokens. — means unknown. Disabled models are unavailable to client discovery and routing.\n\nChanges save automatically\nLoaded from gateway"
+    },
+    {
+      "task": "Inspect Development usage",
+      "result": "Scope selected and other key hidden",
+      "text": "Skip to workspace\nTorii Gateway\nMODEL CONTROL PLANE\nT\nGateway workspace\nAdministrator console\n\nWORKSPACE\n\nOverview\nProviders\nModels\nSmart routing\nBenchmarks\n\nOPERATIONS\n\nActivity\nUsage & quota\nAPI keys\nServer\nreviewer\nAdministrator\nTorii Gateway / console\nT\nWorkspace\n/\nUsage & quota\nSign out\nRefresh\n\nOPERATIONS\n\nUsage & quota\nPersistence and guardrails\n\nMonitor requests, token usage, and estimated cost across your gateway.\n\nUsage scope\nEntire gateway\nDefault gateway key\nDevelopment\nResearch assistant\nRefresh usage\nUsage overview\nPeriod\nToday · UTC\nThis month · UTC\nClient requests\n6\nToday · current scope\nInput tokens\n2,280\nIncludes classifiers and retries\nOutput tokens\n432\nReported and conservative estimates\nEstimated cost\n$0.0000\nOperator estimate · USD\nAPI KEY\tMODEL\tCLIENT REQUESTS\tINPUT / OUTPUT TOKENS\tEST. TOKENS\tEST. USD\nDevelopment\n2026-10-08\n\tClient request total\t6\t0 / 0\t0\t0.000000\nDevelopment\n2026-10-08\n\tlocal/gemma3:27b\nlocal\n\t—\t760 / 144\t0\t0.000000\nDevelopment\n2026-10-08\n\tlocal/llama3.3:70b\nlocal\n\t—\t760 / 144\t0\t0.000000\nDevelopment\n2026-10-08\n\tlocal/qwen3:8b\nlocal\n\t—\t760 / 144\t0\t0.000000\n\nOperator accounting; monetary values are estimates, not provider billing. Unknown costs remain unknown; estimated tokens include unresolved reservations.\n\nBudget limits\nSet daily and monthly guardrails for the selected scope\n⌄\nAdvanced quota & session settings\nCache duration, session affinity, and local model allowances\n⌄\nChanges save automatically\nDraft changes"
+    },
+    {
+      "task": "Dark theme",
+      "result": "Theme toggles; overview/models/activity captured"
+    },
+    {
+      "task": "Mobile activity information availability",
+      "result": {
+        "tableWidth": 938.078125,
+        "parentWidth": 350,
+        "parentScrollWidth": 938,
+        "overflowX": "auto"
+      }
+    },
+    {
+      "task": "Open Add provider",
+      "result": "Empty provider editor opens",
+      "dialogCount": 1
+    },
+    {
+      "task": "Provider editor keyboard Tab order",
+      "result": [
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "?",
+          "name": "",
+          "aria": "Show help"
+        },
+        {
+          "tag": "SELECT",
+          "text": "OpenAI compatible\nTypeSafe AI · Jev\nJev compatible · Laya / custom\nOpenRouter\nGemini\nxAI\nAnthropic\nOpenAI\nOpenAI Codex\nOllama\nNous",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "?",
+          "name": "",
+          "aria": "Show help"
+        },
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "?",
+          "name": "",
+          "aria": "Show help"
+        },
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Reveal",
+          "name": "",
+          "aria": "Reveal entered provider API key"
+        },
+        {
+          "tag": "BUTTON",
+          "text": "?",
+          "name": "",
+          "aria": "Show help"
+        },
+        {
+          "tag": "SUMMARY",
+          "text": "Advanced provider options",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Cancel",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Save provider",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BODY",
+          "text": "Skip to workspace\nTorii Gateway\nMODEL CONTROL PLANE\nT\nGateway workspace\nAdministrator console\n\nWORKSPACE\n\nOverview\nProviders\nModels\nSmart routing\nBenchmarks\n\nOPERATIONS\n\nActivity\nUsage & quota\nAPI keys\nServer\nreviewer\nAdministrator\nTorii Gateway / console\nT\nWorkspace\n/\nProviders\nSign out\nRefresh\n\nCONNECTIONS\n\nProviders\n＋ Add provider\n◎\nNo classifier models are available. Add a provider with type TypeSafe AI · Jev or Jev compatible · Laya / custom, then test its connection to discover models for Smart Routing.\nL\nlocal\nOllama\nhttp://127.0.0.1:18084\nModels →\nTest connection\nEdit\nRemove\nNot checked yet\nL\nlab\nOllama\nhttp://127.0.0.1:18084\nModels →\nTest connection\nEdit\nRemove\nConnected · Working · 6 models discovered\nP\nProvider 3\nOpenAI compatible\nModels →\nTest connection\nEdit\nRemove\nNot checked yet\nUPSTREAM CONNECTION\nAdd provider\n\nConnect a model API or subscription to your gateway.\n\nProvider enabled\nTreat models as free\nProvider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.\nType\nOpenAI compatible\nTypeSafe AI · Jev\nJev compatible · Laya / custom\nOpenRouter\nGemini\nxAI\nAnthropic\nOpenAI\nOpenAI Codex\nOllama\nNous\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.\nAPI URL\n?\nThe complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field.\nAPI key\nReveal\n?\nEnter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.\nAdvanced provider options\nCancel\nSave provider\nChanges save automatically\nDraft changes",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "text": "",
+          "name": "",
+          "aria": null
+        },
+        {
+          "tag": "BUTTON",
+          "text": "?",
+          "name": "",
+          "aria": "Show help"
+        }
+      ]
+    },
+    {
+      "task": "Provider editor Escape cancellation",
+      "result": "Closed"
+    },
+    {
+      "task": "Direct routing navigation without classifier",
+      "result": {
+        "url": "http://127.0.0.1:18081/#routing",
+        "headings": [
+          "Smart routing"
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "writes": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/session"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    }
+  ]
+}

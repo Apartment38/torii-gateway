@@ -1,1 +1,133 @@
-{"phase":"Baseline review · builders active","pieces":[{"name":"Navigation & visual system","result":"Builder and independent critic assigned."},{"name":"Overview & first connection","result":"Replacing decorative hero with truthful live summary."},{"name":"Provider setup & credentials","result":"Reviewing clear actions and safe editing."},{"name":"Model discovery & selection","result":"Building compact searchable catalog."},{"name":"Routing & benchmarks","result":"Reviewing progressive disclosure and controls."},{"name":"Activity & quota","result":"Reviewing table readability and empty states."},{"name":"Mobile, keyboard & themes","result":"Running browser checks after first revision."}],"critique":{"title":"The baseline has a hierarchy problem","text":"Oversized cards and a decorative overview hide the gateway's useful state. Routerly's strength is calm hierarchy and task-local actions. Its low secondary-text contrast and unused list whitespace leave room to improve."},"comparison":[],"note":"Baseline captures pending. No winner declared.","history":[{"title":"Baseline · 8 October 2026","text":"Browser regression tests and Go web/gateway tests pass. Public Routerly screenshots and workflow documents downloaded for direct review."}]}
+{
+  "phase": "Round 4 \u00b7 closing benchmark and first-run gaps",
+  "pieces": [
+    {
+      "name": "Navigation & visual system",
+      "result": "Readability wins; compactness ties. Light/dark and keyboard independently verified."
+    },
+    {
+      "name": "Overview & first connection",
+      "result": "Live daily/monthly summaries and copyable client connection; hierarchy wins."
+    },
+    {
+      "name": "Provider setup & credentials",
+      "result": "Editing, cancel, focus and API-key action win. Improving type discovery."
+    },
+    {
+      "name": "Model discovery & selection",
+      "result": "Search, filters, pagination, metadata and mobile access verified. Readability wins."
+    },
+    {
+      "name": "Routing & benchmarks",
+      "result": "Routing clarity wins. Enabled benchmark table remains too wide; compact scorecard in progress."
+    },
+    {
+      "name": "Activity & quota",
+      "result": "Truthful stages, search and scoped accounting verified; view controls cause no writes."
+    },
+    {
+      "name": "Mobile, keyboard & themes",
+      "result": "Both themes and 390px controls verified. Required setup Escape fixed; recheck pending."
+    }
+  ],
+  "critique": {
+    "title": "Two independent reviews: core wins, remaining benchmark loss",
+    "text": "Login, provider editing, API-key creation, routing clarity and readability win the scoped comparisons. Request investigation and accounting tie with tested, clean controls. The enabled benchmark view still exposes 26 columns; its evidence will move into per-model disclosures. First-run setup now stays open on Escape. These are subjective, scoped reviewer judgments; final validation is still underway."
+  },
+  "comparison": [
+    {
+      "name": "Torii \u00b7 round 3 overview",
+      "image": "screenshots/round3-overview.png"
+    },
+    {
+      "name": "Routerly \u00b7 overview reference",
+      "image": "references/screenshot-overview.png"
+    }
+  ],
+  "note": "Live browser capture vs supplied Routerly reference. Different product features and viewport sizes; judging hierarchy, readability and task clarity.",
+  "history": [
+    {
+      "title": "Baseline \u00b7 8 October 2026",
+      "text": "Browser regression tests and Go web/gateway tests pass. Public Routerly screenshots and workflow documents downloaded for direct review."
+    },
+    {
+      "title": "First revision \u00b7 e0d5d6f",
+      "text": "Compact neutral visual system, responsive navigation, live overview, searchable model table, provider dialogs and metadata-first activity. 78 browser unit checks pass; Go web/gateway baseline passes."
+    },
+    {
+      "title": "Independent review \u00b7 Round 1",
+      "text": "Actual Chromium captures across eight pages, mobile at 390px, and direct comparison against Routerly. No document-wide overflow; mobile tables need better task visibility. Provider scan, timestamp clarity, API-key labels, benchmark autosave instructions and overview density remain improvement targets."
+    },
+    {
+      "title": "Rounds 2\u20133 \u00b7 verified workflows",
+      "text": "87 console tests pass. Independent browsers verify cancellation, clipboard values, pagination, focus, scoped usage, mobile access, both themes and absence of configuration writes during view changes. Full Go tests, race tests, vet and build pass. Enabled benchmark density and first-run dismissal remained review gaps."
+    }
+  ],
+  "views": [
+    {
+      "title": "Overview \u00b7 current / Routerly",
+      "comparison": [
+        {
+          "name": "Torii \u00b7 round 3 overview",
+          "image": "screenshots/round3-overview.png"
+        },
+        {
+          "name": "Routerly \u00b7 overview reference",
+          "image": "references/screenshot-overview.png"
+        }
+      ]
+    },
+    {
+      "title": "Models \u00b7 current / Routerly",
+      "comparison": [
+        {
+          "name": "Torii \u00b7 round 3 models",
+          "image": "screenshots/round3-models.png"
+        },
+        {
+          "name": "Routerly \u00b7 models reference",
+          "image": "references/screenshot-models.png"
+        }
+      ]
+    },
+    {
+      "title": "Usage \u00b7 current / Routerly",
+      "comparison": [
+        {
+          "name": "Torii \u00b7 round 3 usage",
+          "image": "screenshots/round3-usage-quota.png"
+        },
+        {
+          "name": "Routerly \u00b7 usage reference",
+          "image": "references/screenshot-usage.png"
+        }
+      ]
+    },
+    {
+      "title": "Overview \u00b7 baseline / current",
+      "comparison": [
+        {
+          "name": "Torii original",
+          "image": "screenshots/before-overview.png"
+        },
+        {
+          "name": "Torii current",
+          "image": "screenshots/round3-overview.png"
+        }
+      ]
+    },
+    {
+      "title": "Mobile \u00b7 models / activity",
+      "comparison": [
+        {
+          "name": "Torii mobile models",
+          "image": "screenshots/round3-mobile-models.png"
+        },
+        {
+          "name": "Torii mobile activity",
+          "image": "screenshots/round3-mobile-activity.png"
+        }
+      ]
+    }
+  ]
+}

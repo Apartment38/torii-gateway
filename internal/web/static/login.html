@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0c1930"><title>Sign in · Torii Gateway</title><link rel="icon" href="/web/torii-gateway-icon.png"><script>try{document.documentElement.dataset.theme=localStorage.getItem("torii-theme")||"light"}catch{}</script><link rel="stylesheet" href="/web/styles.css?v=13"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0c1930"><title>Sign in · Torii Gateway</title><link rel="icon" href="/web/torii-gateway-icon.png"><script>try{document.documentElement.dataset.theme=localStorage.getItem("torii-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch{document.documentElement.dataset.theme=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}</script><link rel="stylesheet" href="/web/styles.css?v=13"></head>
 <body>
 <main class="login-page">
   <section class="login-brand-panel" aria-label="Torii Gateway">
@@ -13,7 +13,7 @@
   <section class="login-form-panel"><div class="login-card">
     <p class="eyebrow">Administrator access</p><h1>Welcome back.</h1><p>Sign in to manage your gateway.</p>
     <form id="session-login"><label>Username<input name="username" autocomplete="username" maxlength="64" placeholder="Your administrator username" required autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password" maxlength="1024" placeholder="Enter your password" required></label><p id="error" role="alert"></p><button class="button primary" type="submit">Sign in <span aria-hidden="true">→</span></button></form>
-    <p class="login-help">Setting up a new gateway? <a href="/">Create your administrator</a></p>
+    <p id="login-help" class="login-help">Use the administrator account created when this gateway was set up.</p>
   </div></section>
 </main><script type="module" src="/web/login.js"></script>
 </body></html>

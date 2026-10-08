@@ -1,0 +1,35 @@
+{
+  "captured": "2026-10-08",
+  "torii_base_commit": "9adb33b",
+  "torii_first_revision": "e0d5d6f",
+  "reference_tree_sha": "bcf58f195140d2957c8fcb340155ae61b089300c",
+  "references": [
+    {
+      "file": "screenshot-overview.png",
+      "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-overview.png",
+      "git_blob_sha": "d9e0e760051e8818e9d1ed8fb1cd81647e36f3eb"
+    },
+    {
+      "file": "screenshot-models.png",
+      "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-models.png",
+      "git_blob_sha": "e543cb67ad5ad58e36765d793ceeec5a9af5588e"
+    },
+    {
+      "file": "screenshot-usage.png",
+      "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-usage.png",
+      "git_blob_sha": "019706dd6fc5295ef99d935d6e2a0197ca4b791b"
+    },
+    {
+      "file": "screenshot-login.png",
+      "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-login.png",
+      "git_blob_sha": "2ff70ee43e839cbc23ca5063d9977180057b55e7"
+    },
+    {
+      "file": "screenshot-connect-client.png",
+      "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-connect-client.png",
+      "git_blob_sha": "035ab63a0cd4ae1a51a08750c83ad90357fa63d9"
+    }
+  ],
+  "runtime": "Actual Go gateway API, disposable SQLite, controlled local Ollama-compatible fixtures. Chromium headless screenshots and interaction tests. No production deployment.",
+  "review_conditions": "Routerly supplied static references; Torii screenshots captured at 1430/1440 \u00d7 1000 and 390 \u00d7 844. Visible branding prevents fully blind review. Comparisons concern existing Torii workflows, not product feature parity."
+}

@@ -23,13 +23,14 @@ Typed Jev/Laya classifier providers are separate from inference providers.
 1. On **Providers**, add **TypeSafe AI · Jev** for the hosted service, or
    **Jev compatible · Laya / custom** for a compatible decision server.
 2. Supply a reachable URL and the service's key if required; test the connection.
-3. On **Routing**, select the discovered classifier model in Smart Routing.
+3. On **Smart routing**, select the discovered classifier model in Smart Routing.
 4. Wait for **Saved**, then send a `smart` request.
 
 Discovery uses `/models`; compatible Laya services may advertise loaded
 checkpoints via `/health`. A successful connection test is discovery evidence,
 not a classification test. Configure at least one inference provider too.
-If no classifier models are available, the console directs you back to Providers.
+If no classifier models are available, the console explains how to add one on
+**Providers**; deterministic policy settings remain available.
 Disable classification to retain deterministic routing without classifier calls.
 
 ## Tune decisions and failure behavior

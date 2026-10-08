@@ -50,7 +50,10 @@ paired with independent running-browser review against Routerly screenshots and
 workflow documents. The first revision replaces the decorative overview with
 live state, adds a searchable compact model catalog, and clarifies provider,
 activity and accounting screens. Disposable SQLite and controlled local upstreams
-provide test data. Baseline console and Go web/gateway tests pass.
+provide test data. Independent reviews verify filters, paging, clipboard values,
+provider cancellation, themes and mobile access. All 87 console tests, full Go
+tests/race tests, vet and build pass. Enabled benchmark density and final first-run
+verification remain active review items.
 The [live visual review page](evaluations/console-design/index.html) records
 screenshots and critique; it does not establish general product superiority.
 

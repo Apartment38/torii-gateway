@@ -41,3 +41,31 @@ func TestClassifierTransportPreservesLargePayload(t *testing.T) {
 		t.Fatalf("classifier reconciliation: %+v", total)
 	}
 }
+
+func TestAmbiguousTotalRetainsExpensiveOutputBudget(t *testing.T) {
+	store, _, _ := testStore(t)
+	input, output := float64(0), float64(1000)
+	meter := Metered{id: "p", Store: store, Settings: Settings{Gateway: Budgets{Daily: Budget{EstimatedCost: .015}}}, Describe: func(string) catalog.Descriptor {
+		return catalog.Descriptor{Pricing: catalog.Pricing{InputPerMillion: &input, OutputPerMillion: &output}}
+	}}
+	request, _ := http.NewRequest("POST", "https://example.test/v1/chat/completions", nil)
+	ctx := WithSubject(request.Context(), &Subject{Key: "key", Name: "test"})
+	calls := 0
+	dispatch := func() (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"usage":{"total_tokens":5}}`))}, nil
+	}
+	response, err := meter.forward(ctx, "/v1/chat/completions", []byte(`{"max_tokens":10}`), "model", dispatch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	amount, _ := SubjectFrom(ctx).Snapshot()
+	if amount.Output != 10 || amount.Estimated == 0 || amount.Cost != .01 {
+		t.Fatalf("ambiguous split understated cost: %+v", amount)
+	}
+	if _, err = meter.forward(ctx, "/v1/chat/completions", []byte(`{"max_tokens":10}`), "model", dispatch); err == nil || calls != 1 {
+		t.Fatal("ambiguous usage released monetary budget", err, calls)
+	}
+}

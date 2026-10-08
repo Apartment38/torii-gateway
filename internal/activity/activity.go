@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/Apartment38/torii-gateway/internal/state"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -119,7 +120,7 @@ func (s *Store) Emit(e Event) {
 }
 func bounded(value string) string {
 	if len(value) > 512 {
-		return value[:512]
+		return strings.Clone(value[:512])
 	}
 	return value
 }

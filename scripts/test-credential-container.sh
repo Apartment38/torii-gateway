@@ -85,6 +85,7 @@ client_id=$(printf '%s' "$client_result" | jq -er .key.id)
 [[ $(request GET /v1/models "Bearer $client_key" '' true) == 200 ]]
 [[ $(request GET /gateway/v1/admin/api-keys "Bearer $client_key" '' true) == 401 ]]
 key_metadata=$(request GET /gateway/v1/admin/api-keys "$basic")
+default_id=$(printf '%s' "$key_metadata" | jq -er '.api_keys[] | select(.name=="Default gateway key") | .id')
 [[ $key_metadata == *'Smoke client'* && $key_metadata != *"$client_key"* ]]
 configuration=$(request GET /gateway/v1/config "$basic")
 [[ $(printf '%s' "$configuration" | jq '.providers | length') == 0 ]]
@@ -139,6 +140,9 @@ request PUT /gateway/v1/quotas COOKIE "$budgets" >/dev/null
 stream=$(request POST /v1/chat/completions "Bearer $api_key" '{"model":"smoke/fixture","messages":[],"max_tokens":8,"stream":true}')
 [[ $stream == *'[DONE]'* && $stream == *'"total_tokens": 5'* ]]
 [[ $(request GET /gateway/v1/usage COOKIE | jq '[.usage[] | select(.key_id != "*" and .model == "smoke/fixture")] | length > 0') == true ]]
+[[ $(request POST /v1/embeddings "Bearer $api_key" '{"model":"smoke/fixture","input":"fixture"}' | jq .usage.total_tokens) == 3 ]]
+[[ $(request GET /gateway/v1/usage COOKIE | jq --arg id "$default_id" --arg day "$(date -u +%F)" '[.usage[] | select(.key_id==$id and .model=="smoke/fixture" and .period==$day)] | .[0] | .input_tokens==6 and .output_tokens==2 and .estimated_tokens==0') == true ]]
+
 for attempt in {1..100}; do
  activity=$(request GET /gateway/v1/activity COOKIE)
  [[ $activity == *'complete'* ]] && break
@@ -187,4 +191,4 @@ launch
 request DELETE /gateway/v1/session COOKIE >/dev/null
 [[ $(request GET /gateway/v1/session COOKIE '' true) == 401 ]]
 stop
-printf '%s\n' 'PASS: fresh schema 9, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, benchmark console assets/authenticated table/streamed refresh, usage/identity/benchmark status persistence, stopped backup restore, persistent cookie sessions, model eligibility, JSON/SSE accounting, restart-proof quotas, redacted activity, and wrong-key rejection.'
+printf '%s\n' 'PASS: fresh schema 9, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, benchmark console assets/authenticated table/streamed refresh, usage/identity/benchmark status persistence, stopped backup restore, persistent cookie sessions, model eligibility, JSON/SSE/embedding accounting, restart-proof quotas, redacted activity, and wrong-key rejection.'

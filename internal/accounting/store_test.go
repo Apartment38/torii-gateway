@@ -5,6 +5,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/state"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -102,7 +103,7 @@ func TestObserverFragmentedJSONSSEZeroUsageAndBounds(t *testing.T) {
 		stream        bool
 		body          string
 		input, output int64
-	}{{false, `{"usage":{"prompt_tokens":2,"completion_tokens":3}}`, 2, 3}, {true, "data: {\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}\r\n\r\ndata: [DONE]\n\n", 2, 3}, {true, "event: response.completed\ndata: {\"response\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":5}}}\n\n", 4, 5}, {true, "data: {\"message\":{\"usage\":{\"input_tokens\":7}}}\n\ndata: {\"usage\":{\"output_tokens\":8}}\n\n", 7, 8}, {false, `{"usage":{"prompt_tokens":0,"completion_tokens":0}}`, 0, 0}, {false, `{"usage":{"total_tokens":9}}`, 9, 0}} {
+	}{{false, `{"usage":{"prompt_tokens":2,"completion_tokens":3}}`, 2, 3}, {true, "data: {\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}\r\n\r\ndata: [DONE]\n\n", 2, 3}, {true, "event: response.completed\ndata: {\"response\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":5}}}\n\n", 4, 5}, {true, "data: {\"message\":{\"usage\":{\"input_tokens\":7}}}\n\ndata: {\"usage\":{\"output_tokens\":8}}\n\ndata: [DONE]\n\n", 7, 8}, {false, `{"usage":{"prompt_tokens":0,"completion_tokens":0}}`, 0, 0}, {false, `{"usage":{"prompt_tokens":2,"total_tokens":5}}`, 2, 3}} {
 		o := NewObserver(tc.stream)
 		for i := range len(tc.body) {
 			o.Write([]byte(tc.body[i : i+1]))
@@ -130,11 +131,70 @@ func TestEstimatesReserveSupportedMaximumWithoutOutputLimit(t *testing.T) {
 	if !supported || amount.Output != 1024 {
 		t.Fatal("omitted output limit underreserved", amount)
 	}
+	classifierAmount, classifierSupported := Estimate([]byte(`{}`), "/v1/systemone", model)
+	if !classifierSupported || classifierAmount.Output != 1024 {
+		t.Fatal("classifier output underreserved", classifierAmount)
+	}
 	amount, supported = Estimate([]byte(`{"max_output_tokens":10}`), "/v1/responses", model)
 	if !supported || amount.Output != 10 {
 		t.Fatal("explicit output limit ignored")
 	}
 	if _, supported = Estimate([]byte(`{}`), "/v1/chat/completions", catalog.Descriptor{}); supported {
 		t.Fatal("unknown capacity invented")
+	}
+}
+
+func TestUsageTotalsRespectKnownOutputAndUnknownSplits(t *testing.T) {
+	for _, tc := range []struct {
+		name, body                  string
+		embedding, stream, reported bool
+		input, output               int64
+	}{
+		{"embedding", `{"usage":{"prompt_tokens":5,"total_tokens":5}}`, true, false, true, 5, 0},
+		{"embedding total", `{"usage":{"total_tokens":9}}`, true, false, true, 9, 0},
+		{"embedding input", `{"usage":{"input_tokens":5}}`, true, false, true, 5, 0},
+		{"ambiguous generation", `{"usage":{"total_tokens":9}}`, false, false, false, 0, 0},
+		{"contradictory totals", `{"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":9}}`, false, false, false, 2, 3},
+		{"output and total", `{"usage":{"completion_tokens":3,"total_tokens":5}}`, false, false, true, 2, 3},
+		{"cumulative SSE", "data: {\"usage\":{\"input_tokens\":2,\"total_tokens\":2}}\n\ndata: {\"usage\":{\"total_tokens\":10}}\n\ndata: [DONE]\n\n", false, true, true, 2, 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := NewObserver(tc.stream)
+			o.noOutput = tc.embedding
+			for _, b := range []byte(tc.body) {
+				o.Write([]byte{b})
+			}
+			o.Finish()
+			if o.Reported != tc.reported || o.Input != tc.input || o.Output != tc.output {
+				t.Fatalf("usage interpretation: %+v", o)
+			}
+		})
+	}
+}
+
+func TestStreamingIncompleteAndStaleUsageKeepsEstimates(t *testing.T) {
+	for _, body := range []string{
+		"data: {\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":0}}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"new output\"}}]}\n\ndata: [DONE]\n\n",
+		"data: {\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":0,\"total_tokens\":2}}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"new output\"}}]}\n\ndata: [DONE]\n\n",
+		"data: {\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}\n\n",
+	} {
+		o := NewObserver(true)
+		for _, b := range []byte(body) {
+			o.Write([]byte{b})
+		}
+		o.Finish()
+		if o.Reported {
+			t.Fatal("incomplete or stale streaming usage treated as final")
+		}
+	}
+}
+
+func TestUsageEnvelopeDepthIsBounded(t *testing.T) {
+	payload := strings.Repeat(`{"response":`, 100) + `{"usage":{"input_tokens":2,"output_tokens":3}}` + strings.Repeat(`}`, 100)
+	observer := NewObserver(false)
+	observer.Write([]byte(payload))
+	observer.Finish()
+	if observer.Reported {
+		t.Fatal("unsupported deep envelope trusted as reported usage")
 	}
 }

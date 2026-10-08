@@ -21,11 +21,12 @@ import (
 )
 
 type accountingFixtureProvider struct {
-	calls   int
-	stream  bool
-	missing bool
-	broken  bool
-	retry   bool
+	calls      int
+	customBody string
+	stream     bool
+	missing    bool
+	broken     bool
+	retry      bool
 }
 
 func (*accountingFixtureProvider) ID() string { return "p" }
@@ -45,6 +46,9 @@ func (p *accountingFixtureProvider) Forward(context.Context, string, []byte, str
 	p.calls++
 	status := 200
 	body := `{"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3}}`
+	if p.customBody != "" {
+		body = p.customBody
+	}
 	headers := http.Header{}
 	if p.stream {
 		headers.Set("Content-Type", "text/event-stream")
@@ -200,4 +204,45 @@ func TestActivityMetadataExcludesPromptAndResponse(t *testing.T) {
 		}
 	}
 	events.Close()
+}
+
+func TestEmbeddingUsageAndAmbiguousTotalCost(t *testing.T) {
+	for _, tc := range []struct {
+		path, body string
+		reported   bool
+	}{
+		{"/v1/embeddings", `{"data":[{"embedding":[1,2]}],"usage":{"prompt_tokens":5,"total_tokens":5}}`, true},
+		{"/v1/chat/completions", `{"choices":[],"usage":{"total_tokens":5}}`, false},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			p := &accountingFixtureProvider{customBody: tc.body}
+			h, store := accountingHandler(t, p, accounting.Settings{})
+			body := `{"model":"p/model","input":"hello","messages":[],"max_tokens":10}`
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest("POST", tc.path, strings.NewReader(body)))
+			if w.Code != 200 || w.Body.String() != tc.body {
+				t.Fatal("forwarded payload changed", w.Code)
+			}
+			rows, _, err := store.Summary(accounting.Settings{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, row := range rows {
+				if row.Key == "anonymous" && row.Model == "p/model" && row.Period == time.Now().UTC().Format("2006-01-02") {
+					found = true
+					if tc.reported {
+						if row.Input != 5 || row.Output != 0 || row.Estimated != 0 {
+							t.Fatalf("embedding usage not settled: %+v", row)
+						}
+					} else if row.Estimated == 0 || row.Output != 10 {
+						t.Fatalf("ambiguous token split lost conservative estimate: %+v", row)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("physical usage absent")
+			}
+		})
+	}
 }

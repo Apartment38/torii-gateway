@@ -13,6 +13,9 @@ class Fixture(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         usage = {'prompt_tokens': 3, 'completion_tokens': 2, 'total_tokens': 5}
+        embedding = self.path.endswith('/embeddings')
+        if embedding:
+            usage = {'prompt_tokens': 3, 'total_tokens': 3}
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream' if body.get('stream') else 'application/json')
         self.send_header('Connection', 'close')
@@ -20,7 +23,7 @@ class Fixture(BaseHTTPRequestHandler):
         if body.get('stream'):
             payload = 'data: ' + json.dumps({'choices': [], 'usage': usage}) + '\n\ndata: [DONE]\n\n'
         else:
-            payload = json.dumps({'choices': [{'message': {'role': 'assistant', 'content': 'fixture'}}], 'usage': usage})
+            payload = json.dumps({'data': [{'embedding': [1, 2]}], 'usage': usage} if embedding else {'choices': [{'message': {'role': 'assistant', 'content': 'fixture'}}], 'usage': usage})
         raw = payload.encode()
         for offset in range(0, len(raw), 7):
             self.wfile.write(raw[offset:offset + 7])

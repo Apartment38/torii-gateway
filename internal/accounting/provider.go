@@ -47,7 +47,9 @@ func Estimate(body []byte, path string, model catalog.Descriptor) (Amount, bool)
 	input := int64(len(body))
 	output := int64(0)
 	supported := true
-	if path != "/v1/embeddings" && path != "/v1/systemone" {
+	// Typed classifiers can report output usage too; only embeddings have a
+	// protocol-defined zero generation bound.
+	if path != "/v1/embeddings" {
 		output = 65536
 		supported = false
 		if model.ContextWindow != nil && *model.ContextWindow > 0 {
@@ -172,7 +174,9 @@ func (m *Metered) forward(ctx context.Context, path string, body []byte, model s
 	}
 	json.Unmarshal(body, &fields)
 	stream = stream || fields.Stream
-	response.Body = &observedBody{ReadCloser: response.Body, observer: NewObserver(stream), complete: func(o *Observer, eof bool) {
+	observer := NewObserver(stream)
+	observer.noOutput = path == "/v1/embeddings"
+	response.Body = &observedBody{ReadCloser: response.Body, observer: observer, complete: func(o *Observer, eof bool) {
 		amount := estimate
 		var actual *Amount
 		if eof && o.Reported {

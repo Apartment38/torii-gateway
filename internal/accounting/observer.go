@@ -17,6 +17,9 @@ type Observer struct {
 	Input, Output           int64
 	inputKnown, outputKnown bool
 	Reported                bool
+	completed               bool
+	total                   int64
+	totalKnown, noOutput    bool
 }
 
 func NewObserver(stream bool) *Observer { return &Observer{stream: stream} }
@@ -30,6 +33,8 @@ func (o *Observer) Write(p []byte) (int, error) {
 			o.buffer = append(o.buffer, p...)
 		} else {
 			o.overflow = true
+			o.outputKnown = false
+			o.totalKnown = false
 		}
 		return n, nil
 	}
@@ -41,12 +46,20 @@ func (o *Observer) Write(p []byte) (int, error) {
 			o.buffer = append(o.buffer, b)
 		} else {
 			o.overflow = true
+			o.outputKnown = false
+			o.totalKnown = false
 		}
 	}
 	return n, nil
 }
 func (o *Observer) line(line []byte) {
 	line = bytes.TrimSuffix(line, []byte{'\r'})
+	if bytes.HasPrefix(line, []byte("event:")) {
+		kind := strings.TrimSpace(string(bytes.TrimPrefix(line, []byte("event:"))))
+		if kind == "response.completed" || kind == "message_stop" {
+			o.completed = true
+		}
+	}
 	if len(line) == 0 {
 		if !o.overflow {
 			o.parse(o.data)
@@ -65,6 +78,8 @@ func (o *Observer) line(line []byte) {
 			o.data = append(o.data, '\n')
 		} else {
 			o.overflow = true
+			o.outputKnown = false
+			o.totalKnown = false
 		}
 	}
 }
@@ -81,21 +96,55 @@ func (o *Observer) Finish() {
 			o.parse(o.data)
 		}
 	}
-	o.Reported = o.inputKnown && o.outputKnown
+	if o.noOutput && !o.outputKnown {
+		o.outputKnown = true
+	}
+	if o.totalKnown {
+		if o.inputKnown && !o.outputKnown && o.total >= o.Input {
+			o.Output = o.total - o.Input
+			o.outputKnown = true
+		} else if o.outputKnown && !o.inputKnown && o.total >= o.Output {
+			o.Input = o.total - o.Output
+			o.inputKnown = true
+		}
+	}
+	o.Reported = o.inputKnown && o.outputKnown && (!o.totalKnown || o.Input+o.Output == o.total) && (!o.stream || o.completed)
 	o.buffer = nil
 	o.data = nil
 }
-func (o *Observer) parse(data []byte) {
+func (o *Observer) parse(data []byte) { o.parseUsage(data, 0) }
+func (o *Observer) parseUsage(data []byte, depth int) {
+	if depth > 2 {
+		o.outputKnown = false
+		o.totalKnown = false
+		return
+	}
 	if strings.TrimSpace(string(data)) == "[DONE]" {
+		o.completed = true
 		return
 	}
 	var root map[string]json.RawMessage
 	if json.Unmarshal(data, &root) != nil {
+		if o.stream && len(bytes.TrimSpace(data)) > 0 {
+			o.outputKnown = false
+			o.totalKnown = false
+		}
 		return
+	}
+	if o.stream {
+		var kind string
+		json.Unmarshal(root["type"], &kind)
+		if kind == "response.completed" || kind == "message_stop" {
+			o.completed = true
+		}
+		if generatedData(root) {
+			o.outputKnown = false
+			o.totalKnown = false
+		}
 	}
 	for _, nested := range []string{"response", "message"} {
 		if raw := root[nested]; len(raw) > 0 {
-			o.parse(raw)
+			o.parseUsage(raw, depth+1)
 		}
 	}
 	raw := root["usage"]
@@ -125,13 +174,34 @@ func (o *Observer) parse(data []byte) {
 		o.Output = max(o.Output, v)
 		o.outputKnown = true
 	}
-	if _, ok := fields["total_tokens"]; ok && !o.inputKnown {
-		if v, ok := get("total_tokens"); ok {
-			o.Input = v
-			o.inputKnown = true
-			o.outputKnown = true
+	if v, ok := get("total_tokens"); ok {
+		o.total = max(o.total, v)
+		o.totalKnown = true
+	}
+
+}
+
+// Any generation after a usage snapshot makes that output count provisional
+// until a subsequent usage frame arrives. This catches missing final usage.
+func generatedData(root map[string]json.RawMessage) bool {
+	nonempty := func(raw json.RawMessage) bool {
+		value := strings.TrimSpace(string(raw))
+		return value != "" && value != "null" && value != "{}" && value != "[]" && value != `""`
+	}
+	for _, key := range []string{"delta", "text", "content", "output"} {
+		if nonempty(root[key]) {
+			return true
 		}
 	}
+	var choices []map[string]json.RawMessage
+	if json.Unmarshal(root["choices"], &choices) == nil {
+		for _, choice := range choices {
+			if nonempty(choice["delta"]) || nonempty(choice["text"]) || nonempty(choice["message"]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type observedBody struct {

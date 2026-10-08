@@ -73,7 +73,9 @@ type SelectionConfig struct {
 
 // ServerConfig controls the gateway listener.
 type ServerConfig struct {
-	Listen string `yaml:"listen"`
+	Listen          string   `yaml:"listen"`
+	AdminSessionTTL string   `yaml:"admin_session_ttl,omitempty"`
+	TrustedProxies  []string `yaml:"trusted_proxies,omitempty"`
 }
 
 // StateConfig identifies the persistent application database.
@@ -167,6 +169,17 @@ func Decode(r io.Reader) (*Config, error) {
 // Validate checks configuration invariants without performing network or
 // filesystem access.
 func (c Config) Validate() error {
+	if c.Server.AdminSessionTTL != "" {
+		ttl, err := time.ParseDuration(c.Server.AdminSessionTTL)
+		if err != nil || ttl <= 0 || ttl > 30*24*time.Hour {
+			return errors.New("server.admin_session_ttl must be positive and at most 720h")
+		}
+	}
+	for _, proxy := range c.Server.TrustedProxies {
+		if _, _, err := net.ParseCIDR(proxy); err != nil {
+			return errors.New("server.trusted_proxies must contain CIDR networks")
+		}
+	}
 	if strings.TrimSpace(c.Server.Listen) == "" {
 		return errors.New("server.listen is required")
 	}

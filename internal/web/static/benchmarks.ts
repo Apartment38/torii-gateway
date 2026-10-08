@@ -150,9 +150,9 @@ function renderBenchmarkTable(): void {
 }
 function benchmarkDate(value: any): string { return value && !String(value).startsWith("0001-") ? String(value) : "Unknown"; }
 async function loadBenchmarkData(): Promise<boolean> {
-  if (!benchmarksEnabledSaved || !adminAuthorization) return false;
+  if (!benchmarksEnabledSaved || !consoleSession) return false;
   const sequence = ++benchmarkReloadSequence;
-  const login = adminAuthorization;
+  const login = consoleSession;
   try {
     const headers = await authProvider.headers();
     // Request full model summaries, not a page of per-score observations.
@@ -164,7 +164,7 @@ async function loadBenchmarkData(): Promise<boolean> {
       if (!response.ok) throw new Error(body.error?.message || body.error || "Unable to load benchmark data");
       return body;
     }));
-    if (sequence !== benchmarkReloadSequence || login !== adminAuthorization) return false;
+    if (sequence !== benchmarkReloadSequence || login !== consoleSession) return false;
     [benchmarkSourceStatus, benchmarkModels] = replies;
     renderBenchmarkSourceStatus(); renderBenchmarkTable();
     if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status")!.textContent = "Showing saved benchmark evidence. Missing scores are unknown, not zero; human preference remains a separate signal.";
@@ -192,13 +192,13 @@ function benchmarkProgress(event: Record<string, any>): void {
   log.textContent = benchmarkProgressLog.join("\n"); log.scrollTop = log.scrollHeight;
 }
 async function finishBenchmarkRefresh(result: Record<string,any>, login: string, abort: AbortController): Promise<void> {
-  if (login !== adminAuthorization || abort.signal.aborted) return;
+  if (login !== consoleSession || abort.signal.aborted) return;
   document.querySelector("#benchmark-status")!.textContent = "Loading benchmark results into the table…";
   benchmarkProgress({phase:"loading_table",message:"Loading results into the table"});
-  while (login === adminAuthorization && !abort.signal.aborted) {
+  while (login === consoleSession && !abort.signal.aborted) {
     const expectedSequence = benchmarkReloadSequence + 1;
     if (!await loadBenchmarkData()) {
-      if (login !== adminAuthorization || abort.signal.aborted) return;
+      if (login !== consoleSession || abort.signal.aborted) return;
       if (benchmarkReloadSequence > expectedSequence) continue; // View changed during loading.
       throw new Error("Sources ingested, but the table could not finish updating. Reload cached data to try again.");
     }
@@ -207,7 +207,7 @@ async function finishBenchmarkRefresh(result: Record<string,any>, login: string,
     await new Promise<void>(resolve => window.requestAnimationFrame && document.visibilityState !== "hidden" ? window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>resolve())) : window.setTimeout(resolve,0));
     if (loadedSequence === benchmarkReloadSequence) break;
   }
-  if (login !== adminAuthorization || abort.signal.aborted) return;
+  if (login !== consoleSession || abort.signal.aborted) return;
   const message = result.partial_failure ? "Benchmark refresh finished with source failures; table updated with available data." : "Benchmark refresh finished; table updated.";
   benchmarkProgress({phase:"table_loaded",message});
   document.querySelector("#benchmark-status")!.textContent = message;
@@ -217,7 +217,7 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
   const output = document.querySelector("#benchmark-status")!;
   if (!benchmarksEnabledSaved || !document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked || benchmarkDirty) { output.textContent = "Enable benchmark intelligence and wait for Saved before refreshing changed source settings."; return; }
   if (benchmarkRefreshRunning) return;
-  const login = adminAuthorization;
+  const login = consoleSession;
   const abort = new AbortController();
   output.textContent = "Refreshing sources; cached results remain available…";
   benchmarkRefreshRunning = true; benchmarkAbort = abort; benchmarkProgressLog = []; benchmarkSourceActivity = {};
@@ -230,7 +230,7 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
     if (!response.ok) { const body = await response.json(); throw new Error(body.error?.message || body.error || "Refresh failed"); }
     if (!response.body?.getReader || !response.headers?.get("Content-Type")?.includes("text/event-stream")) {
       const body = await response.json();
-      if (login !== adminAuthorization || abort.signal.aborted) return;
+      if (login !== consoleSession || abort.signal.aborted) return;
       benchmarkSourceStatus = body.sources || {}; renderBenchmarkSourceStatus();
       benchmarkProgress({phase:"complete",total:Object.values(body.sources || {}).filter((source:any)=>source.enabled).length,completed:Object.values(body.sources || {}).filter((source:any)=>source.enabled).length});
       await finishBenchmarkRefresh(body,login,abort);return;
@@ -246,7 +246,7 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
           const frame = buffer.slice(0,boundary); buffer = buffer.slice(boundary+2);
           const lines = frame.split("\n"); const kind = lines.find(line => line.startsWith("event:"))?.slice(6).trim();
           const data = lines.filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
-          if (!data || login !== adminAuthorization || abort.signal.aborted) continue;
+          if (!data || login !== consoleSession || abort.signal.aborted) continue;
           const event = JSON.parse(data);
           // Table requests must not block reading activity from a long import.
           // The final table step below still waits for the latest view to render.
@@ -256,9 +256,9 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
         }
         if (chunk.done) break;
       }
-      if (!finished && login === adminAuthorization && !abort.signal.aborted) throw new Error("Refresh connection ended before completion. Reload cached data to inspect published results.");
+      if (!finished && login === consoleSession && !abort.signal.aborted) throw new Error("Refresh connection ended before completion. Reload cached data to inspect published results.");
     } finally { await reader.cancel(); }
-  } catch (error) { if (login === adminAuthorization && !abort.signal.aborted) { const message = benchmarkSafeMessage(error instanceof Error ? error.message : "Refresh failed"); output.textContent = message; benchmarkProgress({phase:"failed",message}); } }
+  } catch (error) { if (login === consoleSession && !abort.signal.aborted) { const message = benchmarkSafeMessage(error instanceof Error ? error.message : "Refresh failed"); output.textContent = message; benchmarkProgress({phase:"failed",message}); } }
   finally { if (benchmarkAbort === abort) { benchmarkRefreshRunning = false; benchmarkAbort = null; updateBenchmarkControls(); } }
 }
 function initializeBenchmarks(): void {

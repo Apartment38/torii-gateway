@@ -453,6 +453,7 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
+	adminBasic    *api.BasicAdminAuthenticator
 	configMu      sync.Mutex
 	configKey     []byte
 	configVersion uint64
@@ -577,7 +578,14 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	var managementAuth api.ClientAuthenticator = authenticator
 	if database != nil {
 		authenticator = api.CredentialBearerAuthenticator{Verify: database.VerifyGatewayAPIKey}
-		managementAuth = api.NewBasicAdminAuthenticator(database.VerifyAdmin)
+		basic := api.NewBasicAdminAuthenticator(database.VerifyAdmin)
+		if runtime != nil {
+			if runtime.adminBasic == nil {
+				runtime.adminBasic = basic
+			}
+			basic = runtime.adminBasic
+		}
+		managementAuth = sessionAuthenticator{db: database, basic: basic, server: cfg.Server}
 	}
 
 	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
@@ -769,6 +777,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			mux.Handle(pattern, managementBoundary(managementAuth, handler))
 		}
 		if runtime.credentials != nil {
+			mux.Handle("/gateway/v1/session", runtime.adminSessionAPI(cfg.Server))
 			mux.HandleFunc("GET /gateway/v1/setup", runtime.setupStatus)
 			mux.HandleFunc("POST /gateway/v1/setup", runtime.setupAdmin)
 			protect("POST /gateway/v1/admin/api-key", runtime.rotateAPIKey)

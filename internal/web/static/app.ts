@@ -1,25 +1,26 @@
 type AuthHeaders = Record<string, string>;
 
-// Administrator authentication remains in memory, never browser storage.
+// Browser authentication uses an HttpOnly cookie. Only the CSRF token is in memory.
 interface AuthProvider {
   headers(): Promise<AuthHeaders>;
 }
 
-class MemoryBasicProvider implements AuthProvider {
-  async headers(): Promise<AuthHeaders> { return adminAuthorization ? { Authorization:adminAuthorization } : {}; }
+class CookieSessionProvider implements AuthProvider {
+  async headers(): Promise<AuthHeaders> { return csrfToken ? { "X-CSRF-Token":csrfToken } : {}; }
 }
 
-const authProvider: AuthProvider = new MemoryBasicProvider();
+const authProvider: AuthProvider = new CookieSessionProvider();
 async function gatewayFetch(url:string,options?:RequestInit):Promise<Response>{
-  const login = adminAuthorization;
+  const login = consoleSession;
   const response=await fetch(url,options);
-  if(response.status===401 && login===adminAuthorization){signOutConsole();document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
+  if(response.status===401 && login===consoleSession){signOutConsole();document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();}
   return response;
 }
 const form = document.querySelector<HTMLFormElement>("#config-form")!;
 const providerList = document.querySelector<HTMLDivElement>("#providers-list")!;
 const saveState = document.querySelector<HTMLSpanElement>("#save-state")!;
-let adminAuthorization = "";
+let consoleSession = "";
+let csrfToken="";
 let configurationRevision = "";
 let loadedConfiguration:Record<string,any> = {};
 let editGeneration=0;
@@ -33,13 +34,13 @@ function cancelProviderEditor():void{if(editingProvider===null)return;if(editing
 let signedInUsername = "";
 let benchmarksEnabledSaved = false;
 function updateConsoleIdentity(): void {
-  const signedIn = Boolean(adminAuthorization && signedInUsername);
+  const signedIn = Boolean(consoleSession && signedInUsername);
   document.querySelector<HTMLButtonElement>("#console-login")!.hidden = signedIn;
   document.querySelector<HTMLButtonElement>("#console-logout")!.hidden = !signedIn;
   document.querySelector("#signed-in-user")!.textContent = signedIn ? signedInUsername : "Not signed in";
 }
 function signOutConsole(): void {
-  adminAuthorization = "";
+  consoleSession = "";csrfToken="";loadedConfiguration={};editingProvider=null;editingOriginal=null;
   configurationRevision = "";
   signedInUsername = "";
   clearNewAPIKey();
@@ -61,7 +62,11 @@ function signOutConsole(): void {
   renderProviders();
   saveState.textContent = "Signed out";
 }
-function basicAuthorization(username:string,password:string):string {return "Basic "+btoa(Array.from(new TextEncoder().encode(`${username}:${password}`),byte=>String.fromCharCode(byte)).join(""));}
+async function createBrowserSession(username:string,password:string):Promise<void>{
+ const response=await fetch("/gateway/v1/session",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+ if(!response.ok)throw new Error("Sign-in failed");const session=await response.json();csrfToken=session.csrf_token;consoleSession=session.expires_at;signedInUsername=session.username;updateConsoleIdentity();
+}
+
 const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
 let providers: Record<string, string | boolean>[] = [];
 interface ProviderStatus {
@@ -415,13 +420,13 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
 }
 
 async function loadServerConfig(): Promise<void> {
-  const login = adminAuthorization;
+  const login = consoleSession;
   try {
     const response = await gatewayFetch("/gateway/v1/config", { headers: await authProvider.headers() });
-    if (login !== adminAuthorization) return;
+    if (login !== consoleSession) return;
     if (!response.ok) { if (response.status === 401 || response.status === 403) {signOutConsole();saveState.textContent="Sign in to configure the gateway";document.querySelector<HTMLDialogElement>("#login-dialog")?.showModal?.();} return; }
     const configuration = await response.json();
-    if (login !== adminAuthorization) return;
+    if (login !== consoleSession) return;
     applyConfig(configuration, response.headers.get("ETag") || "");
     saveState.textContent = "Loaded from gateway";
     void testAllProviders();
@@ -438,11 +443,11 @@ async function saveConfig(): Promise<boolean> {
     while(saveQueued){
       saveQueued=false;
       if(!configurationRevision)throw new Error("Reload configuration before saving");
-      const generation=editGeneration,login=adminAuthorization;
+      const generation=editGeneration,login=consoleSession;
       const configuration=readConfig();
       saveState.textContent="Saving…";
       const response=await gatewayFetch("/gateway/v1/config",{method:"PUT",headers:{"Content-Type":"application/json","If-Match":configurationRevision,...await authProvider.headers()},body:JSON.stringify(configuration)});
-      if(login!==adminAuthorization)return false;
+      if(login!==consoleSession)return false;
       if(response.status===412 || response.status===428){saveConflict=true;throw new Error("Configuration changed · your draft is still here. Copy your edits, reload, and reconcile them.");}
       if(!response.ok)throw new Error(redactProviderKeys(`Save failed: ${await response.text()}`));
       configurationRevision=response.headers.get("ETag")||"";
@@ -710,17 +715,17 @@ renderClassifierQuestion();
 document.addEventListener("click", () => { document.querySelectorAll("label.tooltip-open").forEach(label => label.classList.remove("tooltip-open")); });
 initializeBenchmarks(); renderProviders(); updateConsoleIdentity(); updateBenchmarkControls(); navigate(); void checkSetup();
 
-document.querySelector("#console-login")!.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#login-dialog")!.showModal());
-document.querySelector("#console-logout")!.addEventListener("click",signOutConsole);
+document.querySelector("#console-login")!.addEventListener("click",()=>location.assign("/login"));
+document.querySelector("#console-logout")!.addEventListener("click",async()=>{try{const response=await gatewayFetch("/gateway/v1/session",{method:"DELETE",headers:await authProvider.headers()});if(!response.ok)throw new Error();signOutConsole();location.assign("/login");}catch{toast("Sign-out failed. Retry to revoke the session.");}});
 document.querySelector("#login-form")!.addEventListener("submit",async event=>{
-  event.preventDefault();const username=document.querySelector<HTMLInputElement>("#login-username")!.value;const input=document.querySelector<HTMLInputElement>("#login-password")!;adminAuthorization=basicAuthorization(username,input.value);input.value="";
-  try{const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json(),response.headers.get("ETag")||"");signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
+  event.preventDefault();const username=document.querySelector<HTMLInputElement>("#login-username")!.value;const input=document.querySelector<HTMLInputElement>("#login-password")!;const password=input.value;input.value="";
+  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();applyConfig(await response.json(),response.headers.get("ETag")||"");signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();saveState.textContent="Signed in";void testAllProviders();void loadCredentialMetadata();}
   catch{signOutConsole();document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata():Promise<void>{
   const list=document.querySelector<HTMLElement>("#credential-list")!;
-  const login=adminAuthorization;
-  try{const response=await gatewayFetch("/gateway/v1/admin/api-keys",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const body=await response.json();if(login!==adminAuthorization)return;list.innerHTML=(body.api_keys||[]).map((key:any)=>`<div class="credential-card"><div class="credential-card-content"><h3 class="credential-card-name">${escapeHTML(key.name)}</h3><p class="credential-card-meta">Created ${escapeHTML(key.created_at)}</p></div><button type="button" class="button quiet credential-card-delete" data-delete-key="${escapeHTML(key.id)}" aria-label="Delete API key ${escapeHTML(key.name)}">Delete</button></div>`).join("") || "No gateway API keys have been created. Click Add credential to generate one.";
+  const login=consoleSession;
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-keys",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const body=await response.json();if(login!==consoleSession)return;list.innerHTML=(body.api_keys||[]).map((key:any)=>`<div class="credential-card"><div class="credential-card-content"><h3 class="credential-card-name">${escapeHTML(key.name)}</h3><p class="credential-card-meta">Created ${escapeHTML(key.created_at)}</p></div><button type="button" class="button quiet credential-card-delete" data-delete-key="${escapeHTML(key.id)}" aria-label="Delete API key ${escapeHTML(key.name)}">Delete</button></div>`).join("") || "No gateway API keys have been created. Click Add credential to generate one.";
     list.querySelectorAll<HTMLButtonElement>("[data-delete-key]").forEach(button=>button.addEventListener("click",async()=>{if(confirm("Delete this API key? Clients using it will immediately lose access on their next request."))await deleteClientKey(button.dataset.deleteKey!);}));
   }catch{list.textContent="Sign in to manage gateway API keys.";}
 }
@@ -735,9 +740,9 @@ document.querySelector("#create-key-form")!.addEventListener("submit",async even
   const button=document.querySelector<HTMLButtonElement>("#generate-client-key")!;
   if(button.disabled)return;
   button.disabled=true;
-  const login=adminAuthorization;
+  const login=consoleSession;
   const name=document.querySelector<HTMLInputElement>("#client-key-name")!.value.trim();
-  try{const response=await gatewayFetch("/gateway/v1/admin/api-keys",{method:"POST",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({name})});const result=await response.json();if(!response.ok)throw new Error(result.error||"API key creation failed");if(login!==adminAuthorization)return;document.querySelector<HTMLInputElement>("#client-key-name")!.value="";document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();showNewAPIKey(result.api_key,result.warning);await loadCredentialMetadata();}
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-keys",{method:"POST",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({name})});const result=await response.json();if(!response.ok)throw new Error(result.error||"API key creation failed");if(login!==consoleSession)return;document.querySelector<HTMLInputElement>("#client-key-name")!.value="";document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();showNewAPIKey(result.api_key,result.warning);await loadCredentialMetadata();}
   catch(error){document.querySelector("#create-key-error")!.textContent=error instanceof Error?error.message:"API key creation failed";}
   finally{button.disabled=false;}
 });
@@ -746,9 +751,11 @@ document.querySelector("#intelligence-enabled")!.addEventListener("change",()=>{
 });
 
 async function checkSetup():Promise<void>{
-  try{const response=await fetch("/gateway/v1/setup",{cache:"no-store"});if(!response.ok)throw new Error();const status=await response.json();document.querySelector<HTMLDialogElement>(status.setup_required?"#setup-dialog":"#login-dialog")!.showModal();}
-  catch{saveState.textContent="Unable to check administrator setup; refresh to retry.";}
+ try{const response=await fetch("/gateway/v1/setup",{cache:"no-store"});if(!response.ok)throw new Error();const status=await response.json();if(status.setup_required){document.querySelector<HTMLDialogElement>("#setup-dialog")!.showModal();return;}
+ const view=await fetch("/gateway/v1/session",{credentials:"same-origin",cache:"no-store"});if(!view.ok){location.assign("/login");return;}const session=await view.json();csrfToken=session.csrf_token;consoleSession=session.expires_at;signedInUsername=session.username;updateConsoleIdentity();await loadServerConfig();void loadCredentialMetadata();
+ }catch{saveState.textContent="Unable to check administrator setup; refresh to retry.";}
 }
+
 function showNewAPIKey(key:string,warning?:string):void{
   if(!key){toast("Your existing API key was imported and preserved. Generate a replacement on the Server page if needed.");return;}
   document.querySelector<HTMLTextAreaElement>("#new-api-key")!.value=key;
@@ -760,13 +767,13 @@ document.querySelector("#setup-form")!.addEventListener("submit",async event=>{
   const username=field("#setup-username").value,password=field("#setup-password").value,code=field("#setup-code").value;
   if(password!==field("#setup-confirm").value){document.querySelector("#setup-error")!.textContent="Passwords do not match.";return;}
   field("#setup-password").value="";field("#setup-confirm").value="";field("#setup-code").value="";
-  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");adminAuthorization=basicAuthorization(username,password);signedInUsername=username;updateConsoleIdentity();document.querySelector<HTMLDialogElement>("#setup-dialog")!.close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
+  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");await createBrowserSession(username,password);document.querySelector<HTMLDialogElement>("#setup-dialog")!.close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
   catch(error){document.querySelector("#setup-error")!.textContent=error instanceof Error?error.message:"Administrator setup failed.";}
 });
 document.querySelector("#generate-api-key")!.addEventListener("click",async()=>{
   if(!confirm("Generate a new API key? All clients using the current key will need updating."))return;
-  const login=adminAuthorization;
-  try{const response=await gatewayFetch("/gateway/v1/admin/api-key",{method:"POST",headers:await authProvider.headers()});if(!response.ok)throw new Error();const result=await response.json();if(login!==adminAuthorization)return;showNewAPIKey(result.api_key,result.warning);}
+  const login=consoleSession;
+  try{const response=await gatewayFetch("/gateway/v1/admin/api-key",{method:"POST",headers:await authProvider.headers()});if(!response.ok)throw new Error();const result=await response.json();if(login!==consoleSession)return;showNewAPIKey(result.api_key,result.warning);}
   catch{toast("API key generation failed. Sign in as the administrator.");}
 });
 function clearNewAPIKey():void{document.querySelector<HTMLTextAreaElement>("#new-api-key")!.value="";}

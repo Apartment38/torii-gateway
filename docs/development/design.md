@@ -84,8 +84,8 @@ transactions; no silent reset/import/downgrade. Schema baseline 4 is retained.
 
 Inference keys are separate from administrator Basic credentials. Named keys
 are independently revocable; default rotation leaves named/provider keys intact.
-Saved secret values are not returned by management. Console login exists only
-in JavaScript memory. Static asset availability does not waive API authentication.
+Saved secret values are not returned by management. Console login uses random opaque cookies; SQLite stores only token hashes and
+bounded session metadata. CSRF tokens and origin checks protect cookie mutations. Static asset availability does not waive API authentication.
 
 Keep usage additions in memory and flush absolute aggregates asynchronously.
 This is routing accounting, not audit-grade billing; streamed usage is not counted.

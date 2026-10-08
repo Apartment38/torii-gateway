@@ -29,6 +29,9 @@ func Handler() http.Handler {
 			_, _ = w.Write(data)
 			return
 		}
+		if r.URL.Path == "/login" {
+			r.URL.Path = "/login.html"
+		}
 		if r.URL.Path == "/" {
 			r.URL.Path = "/index.html"
 		}

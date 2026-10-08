@@ -177,3 +177,9 @@ Classifier version and input/output token headers appear only when reported and
 valid. `X-Torii-Classifier-Cost-Usd` remains `unknown`; inference cost is an
 estimate, not a bill. Cached tool continuation is not a fresh measured classifier
 call. These headers expose safe evidence, not prompts or full classifier context.
+
+## Administrator browser sessions
+
+`POST /gateway/v1/session` accepts `{username,password}` and sets an opaque HttpOnly, SameSite=Lax cookie. Only its hash is stored in SQLite; expiry defaults to seven days (`server.admin_session_ttl`, positive Go duration up to `720h`). `GET` returns username, expiry and `csrf_token`; `DELETE` revokes the session and clears its cookie. Browser mutations must send `X-CSRF-Token` from the session response and a matching Origin when present. Cross-site requests are denied. Logout and administrator record changes invalidate sessions. Basic administrator authentication remains available for scripts; inference requires a Bearer key.
+
+Cookies are Secure on direct HTTPS and when the immediate peer belongs to an explicitly configured `server.trusted_proxies` CIDR and sends `X-Forwarded-Proto: https`. Untrusted forwarding headers have no effect. Direct HTTP remains supported. `/login` is the dedicated login page; first-run setup stays at the console root.

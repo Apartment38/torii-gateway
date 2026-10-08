@@ -123,7 +123,7 @@ function consoleFixture(handler) {
   const context = vm.createContext({
     document: { querySelector: element, querySelectorAll: () => [], documentElement: new Element(), addEventListener() {} },
     window: { addEventListener() {}, setTimeout: callback => queueMicrotask(callback), open() {} },
-    location: { hash: "#providers" },
+    location: { hash: "#providers",assign(path){context.redirect=path;} },
     localStorage: { getItem: () => null, setItem(...args) {storageWrites.push(args);} },
     sessionStorage: {setItem(...args){storageWrites.push(args);}},
     navigator: { platform: "Linux", userAgent: "linux" },
@@ -613,7 +613,7 @@ test("benchmark source controls preserve weights and saved credentials and requi
 
 test("benchmark refresh uses memory-only login rather than configuration credentials", async () => {
   const app = consoleFixture((url, options) => {
-    assert.equal(options.headers.Authorization, "Basic test-admin-login");
+    assert.equal(options.headers.Authorization,undefined);
     if (url.endsWith("/sources")) return response({aa:{last_success:"2026-10-01",enabled:true,observation_count:10}});
     if (url.includes("/models")) return response({});
     assert.equal(url, "/gateway/v1/intelligence/refresh");
@@ -621,7 +621,7 @@ test("benchmark refresh uses memory-only login rather than configuration credent
     assert.equal(options.headers.Accept,"text/event-stream");
     return response({ updated:true, sources:{ aa:{ last_success:"2026-10-01", stale:false } } });
   });
-  app.run('adminAuthorization="Basic test-admin-login"');
+  app.run('consoleSession="Basic test-admin-login"');
   app.context.config = { providers:[], intelligence:{enabled:true}, server:{ authentication:{ api_key:{ credential:"stored-gateway-key" } } } };
   app.run("applyConfig(config, fixtureRevision)");
   await app.run("inspectBenchmarks(true)");
@@ -629,23 +629,20 @@ test("benchmark refresh uses memory-only login rather than configuration credent
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").disabled'), false);
 });
 
-test("console sign-in keeps Basic login only in memory and logout clears it",async()=>{
-  const app=consoleFixture(url=>url==="/gateway/v1/config"?response({server:{authentication:{api_key:{credential:"gateway-ref"}}},providers:[]}):response({credentials:[]}));
-  assert.equal(app.run('document.querySelector("#console-login").hidden'),false);
-  assert.equal(app.run('document.querySelector("#console-logout").hidden'),true);
-  app.run('document.querySelector("#login-username").value="admin";document.querySelector("#login-password").value="memory-login-sentinel"');
-  await app.run('document.querySelector("#login-form").listeners.submit({preventDefault(){}})');
-  assert.equal(app.run('adminAuthorization'),"Basic "+btoa("admin:memory-login-sentinel"));assert.equal(app.run('document.querySelector("#login-password").value'),"");assert.deepEqual(app.storageWrites,[]);
-  assert.equal(app.run('document.querySelector("#console-login").hidden'),true);
-  assert.equal(app.run('document.querySelector("#console-logout").hidden'),false);
-  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"admin");
-  app.run('document.querySelector("#console-logout").listeners.click()');assert.equal(app.run('adminAuthorization'),"");
-  assert.equal(app.run('document.querySelector("#console-login").hidden'),false);
-  assert.equal(app.run('document.querySelector("#console-logout").hidden'),true);
-  assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"Not signed in");
+test("console uses a cookie session without retaining administrator credentials",async()=>{
+ const app=consoleFixture((url,options)=>{
+  if(url==="/gateway/v1/session")return response({username:"admin",csrf_token:"csrf",expires_at:"tomorrow"});
+  assert.equal(options.headers.Authorization,undefined);return response({providers:[]});
+ });
+ app.run('document.querySelector("#login-username").value="admin";document.querySelector("#login-password").value="memory-login-sentinel";');
+ await app.run('document.querySelector("#login-form").listeners.submit({preventDefault(){}})');
+ assert.equal(app.run('consoleSession'),"tomorrow");assert.equal(app.run('csrfToken'),"csrf");assert.equal(app.run('document.querySelector("#login-password").value'),"");assert.deepEqual(app.storageWrites,[]);
+ assert.equal(app.calls[0].url,"/gateway/v1/session");assert.equal(app.calls[0].options.credentials,"same-origin");
+ app.run('signOutConsole()');assert.equal(app.run('csrfToken'),"");
 });
+
 test("unauthorized management clears login and reopens the sign-in dialog",async()=>{
-  const app=consoleFixture(()=>({...response({},false),status:401}));app.run('adminAuthorization="Basic expired-login"');await app.run('loadCredentialMetadata()');assert.equal(app.run('adminAuthorization'),"");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
+  const app=consoleFixture(()=>({...response({},false),status:401}));app.run('consoleSession="Basic expired-login"');await app.run('loadCredentialMetadata()');assert.equal(app.run('consoleSession'),"");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
 });
 test("legacy classifier conversion preserves encrypted credential references",()=>{
   const app=consoleFixture(()=>response({}));app.context.config={providers:[],router:{classifier:{type:"jev",base_url:"https://api.typesafe.ai",model:"jev-latest",api_key:{credential:"classifier-ref"}}}};app.run("applyConfig(config, fixtureRevision)");assert.equal(app.run('readProviderConfig(providers[0]).bearer_token.credential'),"classifier-ref");
@@ -739,12 +736,13 @@ test("saving an unchecked paid-model policy preserves false after reload", async
 
 test("setup status selects initial administrator setup or existing-account login",async()=>{
   const app=consoleFixture(()=>response({setup_required:true}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#setup-dialog").open'),true);
-  app.setFetch(()=>response({setup_required:false}));await app.run("checkSetup()");assert.equal(app.run('document.querySelector("#login-dialog").open'),true);
+  app.setFetch(url=>url==="/gateway/v1/session"?response({},false,null,401):response({setup_required:false}));await app.run("checkSetup()");assert.equal(app.context.redirect,"/login");
 });
 test("administrator setup clears password fields and reveals only its newly generated key",async()=>{
   const app=consoleFixture((url,options)=>{
     if(url==="/gateway/v1/setup"){const input=JSON.parse(options.body);assert.equal(input.username,"my-admin");assert.equal(input.password,"long-enough-password");assert.equal(input.setup_code,"terminal-code");return response({api_key:"new-once-key",warning:"Displayed only once"});}
-    if(url==="/gateway/v1/config"){assert.equal(options.headers.Authorization,"Basic "+btoa("my-admin:long-enough-password"));return response({providers:[]});}
+    if(url==="/gateway/v1/session")return response({username:"my-admin",csrf_token:"csrf",expires_at:"tomorrow"});
+    if(url==="/gateway/v1/config"){assert.equal(options.headers.Authorization,undefined);return response({providers:[]});}
     return response({credentials:[]});
   });
   app.run('document.querySelector("#setup-username").value="my-admin";document.querySelector("#setup-password").value="long-enough-password";document.querySelector("#setup-confirm").value="long-enough-password";document.querySelector("#setup-code").value="terminal-code"');
@@ -852,7 +850,7 @@ test("cached model table combines capabilities, operational data and unmatched m
     assert.equal(url,"/gateway/v1/intelligence/models?include_unmatched=true");
     return response({"provider/model":{provider_ids:["provider/model"],scores:{coding:.92,preference:.81},operations:{ttft:.2,context_length:128000},sources:["aa"],observation_count:2,latest_retrieval:"2026-10-02"},"external/unmatched":{display_name:"<unmatched>",match:"unmatched",scores:{coding:.85,agentic:.8,knowledge:.9},sources:["aa"],observation_count:3}});
   });
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('loadBenchmarkData()');
   let html=app.run('document.querySelector("#benchmark-table-body").innerHTML');
   assert.match(html,/92\.0/);assert.match(html,/81\.0/);assert.match(html,/128000/);assert.match(html,/—/);
@@ -887,7 +885,7 @@ test("streamed refresh advances actual source progress and updates the table bef
     if(url.endsWith("/sources"))return response({aa:{enabled:true,last_success:"2026-10-02",observation_count:publications}});
     return response(publications ? {"model-a":{scores:{coding:.9},sources:["aa"],observation_count:publications}} : {});
   });
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   const refresh=app.run('inspectBenchmarks(true)');
   await new Promise(resolve=>setImmediate(resolve));
   const send=(kind,data)=>{
@@ -920,7 +918,7 @@ test("refresh button shows activity immediately and table requests cannot block 
     if(url.endsWith("/sources"))return response({aa:{enabled:true,observation_count:1}});
     return new Promise(resolve=>pendingModels.push(()=>resolve(response({ready:{scores:{coding:.9}}}))));
   });
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   const refresh=app.run('document.querySelector("#refresh-benchmarks").listeners.click()');
   assert.equal(app.run('document.querySelector("#benchmark-refresh-panel").hidden'),false);
   assert.equal(app.run('document.querySelector("#refresh-benchmarks").textContent'),"Refreshing…");
@@ -947,7 +945,7 @@ test("refresh button shows activity immediately and table requests cannot block 
 
 test("unmatched model summaries populate the table and scopes never fall back to score rows",async()=>{
   const app=consoleFixture(url=>url.endsWith("/sources")?response({benchlm:{enabled:true,observation_count:3}}):url.endsWith("/models?configured_only=true")?response({}):response({"external/model":{display_name:"external-model",match:"unmatched",sources:["benchlm"],scores:{coding:.8,agentic:.7,knowledge:.9},observation_count:3}}));
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('loadBenchmarkData()');
   assert.equal(app.run('benchmarkTableView'),"models");
   assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/external-model/);
@@ -965,9 +963,9 @@ test("unmatched model summaries populate the table and scopes never fall back to
 test("refresh completion waits for both the table response and the browser paint",async()=>{
   let finishModels;
   const app=consoleFixture(url=>url.endsWith("/sources")?response({}):new Promise(resolve=>{finishModels=()=>resolve(response({ready:{scores:{coding:.9}}}));}));
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkRefreshRunning=true;benchmarkProgressCounts={total:2,completed:2,failed:0}');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkRefreshRunning=true;benchmarkProgressCounts={total:2,completed:2,failed:0}');
   const frames=[];app.context.window.requestAnimationFrame=callback=>frames.push(callback);
-  const finished=app.run('finishBenchmarkRefresh({partial_failure:false},adminAuthorization,new AbortController())');
+  const finished=app.run('finishBenchmarkRefresh({partial_failure:false},consoleSession,new AbortController())');
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(app.run('document.querySelector("#benchmark-refresh-log").textContent'),/Loading results into the table/);
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-status").textContent'),/finished/);
@@ -982,7 +980,7 @@ test("refresh completion waits for both the table response and the browser paint
 
 test("failed table loading cannot announce a completed refresh",async()=>{
   const app=consoleFixture(url=>url.endsWith("/refresh")?response({sources:{},partial_failure:false}):response({error:"table unavailable"},false));
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   await app.run('inspectBenchmarks(true)');
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/table could not finish updating/);
   assert.doesNotMatch(app.run('document.querySelector("#benchmark-refresh-log").textContent'),/Benchmark refresh finished/);
@@ -994,7 +992,7 @@ test("page sizes paginate complete model rows and filtering never splits capabil
     return response(app.context.rows);
   });
   app.context.rows=Object.fromEntries(Array.from({length:120},(_,i)=>[`model-${String(i).padStart(3,"0")}`,{scores:{coding:.9,agentic:.8,knowledge:.7}}]));
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkModels=rows;renderBenchmarkTable()');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true});benchmarkModels=rows;renderBenchmarkTable()');
   assert.equal([...app.run('document.querySelector("#benchmark-table-body").innerHTML').matchAll(/<tr>/g)].length,25);
   assert.equal(app.run('document.querySelector("#benchmark-page-label").textContent'),"Page 1 of 5");
   app.run('document.querySelector("#benchmark-next").listeners.click()');
@@ -1020,7 +1018,7 @@ test("page sizes paginate complete model rows and filtering never splits capabil
 test("interrupted refresh reports incomplete progress and ignores late data after logout", async () => {
   let controller;
   const app=consoleFixture(()=>({ok:true,headers:{get:()=>"text/event-stream"},body:new ReadableStream({start(c){controller=c;}})}));
-  app.run('adminAuthorization="Basic admin";applyBenchmarkConfig({enabled:true})');
+  app.run('consoleSession="Basic admin";applyBenchmarkConfig({enabled:true})');
   let refresh=app.run('inspectBenchmarks(true)');await new Promise(resolve=>setImmediate(resolve));controller.close();await refresh;
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/ended before completion/);
   refresh=app.run('inspectBenchmarks(true)');await new Promise(resolve=>setImmediate(resolve));
@@ -1034,14 +1032,14 @@ test("client key creation prompts for a name and reveals only the new generated 
   const key = {id:"gateway/client-key/test",name:"Hermes <client>",created_at:"2026-10-02"};
   const app = consoleFixture((url, options) => {
     assert.equal(url,"/gateway/v1/admin/api-keys");
-    assert.equal(options.headers.Authorization,"Basic admin-login");
+    assert.equal(options.headers.Authorization,undefined);
     if (options.method === "POST") {
       assert.deepEqual(JSON.parse(options.body),{name:key.name});
       return response({key,api_key:"generated-client-key",warning:"This key is displayed only once"});
     }
     return response({api_keys:[key]});
   });
-  app.run('adminAuthorization="Basic admin-login";document.querySelector("#create-credential").listeners.click()');
+  app.run('consoleSession="Basic admin-login";document.querySelector("#create-credential").listeners.click()');
   assert.equal(app.run('document.querySelector("#create-key-dialog").open'),true);
   app.run('document.querySelector("#client-key-name").value="Hermes <client>"');
   await app.run('document.querySelector("#create-key-form").listeners.submit({preventDefault(){}})');
@@ -1061,7 +1059,7 @@ test("credential cards group wrapping metadata separately from their delete acti
     {id:"first",name:'Hermes <client> "work"',created_at:"2026-10-02T12:34:56.123456789Z"},
     {id:"second",name:longName,created_at:"2026-10-02T12:34:56Z"},
   ]}));
-  app.run('adminAuthorization="Basic admin-login"');
+  app.run('consoleSession="Basic admin-login"');
   await app.run("loadCredentialMetadata()");
   const html = app.run('document.querySelector("#credential-list").innerHTML');
   assert.equal([...html.matchAll(/class="credential-card"/g)].length,2);
@@ -1100,7 +1098,7 @@ test("credential card styles keep long text and actions readable on narrow scree
 test("deleting a listed client key calls the authenticated API and reloads metadata", async () => {
   let deleted = false;
   const app = consoleFixture((url, options) => {
-    assert.equal(options.headers.Authorization,"Basic admin-login");
+    assert.equal(options.headers.Authorization,undefined);
     if (options.method === "DELETE") {
       assert.equal(url,"/gateway/v1/admin/api-keys/gateway%2Fclient-key%2Ftest");
       deleted = true;
@@ -1109,7 +1107,7 @@ test("deleting a listed client key calls the authenticated API and reloads metad
     assert.equal(url,"/gateway/v1/admin/api-keys");
     return response({api_keys:deleted?[]:[{id:"gateway/client-key/test",name:"client",created_at:"today"}]});
   });
-  app.run('adminAuthorization="Basic admin-login"');
+  app.run('consoleSession="Basic admin-login"');
   await app.run("loadCredentialMetadata()");
   await app.run('document.querySelector("#credential-list").buttons[0].listeners.click()');
   assert.equal(deleted,true);
@@ -1118,7 +1116,7 @@ test("deleting a listed client key calls the authenticated API and reloads metad
 
 test("failed login and expired authentication reset identity and clear one-time keys", async () => {
   const app=consoleFixture(()=>({...response({},false),status:401}));
-  app.run('adminAuthorization="Basic expired";signedInUsername="admin";updateConsoleIdentity();showNewAPIKey("sensitive-once-key")');
+  app.run('consoleSession="Basic expired";signedInUsername="admin";updateConsoleIdentity();showNewAPIKey("sensitive-once-key")');
   await app.run("loadCredentialMetadata()");
   assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"Not signed in");
   assert.equal(app.run('document.querySelector("#console-logout").hidden'),true);
@@ -1130,18 +1128,18 @@ test("failed login and expired authentication reset identity and clear one-time 
 test("a late key-generation reply cannot reveal a secret after signing out", async () => {
   let finish;
   const app=consoleFixture(()=>new Promise(resolve=>{finish=resolve;}));
-  app.run('adminAuthorization="Basic admin-login";signedInUsername="admin";document.querySelector("#client-key-name").value="client"');
+  app.run('consoleSession="Basic admin-login";signedInUsername="admin";document.querySelector("#client-key-name").value="client"');
   const creating=app.run('document.querySelector("#create-key-form").listeners.submit({preventDefault(){}})');
   await Promise.resolve();
-  app.run('document.querySelector("#console-logout").listeners.click()');
+  app.run('signOutConsole()');
   finish(response({api_key:"must-not-be-shown-after-logout"}));
   await creating;
   assert.equal(app.run('document.querySelector("#new-api-key").value'),"");
   assert.equal(app.run('document.querySelector("#signed-in-user").textContent'),"Not signed in");
 });
 test("API key generation requires in-memory administrator login and clears its once-only display",async()=>{
-  const app=consoleFixture((url,options)=>{assert.equal(url,"/gateway/v1/admin/api-key");assert.equal(options.method,"POST");assert.equal(options.headers.Authorization,"Basic admin-login");return response({api_key:"rotated-once-key"});});
-  app.run('adminAuthorization="Basic admin-login"');await app.run('document.querySelector("#generate-api-key").listeners.click()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"rotated-once-key");
+  const app=consoleFixture((url,options)=>{assert.equal(url,"/gateway/v1/admin/api-key");assert.equal(options.method,"POST");assert.equal(options.headers.Authorization,undefined);return response({api_key:"rotated-once-key"});});
+  app.run('consoleSession="Basic admin-login"');await app.run('document.querySelector("#generate-api-key").listeners.click()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"rotated-once-key");
   app.run('document.querySelector("#new-key-dialog").listeners.cancel()');assert.equal(app.run('document.querySelector("#new-api-key").value'),"");assert.deepEqual(app.storageWrites,[]);
 });
 

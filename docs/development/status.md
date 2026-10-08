@@ -4,15 +4,46 @@ Updated 2026-10-08. This is the sole project progress and backlog tracker.
 
 ## v1 implementation and rollout
 
-Database-backed settings, persistent revisions, explicit transactional YAML import, and staged credential validation are implemented on `feat/gateway-v1` in `/tmp/torii-gateway-v1`. Normal startup and CLI commands use SQLite; fresh databases use first-run defaults. Automatic console saves and confirmation-based provider dialogs are implemented and tested, including serialized pending saves and conflict draft preservation. Persistent cookie login is implemented and tested for expiry, revocation, CSRF, origin and trusted proxy security. Models controls now persist by provider-qualified ID, filter discovery/Smart/direct dispatch, protect the active classifier, and expose existing benchmark matches and free-provider estimates. Durable per-key accounting and daily/monthly request/token/cost quotas are implemented with atomic reservations, JSON/SSE reconciliation, conservative cancellation estimates and restart recovery. Bounded persistent activity history/SSE, safe structured logs and optional rotating files are implemented. Helper instructions now match the downloaded platform filename, include executable permissions and correct POSIX/PowerShell argument quoting, and provide manual platform selection and completion/retry guidance. Full Go/race, vet/build, console/release validation, generated assets, local documentation links, and disposable non-root persistence/recovery checks pass. Acceptance also found and fixed SQLite snapshot-upgrade failures during concurrent activity and credential writes, and verified preservation of large classifier payloads. The first authorized live upgrade passed discovery, JSON/SSE/Smart inference, cookie saves and revision conflicts, accounting, quota enforcement and restart persistence. Temporary test settings/key were restored/revoked. Final review corrected embedding usage without output fields, ambiguous generative total-token accounting, conservative classifier output reservations, and local-model pricing when the free-provider option is off; final image acceptance is in progress.
+The v1 implementation and authorized Podman rollout are complete on
+`feat/gateway-v1` in `/tmp/torii-gateway-v1`. SQLite now owns settings and revisions;
+legacy YAML is used only for explicit transactional import/validation. The console
+automatically saves validated edits, preserves conflicting drafts, and uses persistent
+administrator cookie sessions. Model controls retain provider-qualified eligibility,
+join existing benchmark identities, and honor explicit free-provider pricing. Named
+keys have durable JSON/SSE accounting and atomic daily/monthly request, token and
+estimated-cost quotas. Metadata-only activity history/SSE and structured rotating
+logs are bounded. Codex helper instructions match the selected platform filename
+and correctly quote shell arguments.
+
+Full Go tests/race tests, vet/build, all 74 console tests, generated assets,
+release metadata, module/format checks and affected documentation links pass.
+Gateway and helper binaries cross-build for all five supported release targets.
+The exact final image passed disposable non-root persistence/recovery tests,
+including sessions, model controls, fragmented JSON/SSE/embedding usage, quota
+restart recovery, redaction and wrong-master-key rejection. Acceptance also fixed
+SQLite write-lock acquisition, conservative incomplete/classifier usage estimates,
+and local model prices when the free-provider option is off.
+
+Source commit `2c821fb` produced live image `cc85d358be44`. Live discovery,
+authentication, cookie saves/conflicts, JSON/SSE/Smart inference, named-key usage,
+activity and quotas passed; sessions and quotas survived restart. Temporary test
+settings were restored, the test key revoked and the session logged out. The
+original database, master key, provider credentials, model IDs and benchmark state
+were preserved. Stopped backups and rollback images remain in the deployment;
+the final correction backup is
+`backups/before-v1-accounting-final-20261008T043837Z`, and the original pre-v1
+backup is `backups/before-v1-20261008T035917Z`. Task-owned changes are replicated
+into both authorized Torii directories. The review worktree is retained;
+changes have not been merged, pushed or published.
 
 Current user-visible support is in [Features](../reference/features.md), with
 contracts in [Design](design.md). Old Version 1/2 labels no longer define support.
 
 ## Active work
 
-Final acceptance covers the accounting and local-model pricing corrections; the final image update is in progress. The Smart-first catalog
-repair and configuration revision protection are deployed and validated.
+V1 implementation and authorized rollout are complete. Release publication and
+platform-native checks remain below. The Smart-first catalog repair and
+configuration revision protection are deployed and validated.
 Hermes remains unchanged as requested; its model-label formatting and custom
 endpoint Fast controls remain outside scope. Its saved-endpoint re-test also
 requires re-entering the actual key rather than a credential preview.

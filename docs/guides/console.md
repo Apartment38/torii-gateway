@@ -22,21 +22,13 @@ management require administrator authentication.
 
 ## Apply changes
 
-1. Edit the relevant page. A newly typed secret remains in the browser's memory
-   until submitted; saved secrets are never returned to the browser.
-2. Click **Save & reload**.
-3. Wait for the save and active-configuration reload to finish, then check your
-   provider/model state. Do not treat a temporary checking label as a settled result.
+1. Complete a field edit or toggle a setting; it saves automatically. Provider Add/Edit dialogs save when you click **Save provider**. Cancel discards that dialog's changes.
+2. Wait for **Saving…** to become **Saved**, then check provider/model state.
+3. A validation error preserves your draft. Correct it and retry. A conflict means another tab saved first: copy your edits, refresh configuration, and reconcile them before saving.
 
-Torii validates the complete document, initializes a replacement handler, and
-atomically replaces the YAML file. Failure leaves the active configuration in
-place. A config directory mount must be writable because saves create a temporary
-file alongside the YAML before renaming it. A read-only single-file mount prevents saves.
+Torii validates a replacement runtime and atomically commits settings and submitted encrypted credentials to SQLite. Failed changes leave saved and active state untouched. The console serializes saves and never silently retries a conflicting revision. Ongoing requests continue on their original runtime.
 
-Changing the listener or database path needs a restart; the save API rejects
-live changes to these settings. Edit the stopped installation's YAML, then restart
-with its original master key and correct data location. [Configuration](../reference/configuration.md)
-describes all fields.
+Listener changes require restart. Database paths and master-key inputs are bootstrap CLI/environment options. [Configuration](../reference/configuration.md) describes all fields.
 
 Browser reload/sign-out loses unsaved drafts. Administrator login is held only
 in JavaScript memory, so a browser reload requires signing in again. Saved

@@ -4,7 +4,7 @@ Updated 2026-10-07. This is the sole project progress and backlog tracker.
 
 ## v1 implementation in progress
 
-Database-backed settings, persistent revisions, explicit transactional YAML import, and staged credential validation are implemented on `feat/gateway-v1` in `/tmp/torii-gateway-v1`. Normal startup and CLI commands use SQLite; fresh databases use first-run defaults. Remaining milestones: automatic console saves, cookie login, models/benchmarks controls, durable per-key quota accounting, live metadata activity, and helper instructions. Final acceptance and deployment recovery checks remain pending.
+Database-backed settings, persistent revisions, explicit transactional YAML import, and staged credential validation are implemented on `feat/gateway-v1` in `/tmp/torii-gateway-v1`. Normal startup and CLI commands use SQLite; fresh databases use first-run defaults. Automatic console saves and confirmation-based provider dialogs are implemented and tested, including serialized pending saves and conflict draft preservation. Remaining milestones: cookie login, models/benchmarks controls, durable per-key quota accounting, live metadata activity, and helper instructions. Final acceptance and deployment recovery checks remain pending.
 
 Future work also includes MCP aggregation and a skills library; a TUI with CLI/web feature parity; multiple users with usage tracking, quotas and allowed providers/models/tools/skills; Hermes and Pi plugins.
 

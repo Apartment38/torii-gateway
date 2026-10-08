@@ -42,7 +42,7 @@
             <button id="console-login" class="button secondary" type="button">Sign in</button>
             <button id="console-logout" class="button quiet" type="button" hidden>Sign out</button>
             <button id="reset-button" class="button quiet" type="button">Refresh config</button>
-            <button id="save-button" class="button primary" type="button">Save &amp; reload</button>
+            <button id="save-button" class="button primary" type="button" hidden>Retry save</button>
           </div>
         </header>
 
@@ -103,7 +103,7 @@
                 <label>Option<select id="classifier-question-option"></select></label>
                 <label>Option rubric<textarea id="classifier-question-rubric" maxlength="4000" rows="3"></textarea></label>
               </div>
-              <p class="section-note">Clear an instruction, rubric, or threshold to restore its default. Save &amp; reload applies your edits.</p>
+              <p class="section-note">Clear an instruction, rubric, or threshold to restore its default. Completed edits save automatically.</p>
             </details>
             <div class="grid three compact-fields">
               <label data-tooltip="The maximum fraction of a model context window that routing may consume. Lower values leave more room for the model response.">Max context utilization<input name="router.selection.context_utilization_limit" type="number" min="0" max="1" step="0.01" placeholder="0.85" /></label>
@@ -116,8 +116,8 @@
 
           <section id="intelligence" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">Model evidence</p><h2>Benchmark intelligence</h2></div><button id="refresh-benchmarks" class="button secondary" type="button">Refresh benchmarks</button></div>
-            <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Save and reload to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable benchmark intelligence</label></div>
-            <div class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it and click Save &amp; reload before refreshing.</span></div>
+            <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Automatic saves to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable benchmark intelligence</label></div>
+            <div class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it; wait for Saved before refreshing.</span></div>
             <section id="benchmark-refresh-panel" class="benchmark-refresh" aria-label="Benchmark refresh activity" hidden>
               <h3>Refresh activity</h3><p id="benchmark-progress-label" role="status" aria-live="polite"></p>
               <progress id="benchmark-progress" max="1" value="0" aria-label="Completed benchmark sources and table update"></progress>

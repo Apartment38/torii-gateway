@@ -215,7 +215,7 @@ async function finishBenchmarkRefresh(result: Record<string,any>, login: string,
 async function inspectBenchmarks(refresh: boolean): Promise<void> {
   if (!refresh) { await loadBenchmarkData(); return; }
   const output = document.querySelector("#benchmark-status")!;
-  if (!benchmarksEnabledSaved || !document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked || benchmarkDirty) { output.textContent = "Enable benchmark intelligence and click Save & reload before refreshing changed source settings."; return; }
+  if (!benchmarksEnabledSaved || !document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked || benchmarkDirty) { output.textContent = "Enable benchmark intelligence and wait for Saved before refreshing changed source settings."; return; }
   if (benchmarkRefreshRunning) return;
   const login = adminAuthorization;
   const abort = new AbortController();

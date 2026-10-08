@@ -217,7 +217,7 @@ async function finishBenchmarkRefresh(result                    , login        ,
 async function inspectBenchmarks(refresh         )                {
   if (!refresh) { await loadBenchmarkData(); return; }
   const output = document.querySelector("#benchmark-status") ;
-  if (!benchmarksEnabledSaved || !document.querySelector                  ("#intelligence-enabled") .checked || benchmarkDirty) { output.textContent = "Enable benchmark intelligence and click Save & reload before refreshing changed source settings."; return; }
+  if (!benchmarksEnabledSaved || !document.querySelector                  ("#intelligence-enabled") .checked || benchmarkDirty) { output.textContent = "Enable benchmark intelligence and wait for Saved before refreshing changed source settings."; return; }
   if (benchmarkRefreshRunning) return;
   const login = adminAuthorization;
   const abort = new AbortController();
@@ -297,6 +297,15 @@ const providerList = document.querySelector                ("#providers-list") ;
 const saveState = document.querySelector                 ("#save-state") ;
 let adminAuthorization = "";
 let configurationRevision = "";
+let loadedConfiguration                    = {};
+let editGeneration=0;
+let saveRunning=false;
+let saveQueued=false;
+let saveConflict=false;
+let editingProvider            =null;
+let editingOriginal                        =null;
+function openProviderEditor(index       ,adding=false)     {editingProvider=index;editingOriginal=adding?null:structuredClone(providers[index]);providerList.querySelector                   (`[data-provider-dialog="${index}"]`)?.showModal?.();}
+function cancelProviderEditor()     {if(editingProvider===null)return;if(editingOriginal)providers[editingProvider]=editingOriginal;else providers.splice(editingProvider,1);editingProvider=null;editingOriginal=null;renderProviders();}
 let signedInUsername = "";
 let benchmarksEnabledSaved = false;
 function updateConsoleIdentity()       {
@@ -490,9 +499,9 @@ function renderProviders()       {
   providers.forEach((provider, index) => { if (!provider.id && isKnownProvider(provider)) provider.id = knownProviderID(String(provider.type), index); });
   providerList.innerHTML = providers.map((provider, index) => `
     <article class="provider-card">
-      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
+      <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
-      ${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+      <dialog data-provider-dialog="${index}"><h3>${value(provider,"id") || "Add provider"}</h3>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
@@ -517,8 +526,13 @@ function renderProviders()       {
         <label data-tooltip="Maximum time allowed while discovering the provider model catalog. Use a Go duration such as 10s.">Discovery timeout<input data-provider="${index}" data-key="discovery_timeout" value="${value(provider,"discovery_timeout")}" placeholder="10s" /></label>
         <label class="checkbox" data-tooltip="When enabled, Torii queries the provider for its available models. Disable this only when you provide a static model list."><input data-provider="${index}" data-key="discover" type="checkbox" ${checked(provider,"discover")} /> Discover models</label>
       </div></details>`}
+      <button class="button primary" type="button" data-confirm-provider="${index}">Save provider</button><button class="button quiet" type="button" data-cancel-provider="${index}">Cancel</button></dialog>
     </article>`).join("");
-  providerList.querySelectorAll                   ("[data-remove]").forEach(button => button.addEventListener("click", () => { providers.splice(Number(button.dataset.remove), 1); renderProviders(); markDirty(); }));
+  providerList.querySelectorAll                   ("[data-edit]").forEach(button=>button.addEventListener("click",()=>{openProviderEditor(Number(button.dataset.edit));}));
+  providerList.querySelectorAll                   ("[data-confirm-provider]").forEach(button=>button.addEventListener("click",async()=>{const dialog=button.closest("dialog") ;const index=editingProvider;editingProvider=null;markDirty();if(await saveConfig()){editingOriginal=null;dialog.close();}else{editingProvider=index;}}));
+  providerList.querySelectorAll                   ("[data-cancel-provider]").forEach(button=>button.addEventListener("click",cancelProviderEditor));
+  providerList.querySelectorAll                   ("[data-provider-dialog]").forEach(dialog=>dialog.addEventListener("cancel",cancelProviderEditor));
+  providerList.querySelectorAll                   ("[data-remove]").forEach(button => button.addEventListener("click", () => { providers.splice(Number(button.dataset.remove), 1); renderProviders(); markDirty();void saveConfig(); }));
   providerList.querySelectorAll                   ("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test)); }));
   providerList.querySelectorAll                   ("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll                                      ("[data-provider]").forEach(control => control.addEventListener("input", updateProvider));
@@ -540,6 +554,7 @@ function renderProviders()       {
   });
   initializeTooltips();
   updateClassifierOptions();
+  if(editingProvider!==null)providerList.querySelector                   (`[data-provider-dialog="${editingProvider}"]`)?.showModal?.();
 }
 
 function updateProvider(event       )       {
@@ -595,7 +610,7 @@ function updateProvider(event       )       {
   markDirty();
 }
 
-function markDirty()       { saveState.textContent = "Unsaved changes"; }
+function markDirty()       { editGeneration++; saveState.textContent = "Draft changes"; }
 
 // Recognize only the exact inert provider generated by earlier console bootstraps.
 // Real providers (even those named setup) must remain visible and testable.
@@ -610,6 +625,7 @@ function isSetupPlaceholder(provider                     )          {
 
 function applyConfig(config                     , revision = "")       {
   configurationRevision = revision;
+  loadedConfiguration=structuredClone(config);saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
   legacyClassifier = null;
@@ -688,30 +704,40 @@ async function loadServerConfig()                {
   } catch { saveState.textContent = "Gateway config unavailable"; }
 }
 
-async function saveConfig()                {
-  if (!configurationRevision) {
-    saveState.textContent = "Reload the configuration before saving";
-    toast("Configuration revision unavailable. Copy your edits, then reload before saving.");
-    return;
-  }
-  const login = adminAuthorization;
-  const revision = configurationRevision;
-  let configuration                     ;
-  try { configuration = readConfig(); }
-  catch (error) { toast(error instanceof Error ? error.message : "Invalid benchmark configuration JSON"); return; }
-  const response = await gatewayFetch("/gateway/v1/config", { method: "PUT", headers: { "Content-Type": "application/json", "If-Match": revision, ...await authProvider.headers() }, body: JSON.stringify(configuration) });
-  if (login !== adminAuthorization) return;
-  if (response.status === 412 || response.status === 428) {
-    saveState.textContent = "Configuration changed · your draft is still here";
-    toast("Configuration changed since you loaded it. Copy your edits, reload, and reconcile them before saving. Your draft has been preserved.");
-    return;
-  }
-  if (!response.ok) { toast(redactProviderKeys(`Save failed: ${await response.text()}`)); return; }
-  providers.forEach(provider=>{provider.api_key="";});
-  clearSubmittedBenchmarkKeys();
-  saveState.textContent = "Saved and reloaded";
-  await loadServerConfig();
-  toast("Configuration saved and reloaded");
+async function saveConfig()                   {
+  saveQueued=true;
+  if(saveRunning)return false;
+  if(saveConflict){saveState.textContent="Conflict · reload and reconcile your draft";return false;}
+  saveRunning=true;
+  let success=false;
+  try {
+    while(saveQueued){
+      saveQueued=false;
+      if(!configurationRevision)throw new Error("Reload configuration before saving");
+      const generation=editGeneration,login=adminAuthorization;
+      const configuration=readConfig();
+      saveState.textContent="Saving…";
+      const response=await gatewayFetch("/gateway/v1/config",{method:"PUT",headers:{"Content-Type":"application/json","If-Match":configurationRevision,...await authProvider.headers()},body:JSON.stringify(configuration)});
+      if(login!==adminAuthorization)return false;
+      if(response.status===412 || response.status===428){saveConflict=true;throw new Error("Configuration changed · your draft is still here. Copy your edits, reload, and reconcile them.");}
+      if(!response.ok)throw new Error(redactProviderKeys(`Save failed: ${await response.text()}`));
+      configurationRevision=response.headers.get("ETag")||"";
+      const view=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});
+      if(!view.ok)throw new Error("Saved; reload failed. Refresh configuration before editing again.");
+      if(view.headers.get("ETag")!==configurationRevision){saveConflict=true;throw new Error("Another tab changed the saved configuration. Your draft is preserved.");}
+      const committed=await view.json();
+      if(generation===editGeneration){applyConfig(committed,configurationRevision);void testAllProviders();}
+      else {
+        loadedConfiguration=structuredClone(committed);
+        providers.forEach(p=>{const submitted=configuration.providers.find((q    )=>q.id===p.id);const stored=committed.providers.find((q    )=>q.id===p.id);if(stored && submitted?.bearer_token?.value===p.api_key){p.bearer_token=stored.bearer_token;p.api_key="";}});
+      }
+      saveState.textContent=saveQueued?"Saving…":"Saved";
+      document.querySelector                   ("#save-button") .hidden=true;
+      success=true;
+    }
+  } catch(error){saveQueued=false;success=false;saveState.textContent=error instanceof Error?error.message:"Save failed · draft preserved";toast(saveState.textContent||"Save failed");document.querySelector                   ("#save-button") .hidden=false;}
+  finally{saveRunning=false;}
+  return success;
 }
 
 function navigate()       {
@@ -777,9 +803,10 @@ function readProviderConfig(provider                                  )         
   return output;
 }
 function readConfig()                      {
-  const config                      = { server: {}, state: {}, providers: [], router: { classifier: {}, sessions: {}, quota: {}, selection: {} } };
+  const config                      = structuredClone(loadedConfiguration);
+ config.server={...config.server};config.state={...config.state};config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  config.providers = providers.map(readProviderConfig);
+  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
   config.router.allow_paid_models = Boolean((form.elements.namedItem("router.allow_paid_models")                    )?.checked);
@@ -934,13 +961,14 @@ async function testAllProviders()                {
 }
 function toast(message        )       { const node = document.querySelector                ("#toast") ; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
-document.querySelector("#add-provider") .addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); markDirty(); });
+document.querySelector("#add-provider") .addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); openProviderEditor(providers.length-1,true); });
 document.querySelector("#refresh-benchmarks") .addEventListener("click", () => inspectBenchmarks(true));
 document.querySelector("#inspect-benchmarks") .addEventListener("click", () => { void inspectBenchmarks(false); });
 document.querySelector("#save-button") .addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle") .addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
 form.addEventListener("input", markDirty);
+form.addEventListener("change",event=>{const target=event.target               ;if(!target.closest("dialog") && !["classifier-question","classifier-question-option"].includes(target.id)){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });

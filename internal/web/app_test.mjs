@@ -1198,3 +1198,33 @@ test("missing revision blocks saving and sign-out clears the loaded revision", a
   app.run('configurationRevision=fixtureRevision;signOutConsole()');
   assert.equal(app.run("configurationRevision"),"");
 });
+
+test("automatic saves serialize pending edits and preserve unrepresented settings",async()=>{
+ let config={providers:[],router:{disabled_models:{"p/model":true},catalog_overrides:[{id:"p/model"}]}};
+ let revision='"1"',finish;
+ const app=consoleFixture(async(url,options)=>{
+  if(options?.method==="PUT"){
+   assert.equal(options.headers["If-Match"],revision);
+   if(!finish)await new Promise(resolve=>{finish=resolve;});
+   config=JSON.parse(options.body);revision=revision==='"1"'?'"2"':'"3"';
+  }
+  return response(config,true,revision);
+ });
+ await app.run("loadServerConfig()");
+ const saving=app.run("saveConfig()");await new Promise(resolve=>setImmediate(resolve));
+ app.run('loadedConfiguration.marker="pending edit";markDirty();');
+ await app.run("saveConfig()");
+ finish();await saving;
+ assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,2);
+ assert.equal(config.router.disabled_models["p/model"],true);
+ assert.equal(config.router.catalog_overrides.length,1);
+ assert.equal(app.run("saveState.textContent"),"Saved");
+});
+test("provider dialogs keep incomplete drafts out of unrelated automatic saves",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.setProviders([draft("openai_compatible","p")]);
+ app.run('openProviderEditor(0);providers[0].api_url="invalid";');
+ assert.equal(app.run('readConfig().providers[0].base_url'),"https://openai_compatible.example");
+ app.run('cancelProviderEditor()');
+ assert.equal(app.run('providers[0].api_url'),"https://openai_compatible.example/v1");
+});

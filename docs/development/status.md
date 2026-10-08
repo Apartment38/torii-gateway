@@ -35,8 +35,9 @@ were preserved. Stopped backups and rollback images remain in the deployment;
 the final correction backup is
 `backups/before-v1-accounting-final-20261008T043837Z`, and the original pre-v1
 backup is `backups/before-v1-20261008T035917Z`. Task-owned changes are replicated
-into both authorized Torii directories. The review worktree is retained;
-changes have not been merged, pushed or published.
+into both authorized Torii directories. The v1 commit history is integrated into
+the project's `main` branch. The review worktree is retained; release publication
+remains deferred.
 
 Current user-visible support is in [Features](../reference/features.md), with
 contracts in [Design](design.md). Old Version 1/2 labels no longer define support.

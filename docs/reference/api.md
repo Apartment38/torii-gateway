@@ -183,3 +183,7 @@ call. These headers expose safe evidence, not prompts or full classifier context
 `POST /gateway/v1/session` accepts `{username,password}` and sets an opaque HttpOnly, SameSite=Lax cookie. Only its hash is stored in SQLite; expiry defaults to seven days (`server.admin_session_ttl`, positive Go duration up to `720h`). `GET` returns username, expiry and `csrf_token`; `DELETE` revokes the session and clears its cookie. Browser mutations must send `X-CSRF-Token` from the session response and a matching Origin when present. Cross-site requests are denied. Logout and administrator record changes invalidate sessions. Basic administrator authentication remains available for scripts; inference requires a Bearer key.
 
 Cookies are Secure on direct HTTPS and when the immediate peer belongs to an explicitly configured `server.trusted_proxies` CIDR and sends `X-Forwarded-Proto: https`. Untrusted forwarding headers have no effect. Direct HTTP remains supported. `/login` is the dedicated login page; first-run setup stays at the console root.
+
+## Model management
+
+Administrator `GET /gateway/v1/models` returns discovered physical models, enabled state, catalog capabilities/pricing, and safely matched benchmark intelligence with source, freshness and missing-score metadata. It uses the existing identity/alias resolver; approximate display matches supply no scores. `PUT` accepts `{id,enabled}` and requires the configuration `If-Match` revision; its successful `ETag` is the newly committed settings revision. Full config changes can also set `model_enabled`.

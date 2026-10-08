@@ -100,8 +100,8 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 	started := time.Now()
 	defer func() { routing.elapsed += time.Since(started) }()
 	candidates := make([]router.Candidate, 0)
-	for _, model := range h.catalog.Models() {
-		if model.PublicID == excluded {
+	for _, model := range h.CatalogModels() {
+		if model.PublicID == excluded || !h.enabled(model.PublicID) {
 			continue
 		}
 		providerID, _, err := provider.ParseModelID(model.PublicID)

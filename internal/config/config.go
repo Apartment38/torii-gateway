@@ -24,6 +24,7 @@ import (
 // Additional sections must not be added until their behavior is implemented;
 // the decoder rejects keys that are not represented here.
 type Config struct {
+	ModelEnabled map[string]bool    `yaml:"model_enabled,omitempty"`
 	Credentials  *state.Database    `yaml:"-"`
 	Server       ServerConfig       `yaml:"server"`
 	State        StateConfig        `yaml:"state"`
@@ -85,25 +86,27 @@ type StateConfig struct {
 
 // ProviderConfig contains common and standard compatible provider settings.
 type ProviderConfig struct {
-	ID               string               `yaml:"id"`
-	Type             string               `yaml:"type"`
-	BaseURL          string               `yaml:"base_url"`
-	APIPath          string               `yaml:"api_path,omitempty"`
-	PortalURL        string               `yaml:"portal_url,omitempty"`
-	ClientID         string               `yaml:"client_id,omitempty"`
-	BearerToken      *SecretRef           `yaml:"bearer_token,omitempty"`
-	ManagementToken  *SecretRef           `yaml:"management_token,omitempty"`
-	Headers          map[string]SecretRef `yaml:"headers,omitempty"`
-	TLS              *TLSConfig           `yaml:"tls,omitempty"`
-	Models           []string             `yaml:"models,omitempty"`
-	DiscoverModels   *bool                `yaml:"discover_models,omitempty"`
-	Transport        string               `yaml:"transport,omitempty"`
-	Organization     string               `yaml:"organization,omitempty"`
-	Project          string               `yaml:"project,omitempty"`
-	ModelRewrites    map[string]string    `yaml:"model_rewrites,omitempty"`
-	ConnectTimeout   string               `yaml:"connect_timeout,omitempty"`
-	RequestTimeout   string               `yaml:"request_timeout,omitempty"`
-	DiscoveryTimeout string               `yaml:"discovery_timeout,omitempty"`
+	Enabled           *bool                `yaml:"enabled,omitempty"`
+	TreatModelsAsFree *bool                `yaml:"treat_models_as_free,omitempty"`
+	ID                string               `yaml:"id"`
+	Type              string               `yaml:"type"`
+	BaseURL           string               `yaml:"base_url"`
+	APIPath           string               `yaml:"api_path,omitempty"`
+	PortalURL         string               `yaml:"portal_url,omitempty"`
+	ClientID          string               `yaml:"client_id,omitempty"`
+	BearerToken       *SecretRef           `yaml:"bearer_token,omitempty"`
+	ManagementToken   *SecretRef           `yaml:"management_token,omitempty"`
+	Headers           map[string]SecretRef `yaml:"headers,omitempty"`
+	TLS               *TLSConfig           `yaml:"tls,omitempty"`
+	Models            []string             `yaml:"models,omitempty"`
+	DiscoverModels    *bool                `yaml:"discover_models,omitempty"`
+	Transport         string               `yaml:"transport,omitempty"`
+	Organization      string               `yaml:"organization,omitempty"`
+	Project           string               `yaml:"project,omitempty"`
+	ModelRewrites     map[string]string    `yaml:"model_rewrites,omitempty"`
+	ConnectTimeout    string               `yaml:"connect_timeout,omitempty"`
+	RequestTimeout    string               `yaml:"request_timeout,omitempty"`
+	DiscoveryTimeout  string               `yaml:"discovery_timeout,omitempty"`
 }
 
 // TLSConfig controls certificate verification for one provider origin.
@@ -169,6 +172,18 @@ func Decode(r io.Reader) (*Config, error) {
 // Validate checks configuration invariants without performing network or
 // filesystem access.
 func (c Config) Validate() error {
+	physical := c.Router.Classifier.Model
+	if c.Router.Classifier.Provider != "" {
+		physical = c.Router.Classifier.Provider + "/" + physical
+	}
+	for id, enabled := range c.ModelEnabled {
+		if _, _, err := provider.ParseModelID(id); err != nil {
+			return errors.New("model_enabled requires provider-qualified model IDs")
+		}
+		if !enabled && id == physical && c.Router.Classifier.Type != "disabled" {
+			return errors.New("change the active classifier before disabling its model")
+		}
+	}
 	if c.Server.AdminSessionTTL != "" {
 		ttl, err := time.ParseDuration(c.Server.AdminSessionTTL)
 		if err != nil || ttl <= 0 || ttl > 30*24*time.Hour {

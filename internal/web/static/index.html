@@ -24,6 +24,7 @@
           <a class="nav-link active" href="#overview">Overview</a>
           <a class="nav-link" href="#server">Server</a>
           <a class="nav-link" href="#providers">Providers</a>
+          <a class="nav-link" href="#models">Models</a>
           <a class="nav-link" href="#routing">Routing</a>
           <a class="nav-link" href="#intelligence">Benchmarks</a>
           <a class="nav-link" href="#credentials">Credentials</a>
@@ -79,12 +80,14 @@
             <div id="providers-list" class="provider-list"></div>
           </section>
 
+          <section id="models" class="page section-block"><div class="section-heading"><h2>Models</h2><button id="refresh-models" type="button" class="button secondary">Refresh models</button></div><p>Enable eligible models for discovery and Smart routing. Benchmark scores use established identities and explicit aliases; missing data stays unknown.</p><div id="models-list"></div></section>
+
           <section id="routing" class="page section-block">
             <div class="section-heading"><div><p class="eyebrow">03 / Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
             <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
               <label data-tooltip="The virtual model name clients use to invoke smart routing. Keep this as smart unless your client contract requires another name.">Virtual model name<input name="router.model_name" value="smart" /></label>
-              <label data-tooltip="Optional JSON catalog overrides used by deterministic model selection. Leave empty to use the built-in catalog.">Catalog override file<input name="router.catalog_file" placeholder="./catalog-overrides.json" /></label>
+              <p>Catalog metadata overrides are stored in database settings. See the configuration reference for descriptor fields.</p>
               <label data-tooltip="Classifier models are discovered from connected TypeSafe Jev or Jev-compatible providers. Connection URLs and credentials are configured on the Providers page.">Classifier model<select id="classifier-model"><option value="">Discovering classifier models…</option></select></label>
               <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
               <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="capability_fallback">Fallback</option><option value="fail">Fail</option></select></label>

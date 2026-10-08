@@ -11,6 +11,7 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Overview | Inspect the current gateway and model summary |
 | Server | Listener and database path settings |
 | Providers | Add/test inference and classifier providers; subscription login |
+| Models | Enable models and inspect capabilities, pricing and benchmark freshness |
 | Routing | Smart routing, classifier selection/tuning, session failure policy |
 | Benchmarks | Enable sources, enter source keys, refresh and inspect scores |
 | Credentials | Create/revoke client API keys and rotate the default key |

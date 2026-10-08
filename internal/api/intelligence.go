@@ -10,17 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/intelligence"
 )
 
 func (h *OpenAIHandler) SetIntelligence(manager *intelligence.Manager) {
 	h.intelligence = manager
 	if manager != nil {
-		manager.UpdateModels(h.catalog.Models())
+		manager.UpdateModels(h.CatalogModels())
 	}
 }
-func (h *OpenAIHandler) CatalogModels() []catalog.Descriptor { return h.catalog.Models() }
 
 func (h *OpenAIHandler) modelIntelligence(publicID string) *intelligence.Model {
 	if h.intelligence == nil || !h.policy.Intelligence.Enabled() {

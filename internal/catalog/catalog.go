@@ -25,69 +25,69 @@ const (
 
 // EndpointCapabilities records which public endpoint families a model accepts.
 type EndpointCapabilities struct {
-	ChatCompletions TriState `json:"chat_completions"`
-	Completions     TriState `json:"completions"`
-	Responses       TriState `json:"responses"`
-	Embeddings      TriState `json:"embeddings"`
+	ChatCompletions TriState `json:"chat_completions" yaml:"chat_completions"`
+	Completions     TriState `json:"completions" yaml:"completions"`
+	Responses       TriState `json:"responses" yaml:"responses"`
+	Embeddings      TriState `json:"embeddings" yaml:"embeddings"`
 }
 
 // ModelCapabilities records model features independently of endpoints.
 type ModelCapabilities struct {
-	Streaming        TriState `json:"streaming"`
-	Tools            TriState `json:"tools"`
-	Vision           TriState `json:"vision"`
-	StructuredOutput TriState `json:"structured_output"`
-	Reasoning        TriState `json:"reasoning"`
+	Streaming        TriState `json:"streaming" yaml:"streaming"`
+	Tools            TriState `json:"tools" yaml:"tools"`
+	Vision           TriState `json:"vision" yaml:"vision"`
+	StructuredOutput TriState `json:"structured_output" yaml:"structured_output"`
+	Reasoning        TriState `json:"reasoning" yaml:"reasoning"`
 }
 
 // Modalities records verified model input and output media support.
 type Modalities struct {
-	TextInput   TriState `json:"text_input"`
-	TextOutput  TriState `json:"text_output"`
-	ImageInput  TriState `json:"image_input"`
-	AudioInput  TriState `json:"audio_input"`
-	AudioOutput TriState `json:"audio_output"`
+	TextInput   TriState `json:"text_input" yaml:"text_input"`
+	TextOutput  TriState `json:"text_output" yaml:"text_output"`
+	ImageInput  TriState `json:"image_input" yaml:"image_input"`
+	AudioInput  TriState `json:"audio_input" yaml:"audio_input"`
+	AudioOutput TriState `json:"audio_output" yaml:"audio_output"`
 }
 
 type Pricing struct {
-	InputPerMillion  *float64 `json:"input_per_million,omitempty"`
-	OutputPerMillion *float64 `json:"output_per_million,omitempty"`
+	InputPerMillion  *float64 `json:"input_per_million,omitempty" yaml:"input_per_million,omitempty"`
+	OutputPerMillion *float64 `json:"output_per_million,omitempty" yaml:"output_per_million,omitempty"`
 }
 
 type Quality struct {
-	General   *float64 `json:"general,omitempty"`
-	Tools     *float64 `json:"tools,omitempty"`
-	Reasoning *float64 `json:"reasoning,omitempty"`
+	General   *float64 `json:"general,omitempty" yaml:"general,omitempty"`
+	Tools     *float64 `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Reasoning *float64 `json:"reasoning,omitempty" yaml:"reasoning,omitempty"`
 }
 
 type Availability struct {
-	Available bool      `json:"available"`
-	Stale     bool      `json:"stale"`
-	CheckedAt time.Time `json:"checked_at"`
+	Available bool      `json:"available" yaml:"available"`
+	Stale     bool      `json:"stale" yaml:"stale"`
+	CheckedAt time.Time `json:"checked_at" yaml:"checked_at"`
 }
 
 type Provenance struct {
-	CatalogSource    string `json:"catalog_source"`
-	CapabilitySource string `json:"capability_source,omitempty"`
+	CatalogSource    string `json:"catalog_source" yaml:"catalog_source"`
+	CapabilitySource string `json:"capability_source,omitempty" yaml:"capability_source,omitempty"`
 }
 
 // Descriptor is the normalized metadata for one physical model. Snapshots
 // contain values only, so callers cannot mutate catalog-owned state.
 type Descriptor struct {
-	PublicID      string               `json:"id"`
-	ProviderID    string               `json:"provider_id"`
-	UpstreamID    string               `json:"upstream_id"`
-	Created       int64                `json:"created,omitempty"`
-	OwnedBy       string               `json:"owned_by,omitempty"`
-	Endpoints     EndpointCapabilities `json:"endpoints"`
-	Capabilities  ModelCapabilities    `json:"capabilities"`
-	Modalities    Modalities           `json:"modalities"`
-	ContextWindow *int64               `json:"context_window,omitempty"`
-	Pricing       Pricing              `json:"pricing"`
-	Quality       Quality              `json:"quality"`
-	Local         *bool                `json:"local,omitempty"`
-	Availability  Availability         `json:"availability"`
-	Metadata      Provenance           `json:"metadata"`
+	PublicID      string               `json:"id" yaml:"id"`
+	ProviderID    string               `json:"provider_id" yaml:"provider_id"`
+	UpstreamID    string               `json:"upstream_id" yaml:"upstream_id"`
+	Created       int64                `json:"created,omitempty" yaml:"created,omitempty"`
+	OwnedBy       string               `json:"owned_by,omitempty" yaml:"owned_by,omitempty"`
+	Endpoints     EndpointCapabilities `json:"endpoints" yaml:"endpoints"`
+	Capabilities  ModelCapabilities    `json:"capabilities" yaml:"capabilities"`
+	Modalities    Modalities           `json:"modalities" yaml:"modalities"`
+	ContextWindow *int64               `json:"context_window,omitempty" yaml:"context_window,omitempty"`
+	Pricing       Pricing              `json:"pricing" yaml:"pricing"`
+	Quality       Quality              `json:"quality" yaml:"quality"`
+	Local         *bool                `json:"local,omitempty" yaml:"local,omitempty"`
+	Availability  Availability         `json:"availability" yaml:"availability"`
+	Metadata      Provenance           `json:"metadata" yaml:"metadata"`
 }
 
 //go:embed capabilities.json

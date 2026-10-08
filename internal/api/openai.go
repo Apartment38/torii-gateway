@@ -30,6 +30,8 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
+	modelEnabled     map[string]bool
+	freeProviders    map[string]bool
 	byID             map[string]provider.OpenAIProvider
 	catalog          *catalog.Catalog
 	refreshMu        sync.Mutex
@@ -105,7 +107,7 @@ func (h *OpenAIHandler) RefreshCatalog(ctx context.Context) error {
 	h.ready = true
 	h.refreshedAt = time.Now()
 	if h.intelligence != nil {
-		h.intelligence.UpdateModels(h.catalog.Models())
+		h.intelligence.UpdateModels(h.CatalogModels())
 	}
 	return nil
 }
@@ -124,7 +126,7 @@ func (h *OpenAIHandler) ensureCatalog(ctx context.Context) error {
 	h.ready = true
 	h.refreshedAt = time.Now()
 	if h.intelligence != nil {
-		h.intelligence.UpdateModels(h.catalog.Models())
+		h.intelligence.UpdateModels(h.CatalogModels())
 	}
 	return nil
 }
@@ -166,12 +168,15 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
 		return
 	}
-	descriptors := h.catalog.Models()
+	descriptors := h.CatalogModels()
 	models := make([]provider.Model, 0, len(descriptors)+1)
 	// Clients may show only the first page of a provider's catalog. Keep the
 	// gateway routing choice visible before the sorted physical models.
 	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
 	for _, descriptor := range descriptors {
+		if !h.enabled(descriptor.PublicID) {
+			continue
+		}
 		models = append(models, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
 	}
 	writeJSON(w, http.StatusOK, struct {
@@ -195,7 +200,7 @@ func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicI
 		return
 	}
 	descriptor, ok := h.catalog.Model(publicID)
-	if ok {
+	if ok && h.enabled(publicID) {
 		writeJSON(w, http.StatusOK, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
 		return
 	}
@@ -250,6 +255,10 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 			return
 		}
+	}
+	if !h.enabled(requestedModel) {
+		writeError(w, fault.New(fault.ModelUnavailable, "model"))
+		return
 	}
 	providerID, modelID, err := provider.ParseModelID(requestedModel)
 	upstream := h.byID[providerID]
@@ -332,6 +341,10 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OpenAIHandler) actualCost(model string, input, output uint64) float64 {
+	providerID, _, _ := provider.ParseModelID(model)
+	if h.freeProviders[providerID] {
+		return 0
+	}
 	descriptor, ok := h.catalog.Model(model)
 	if !ok || (descriptor.Local != nil && *descriptor.Local) {
 		return 0

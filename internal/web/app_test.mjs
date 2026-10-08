@@ -482,7 +482,7 @@ test("saving an existing Ollama with a classifier omits unsupported generic fiel
   app.context.ollamaConfig = { providers:[{ id:"local", type:"ollama", base_url:"http://localhost:11434" }] };
   app.run("applyConfig(ollamaConfig, fixtureRevision)");
   const output = app.run("readConfig().providers[0]");
-  assert.deepEqual(Object.keys(output).sort(), ["base_url", "id", "type"]);
+  assert.deepEqual(Object.keys(output).sort(), ["base_url", "enabled", "id", "treat_models_as_free", "type"]);
 });
 
 test("Ollama request timeout is editable, survives reload and can reset to default", () => {
@@ -1181,7 +1181,7 @@ test("fresh Codex additions preserve existing discovery and Ollama timeout setti
     await app.run("loadServerConfig()");
     app.run('providers.push({...providerDefaults,id:"openai-codex",type:"openai-codex",api_url:"https://chatgpt.com/backend-api/codex",models:"gpt-5.3-codex"});');
     await app.run("saveConfig()");
-    assert.deepEqual(config.providers[0],existing);
+    assert.deepEqual(config.providers[0],{...existing,enabled:true,treat_models_as_free:existing.type==="ollama"});
     assert.equal(app.run("configurationRevision"),'"saved"');
     await app.run("saveConfig()");
   }

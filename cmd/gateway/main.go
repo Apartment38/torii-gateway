@@ -590,6 +590,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 
 	providers := make([]provider.OpenAIProvider, 0, len(cfg.Providers))
 	for _, providerConfig := range cfg.Providers {
+		if providerConfig.Enabled != nil && !*providerConfig.Enabled {
+			continue
+		}
 		upstream, err := buildProviderWithState(providerConfig, database)
 		if err != nil {
 			return nil, fmt.Errorf("initialize provider %q: %w", providerConfig.ID, err)
@@ -608,6 +611,14 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	if err != nil {
 		return nil, err
 	}
+	freeProviders := map[string]bool{}
+	for _, p := range cfg.Providers {
+		freeProviders[p.ID] = p.Type == "ollama"
+		if p.TreatModelsAsFree != nil {
+			freeProviders[p.ID] = *p.TreatModelsAsFree
+		}
+	}
+	openAI.SetModelControls(cfg.ModelEnabled, freeProviders)
 	if err := openAI.RefreshCatalog(context.Background()); err != nil {
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
 	}
@@ -784,6 +795,8 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			protect("/gateway/v1/admin/api-keys", runtime.gatewayKeysAPI)
 			protect("/gateway/v1/admin/api-keys/", runtime.gatewayKeysAPI)
 		}
+		protect("GET /gateway/v1/models", openAI.ManagementModels)
+		protect("PUT /gateway/v1/models", runtime.setModel)
 		protect("GET /gateway/v1/config", runtime.getConfig)
 		protect("PUT /gateway/v1/config", runtime.putConfig)
 		protect("POST /gateway/v1/config", runtime.putConfig)

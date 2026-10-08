@@ -92,3 +92,25 @@ providers:
 		t.Fatal("rejected save mutated state", w.Code, w.Body.String())
 	}
 }
+func TestModelEnablementPersistsAndProtectsClassifier(t *testing.T) {
+	r, _ := credentialRuntime(t)
+	req := httptest.NewRequest("PUT", "/gateway/v1/models", strings.NewReader(`{"id":"p/model","enabled":false}`))
+	req.Header.Set("If-Match", currentConfigRevision(t, r))
+	w := httptest.NewRecorder()
+	r.setModel(w, req)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	cfg, err := r.loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, exists := cfg.ModelEnabled["p/model"]; !exists || value {
+		t.Fatal("disabled state lost")
+	}
+	cfg.Router.Classifier.Type = "model"
+	cfg.Router.Classifier.Model = "p/model"
+	if err = cfg.Validate(); err == nil {
+		t.Fatal("disabled classifier accepted")
+	}
+}

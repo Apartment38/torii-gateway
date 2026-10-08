@@ -1,4 +1,4 @@
-// Generated from benchmarks.ts and app.ts by scripts/build-console.mjs.
+// Generated from benchmarks.ts, models.ts and app.ts by scripts/build-console.mjs.
 const benchmarkDefinitions = [{"name":"Artificial Analysis","requires_api_key":true,"note":"Imports published capability, pricing and speed measurements. Requires an Artificial Analysis API key.","settings":{"id":"artificial-analysis","type":"artificial_analysis","enabled":false,"url":"https://artificialanalysis.ai/api/v2/data/llms/models"}},{"name":"BenchLM.ai","requires_api_key":false,"note":"Imports public supported benchmark evidence; estimated scores do not influence capabilities. Commercial use requires a BenchLM licence.","settings":{"id":"benchlm","type":"benchlm","enabled":false,"url":"https://benchlm.ai/data/models.json"}},{"name":"Hugging Face leaderboards","requires_api_key":false,"note":"Imports the public Open LLM Leaderboard v2 results with predefined instruction-following, reasoning, math and knowledge mappings. This published dataset contains historical evaluations, not a current ranking of all models. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required.","settings":{"id":"huggingface","type":"huggingface","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"open-llm-leaderboard/contents","config":"default","split":"train","model_field":"fullname","version":"Open LLM Leaderboard v2","metrics":{"IFEval Raw":{"category":"instruction_following","max":1},"BBH Raw":{"category":"reasoning","max":1},"MATH Lvl 5 Raw":{"category":"math","max":1},"GPQA Raw":{"category":"knowledge","max":1},"MUSR Raw":{"category":"reasoning","max":1},"MMLU-PRO Raw":{"category":"knowledge","max":1}}}]}},{"name":"LMArena","requires_api_key":false,"note":"Imports the latest public text style-controlled Arena leaderboard. Ratings remain human-preference evidence, separate from objective benchmarks. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.","settings":{"id":"lmarena","type":"lmarena","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"lmarena-ai/leaderboard-dataset","config":"text_style_control","split":"latest","model_field":"model_name","date_field":"leaderboard_publish_date"}]}},{"name":"LiveBench","requires_api_key":false,"note":"Imports public structured model judgments. The artifact can lag the website; expired evaluations remain inspectable but do not influence routing. Public data permits anonymous access. An optional Hugging Face token authenticates downloads; no separate LiveBench or Arena API key is required. Downloads the selected published Parquet files instead of paginating Dataset Viewer rows.","settings":{"id":"livebench","type":"livebench","enabled":false,"url":"https://datasets-server.huggingface.co/rows","datasets":[{"dataset":"livebench/model_judgment","config":"default","split":"leaderboard","model_field":"model","date_field":"tstamp"}]}}];
 // Source forms and cached evidence views. No browser persistence or dependencies.
 
@@ -274,6 +274,22 @@ function initializeBenchmarks()       {
   renderBenchmarkTable();
 }
 
+let modelEnabledDraft                       ={};
+async function loadModelsPage()              {
+ const output=document.querySelector             ("#models-list") ;
+ try{const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});if(!response.ok)throw new Error("Model discovery unavailable");const data=await response.json();
+ output.innerHTML=(data.models||[]).map((model    )=>{
+  const benchmark=model.benchmark;
+  const scores=benchmark?Object.entries(benchmark.scores||{}).map(([name,value])=>`${escapeHTML(name)}: ${(Number(value)*100).toFixed(1)}%`).join(" · "):"";
+  const pricing=model.pricing||{};
+  return `<article class="subcard"><h3>${escapeHTML(model.id)}</h3><p>Provider: ${escapeHTML(model.provider_id)}</p><label class="checkbox"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" ${model.enabled?"checked":""}> Enabled</label><p>Capabilities: ${Object.entries(model.capabilities||{}).map(([name,value])=>`${escapeHTML(name)}: ${escapeHTML(String(value))}`).join(" · ")}</p><p>Estimated USD per million tokens · input: ${pricing.input_per_million??"unknown"} · output: ${pricing.output_per_million??"unknown"}</p><p>${model.benchmark_missing?"No safely matched benchmark scores available":scores}</p>${benchmark?`<p>Sources: ${(benchmark.sources||[]).map(escapeHTML).join(", ")} · ${benchmark.stale?"Stale":"Current"} · retrieved ${escapeHTML(benchmark.latest_retrieval||"unknown")} · evaluated ${escapeHTML(benchmark.latest_evaluation||"unknown")}</p>`:""}</article>`;
+ }).join("")||"No physical models discovered. Add a provider first.";
+ output.querySelectorAll                  ("[data-model-enabled]").forEach(input=>input.addEventListener("change",async()=>{modelEnabledDraft[input.dataset.modelEnabled ]=input.checked;markDirty();if(await saveConfig())void loadModelsPage();}));
+ }catch(error){output.textContent=error instanceof Error?error.message:"Models unavailable";}
+}
+
+document.querySelector("#refresh-models") .addEventListener("click",()=>{void loadModelsPage();});
+
 
 
 // Browser authentication uses an HttpOnly cookie. Only the CSRF token is in memory.
@@ -343,7 +359,7 @@ async function createBrowserSession(username       ,password       )            
  if(!response.ok)throw new Error("Sign-in failed");const session=await response.json();csrfToken=session.csrf_token;consoleSession=session.expires_at;signedInUsername=session.username;updateConsoleIdentity();
 }
 
-const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "" };
+const providerDefaults = { id: "", type: "openai_compatible", api_url: "", api_key: "", api_key_env: "", api_key_file: "", management_env: "", portal_url: "", client_id: "", headers: "", models: "", discover: true, transport: "", organization: "", project: "", rewrites: "", tls_ca: "", tls_server: "", connect_timeout: "", request_timeout: "", discovery_timeout: "", enabled:true, treat_models_as_free:false };
 let providers                                     = [];
 
 
@@ -506,7 +522,7 @@ function renderProviders()       {
     <article class="provider-card">
       <div class="provider-card-head"><div class="provider-card-title"><span class="provider-index">${index + 1}</span> <span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span></div><div class="provider-card-actions"><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
-      <dialog data-provider-dialog="${index}"><h3>${value(provider,"id") || "Add provider"}</h3>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
+      <dialog data-provider-dialog="${index}"><h3>${value(provider,"id") || "Add provider"}</h3><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type"><option ${provider.type === "openai_compatible" ? "selected" : ""} value="openai_compatible">OpenAI compatible</option><option ${provider.type === "jev" ? "selected" : ""} value="jev">TypeSafe AI · Jev</option><option ${provider.type === "jev_compatible" ? "selected" : ""} value="jev_compatible">Jev compatible · Laya / custom</option><option ${provider.type === "openrouter" ? "selected" : ""} value="openrouter">OpenRouter</option><option ${provider.type === "gemini" ? "selected" : ""} value="gemini">Gemini</option><option ${provider.type === "xai" ? "selected" : ""} value="xai">xAI</option><option ${provider.type === "anthropic" ? "selected" : ""} value="anthropic">Anthropic</option><option ${provider.type === "openai" ? "selected" : ""} value="openai">OpenAI</option><option ${provider.type === "openai-codex" ? "selected" : ""} value="openai-codex">OpenAI Codex</option><option ${provider.type === "ollama" ? "selected" : ""} value="ollama">Ollama</option><option ${provider.type === "nous" ? "selected" : ""} value="nous">Nous</option></select></label>
         <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
@@ -585,6 +601,7 @@ function updateProvider(event       )       {
     if (title) title.textContent = control.value || `Provider ${index + 1}`;
   }
   if (key === "type") {
+ providers[index].treat_models_as_free=control.value==="ollama";
     const previousID = String(providers[index].id || "");
     const previousBase = knownProviderIDs[String(previousType)] || "";
     if (previousBase && (previousID === previousBase || /^.+-\d+$/.test(previousID))) providers[index].id = "";
@@ -630,7 +647,7 @@ function isSetupPlaceholder(provider                     )          {
 
 function applyConfig(config                     , revision = "")       {
   configurationRevision = revision;
-  loadedConfiguration=structuredClone(config);saveConflict=false;
+  loadedConfiguration=structuredClone(config);modelEnabledDraft={...config.model_enabled};saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
   legacyClassifier = null;
@@ -658,6 +675,8 @@ function applyConfig(config                     , revision = "")       {
     headers: provider.headers ? JSON.stringify(provider.headers) : "",
     rewrites: provider.model_rewrites ? JSON.stringify(provider.model_rewrites) : "",
     models: Array.isArray(provider.models) ? provider.models.join(", ") : "",
+    enabled:provider.enabled!==false,
+    treat_models_as_free:provider.treat_models_as_free??provider.type==="ollama",
     discover: provider.discover_models !== false,
   }));
   // Move legacy direct Jev connections into provider drafts, retaining secret
@@ -754,6 +773,7 @@ function navigate()       {
     page.setAttribute("aria-hidden", String(!active));
   });
   document.querySelectorAll                   (".nav-link").forEach(link => link.classList.toggle("active", link.getAttribute("href") === `#${current}`));
+  if(current==="models" && configurationLoaded)void loadModelsPage();
   if (current === "routing") updateClassifierOptions();
   if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
 }
@@ -766,7 +786,7 @@ function readProviderConfig(provider                                  )         
   if (provider.type === "ollama") {
     // Preserve the native Ollama inference deadline without generic options.
     const url = new URL(String(provider.api_url));
-    const output                      = { id:provider.id, type:provider.type, base_url:`${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}` };
+    const output                      = { enabled:provider.enabled!==false,treat_models_as_free:provider.treat_models_as_free??true,id:provider.id, type:provider.type, base_url:`${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}` };
     if (String(provider.request_timeout || "").trim()) output.request_timeout = String(provider.request_timeout).trim();
     return output;
   }
@@ -811,7 +831,8 @@ function readConfig()                      {
   const config                      = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
+  config.model_enabled={...modelEnabledDraft};
+ config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
   config.router.allow_paid_models = Boolean((form.elements.namedItem("router.allow_paid_models")                    )?.checked);

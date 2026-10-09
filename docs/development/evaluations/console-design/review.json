@@ -1,50 +1,94 @@
 {
-  "phase": "Round 4 \u00b7 closing benchmark and first-run gaps",
+  "phase": "Reviewed \u00b7 both independent critics favor Torii",
   "pieces": [
     {
-      "name": "Navigation & visual system",
-      "result": "Readability wins; compactness ties. Light/dark and keyboard independently verified."
+      "name": "Shell & hierarchy",
+      "result": "Duplicate framing removed; both independent reviewers prefer the quieter hierarchy."
     },
     {
-      "name": "Overview & first connection",
-      "result": "Live daily/monthly summaries and copyable client connection; hierarchy wins."
+      "name": "Light & dark themes",
+      "result": "Prepaint preference, readable contrast and coherent surfaces verified in running UI."
     },
     {
-      "name": "Provider setup & credentials",
-      "result": "Editing, cancel, focus and API-key action win. Improving type discovery."
+      "name": "Mobile navigation",
+      "result": "Active tab stays visible with aria-current; direct Benchmarks and Server entries verified."
     },
     {
-      "name": "Model discovery & selection",
-      "result": "Search, filters, pagination, metadata and mobile access verified. Readability wins."
+      "name": "Login & first setup",
+      "result": "Actual setup, persistent login and required setup Escape prevention verified."
     },
     {
-      "name": "Routing & benchmarks",
-      "result": "Routing clarity wins. Enabled benchmark table remains too wide; compact scorecard in progress."
+      "name": "Operational overview",
+      "result": "Real requests, tokens and estimated cost lead; recent success explicitly names its bounded sample."
     },
     {
-      "name": "Activity & quota",
-      "result": "Truthful stages, search and scoped accounting verified; view controls cause no writes."
+      "name": "Client connection",
+      "result": "Base URL and selected model copy correctly; client key action is immediately reachable."
     },
     {
-      "name": "Mobile, keyboard & themes",
-      "result": "Both themes and 390px controls verified. Required setup Escape fixed; recheck pending."
+      "name": "Provider choice",
+      "result": "Grouped types and concise guidance remain reversible across subscriptions, APIs and classifiers."
+    },
+    {
+      "name": "Provider editing",
+      "result": "Cancel restores identity, values and saved state; modal focus and keyboard containment verified."
+    },
+    {
+      "name": "Catalog investigation",
+      "result": "Search, provider/status filters, sorting and paging work; readable controls win, density ties."
+    },
+    {
+      "name": "Model access & metadata",
+      "result": "Enablement remains explicit; full capabilities, prices and provenance remain inspectable."
+    },
+    {
+      "name": "Routing policy",
+      "result": "Deterministic controls remain available without a classifier; advanced tuning is disclosed."
+    },
+    {
+      "name": "Benchmark ingestion",
+      "result": "Real local synthetic ingestion and separate real zero-cache backend verified; no public source calls."
+    },
+    {
+      "name": "Benchmark evidence",
+      "result": "Six-column scorecards and grouped evidence preserve unknowns, ambiguity, exact dates and operations."
+    },
+    {
+      "name": "Request investigation",
+      "result": "Completed/all stages, search, outcomes, copy and paging verified. Overall comparison ties."
+    },
+    {
+      "name": "Accounting & budgets",
+      "result": "Exact scope/day/month totals lead; budget settings remain accessible. Comparison ties."
+    },
+    {
+      "name": "API-key lifecycle",
+      "result": "Real create, one-time acknowledgement/clearing and deletion verified with disposable keys."
+    },
+    {
+      "name": "Read-only controls",
+      "result": "Search, periods and paging send no configuration writes and preserve live input focus."
+    },
+    {
+      "name": "Keyboard & empty states",
+      "result": "Provider type focus regression fixed; modal return, loading/errors and mobile evidence verified."
     }
   ],
   "critique": {
-    "title": "Two independent reviews: core wins, remaining benchmark loss",
-    "text": "Login, provider editing, API-key creation, routing clarity and readability win the scoped comparisons. Request investigation and accounting tie with tested, clean controls. The enabled benchmark view still exposes 26 columns; its evidence will move into per-model disclosures. First-run setup now stays open on Escape. These are subjective, scoped reviewer judgments; final validation is still underway."
+    "title": "Both reviewers now prefer Torii on matched console tasks",
+    "text": "Repeated direct screenshot comparisons favor Torii\u2019s readable hierarchy, restrained shell, explicit actions, provider setup, routing and generic client connection. Catalog density and accounting remain honest ties. The final keyboard regression was reproduced and fixed. Reviews concern existing Torii workflows; they do not establish whole-product superiority or comparative Routerly mobile behavior. Final verification passes 99 console tests, full Go/race tests, vet/build and disposable non-root runtime checks."
   },
   "comparison": [
     {
-      "name": "Torii \u00b7 round 3 overview",
-      "image": "screenshots/round3-overview.png"
+      "name": "Torii \u00b7 running final revision",
+      "image": "screenshots/round5-dark-overview.png"
     },
     {
-      "name": "Routerly \u00b7 overview reference",
+      "name": "Routerly \u00b7 supplied reference",
       "image": "references/screenshot-overview.png"
     }
   ],
-  "note": "Live browser capture vs supplied Routerly reference. Different product features and viewport sizes; judging hierarchy, readability and task clarity.",
+  "note": "Native captures support readability judgments; references are 1800px wide and Torii captures 1430/1440px. Branding prevents fully blind review. Benchmarks use synthetic local results. Routerly experiments and Torii benchmark evidence are different workflows.",
   "history": [
     {
       "title": "Baseline \u00b7 8 October 2026",
@@ -61,71 +105,118 @@
     {
       "title": "Rounds 2\u20133 \u00b7 verified workflows",
       "text": "87 console tests pass. Independent browsers verify cancellation, clipboard values, pagination, focus, scoped usage, mobile access, both themes and absence of configuration writes during view changes. Full Go tests, race tests, vet and build pass. Enabled benchmark density and first-run dismissal remained review gaps."
+    },
+    {
+      "title": "Round 4 \u00b7 functional gaps closed, verdict split",
+      "text": "Compact six-column benchmark evidence, grouped provider choices and direct URL loading replace identified defects. First-run setup, key creation/deletion, persistent login and provider onboarding pass real UI smoke checks. Disposable Podman validation passes setup, encrypted credentials, rotation, restart, backup recovery, streaming accounting, quota enforcement and redaction. Critics differ on overall polish; operational overview and evidence details receive another round."
+    },
+    {
+      "title": "Round 5 \u00b7 Oct 9 \u00b7 operational hierarchy and restrained craft",
+      "text": "Both independent reviewers now favor Torii overall on matched tasks after the operational overview, simpler shell, reversible provider choice, grouped UTC evidence and visible mobile navigation. Density/accounting ties are retained. A late provider keyboard focus regression was fixed and browser-tested; 99 console tests pass. Final embedded/container verification, full Go/race tests, vet/build, generated assets, documentation links and all eight live comparisons pass."
     }
   ],
   "views": [
     {
-      "title": "Overview \u00b7 current / Routerly",
+      "title": "Overview \u00b7 Torii / Routerly",
       "comparison": [
         {
-          "name": "Torii \u00b7 round 3 overview",
-          "image": "screenshots/round3-overview.png"
+          "name": "Torii \u00b7 running final revision",
+          "image": "screenshots/round5-dark-overview.png"
         },
         {
-          "name": "Routerly \u00b7 overview reference",
+          "name": "Routerly \u00b7 supplied reference",
           "image": "references/screenshot-overview.png"
         }
       ]
     },
     {
-      "title": "Models \u00b7 current / Routerly",
+      "title": "Models \u00b7 Torii / Routerly",
       "comparison": [
         {
-          "name": "Torii \u00b7 round 3 models",
-          "image": "screenshots/round3-models.png"
+          "name": "Torii \u00b7 running final revision",
+          "image": "screenshots/round5-dark-models.png"
         },
         {
-          "name": "Routerly \u00b7 models reference",
+          "name": "Routerly \u00b7 supplied reference",
           "image": "references/screenshot-models.png"
         }
       ]
     },
     {
-      "title": "Usage \u00b7 current / Routerly",
+      "title": "Usage \u00b7 Torii / Routerly",
       "comparison": [
         {
-          "name": "Torii \u00b7 round 3 usage",
-          "image": "screenshots/round3-usage-quota.png"
+          "name": "Torii \u00b7 running final revision",
+          "image": "screenshots/round5-light-usage-quota.png"
         },
         {
-          "name": "Routerly \u00b7 usage reference",
+          "name": "Routerly \u00b7 supplied reference",
           "image": "references/screenshot-usage.png"
         }
       ]
     },
     {
-      "title": "Overview \u00b7 baseline / current",
+      "title": "Benchmarks \u00b7 Torii / Routerly metrics",
       "comparison": [
         {
-          "name": "Torii original",
-          "image": "screenshots/before-overview.png"
+          "name": "Torii \u00b7 running final revision",
+          "image": "screenshots/round5-dark-benchmarks.png"
         },
         {
-          "name": "Torii current",
-          "image": "screenshots/round3-overview.png"
+          "name": "Routerly \u00b7 supplied reference",
+          "image": "references/screenshot-experiment-metrics.png"
         }
       ]
     },
     {
-      "title": "Mobile \u00b7 models / activity",
+      "title": "Overview \u00b7 original / current",
       "comparison": [
         {
-          "name": "Torii mobile models",
-          "image": "screenshots/round3-mobile-models.png"
+          "name": "Torii original \u00b7 Oct 8",
+          "image": "screenshots/before-overview.png"
         },
         {
-          "name": "Torii mobile activity",
-          "image": "screenshots/round3-mobile-activity.png"
+          "name": "Torii current \u00b7 Oct 9",
+          "image": "screenshots/round5-light-overview.png"
+        }
+      ]
+    },
+    {
+      "title": "Themes \u00b7 light / dark",
+      "comparison": [
+        {
+          "name": "Torii light",
+          "image": "screenshots/round5-light-overview.png"
+        },
+        {
+          "name": "Torii dark",
+          "image": "screenshots/round5-dark-overview.png"
+        }
+      ]
+    },
+    {
+      "title": "Mobile \u00b7 active navigation / provenance",
+      "comparison": [
+        {
+          "name": "Torii mobile Benchmarks",
+          "image": "screenshots/round5-mobile-direct-benchmarks.png"
+        },
+        {
+          "name": "Torii mobile evidence",
+          "image": "screenshots/round5-mobile-evidence-provenance.png"
+        }
+      ]
+    },
+    {
+      "title": "Benchmarks \u00b7 populated / zero cache",
+      "comparison": [
+        {
+          "name": "Torii synthetic evidence through real ingestion",
+          "image": "screenshots/round5-light-benchmarks.png"
+        },
+        {
+          "name": "Torii real zero-cache backend",
+          "image": "screenshots/round5-final-real-zero-cache-desktop.png"
         }
       ]
     }

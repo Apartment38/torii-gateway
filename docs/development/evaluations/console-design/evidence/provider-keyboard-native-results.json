@@ -1,0 +1,167 @@
+{
+  "results": [
+    {
+      "mode": "closed-arrow",
+      "selected": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai",
+        "key": "type",
+        "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+        "scrollY": 0
+      },
+      "tabs": [
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "aria": "Show help",
+          "text": "?",
+          "value": "",
+          "key": null,
+          "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+          "scrollY": 0
+        },
+        {
+          "tag": "INPUT",
+          "id": "",
+          "aria": "Provider ID",
+          "text": "",
+          "value": "openai",
+          "key": "id",
+          "label": "Provider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.",
+          "scrollY": 0
+        },
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "aria": "Show help",
+          "text": "?",
+          "value": "",
+          "key": null,
+          "label": "Provider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.",
+          "scrollY": 0
+        }
+      ]
+    },
+    {
+      "mode": "closed-arrow-enter",
+      "selected": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai",
+        "key": "type",
+        "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+        "scrollY": 0
+      },
+      "tabs": [
+        {
+          "tag": "SELECT",
+          "id": "",
+          "aria": "Provider type",
+          "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+          "value": "openai",
+          "key": "type",
+          "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+          "scrollY": 0
+        },
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "aria": "Show help",
+          "text": "?",
+          "value": "",
+          "key": null,
+          "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+          "scrollY": 0
+        },
+        {
+          "tag": "INPUT",
+          "id": "",
+          "aria": "Provider ID",
+          "text": "",
+          "value": "openai",
+          "key": "id",
+          "label": "Provider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.",
+          "scrollY": 0
+        }
+      ]
+    },
+    {
+      "mode": "opened-popup",
+      "selected": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai",
+        "key": "type",
+        "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+        "scrollY": 0
+      },
+      "tabs": [
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "aria": "Show help",
+          "text": "?",
+          "value": "",
+          "key": null,
+          "label": "Type\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.",
+          "scrollY": 0
+        },
+        {
+          "tag": "INPUT",
+          "id": "",
+          "aria": "Provider ID",
+          "text": "",
+          "value": "openai",
+          "key": "id",
+          "label": "Provider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.",
+          "scrollY": 0
+        },
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "aria": "Show help",
+          "text": "?",
+          "value": "",
+          "key": null,
+          "label": "Provider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.",
+          "scrollY": 0
+        }
+      ]
+    }
+  ],
+  "escape": {
+    "closed": true,
+    "focus": {
+      "tag": "BUTTON",
+      "id": "add-provider",
+      "aria": null,
+      "text": "＋ Add provider",
+      "value": "",
+      "key": null,
+      "scrollY": 0
+    }
+  },
+  "noConfigWrites": true,
+  "writes": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/session"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    }
+  ],
+  "errors": []
+}

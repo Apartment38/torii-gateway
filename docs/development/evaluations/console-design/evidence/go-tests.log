@@ -1,0 +1,21 @@
+?   	github.com/Apartment38/torii-gateway/assets	[no test files]
+ok  	github.com/Apartment38/torii-gateway/cmd/gateway	(cached)
+?   	github.com/Apartment38/torii-gateway/cmd/torii-auth	[no test files]
+ok  	github.com/Apartment38/torii-gateway/internal/accounting	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/activity	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/api	(cached)
+?   	github.com/Apartment38/torii-gateway/internal/buildinfo	[no test files]
+ok  	github.com/Apartment38/torii-gateway/internal/catalog	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/classifier	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/config	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/fault	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/intelligence	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/provider	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/quota	(cached)
+?   	github.com/Apartment38/torii-gateway/internal/requestid	[no test files]
+ok  	github.com/Apartment38/torii-gateway/internal/router	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/session	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/state	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/transport	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/usage	(cached)
+ok  	github.com/Apartment38/torii-gateway/internal/web	(cached)

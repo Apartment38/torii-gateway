@@ -1,0 +1,492 @@
+{
+  "steps": [
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai_compatible",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai_compatible",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "anthropic",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "gemini",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "xai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openrouter",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai-codex",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai-codex",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai_compatible",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "anthropic",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "gemini",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "xai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openrouter",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai-codex",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "nous",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "ollama",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "ollama",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai_compatible",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "anthropic",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "gemini",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "xai",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openrouter",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "openai-codex",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "nous",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "ollama",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "jev",
+      "scrollY": 0
+    },
+    {
+      "key": "type",
+      "tag": "SELECT",
+      "id": "",
+      "aria": "Provider type",
+      "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+      "value": "jev",
+      "scrollY": 0
+    }
+  ],
+  "changes": [
+    {
+      "downs": 1,
+      "value": "openai",
+      "typeFocus": true,
+      "final": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tab": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tabProviderID": false
+    },
+    {
+      "downs": 6,
+      "value": "openai-codex",
+      "typeFocus": true,
+      "final": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai-codex",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tab": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "openai-codex",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tabProviderID": false
+    },
+    {
+      "downs": 8,
+      "value": "ollama",
+      "typeFocus": true,
+      "final": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "ollama",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tab": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "ollama",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tabProviderID": false
+    },
+    {
+      "downs": 9,
+      "value": "jev",
+      "typeFocus": true,
+      "final": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "jev",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tab": {
+        "tag": "SELECT",
+        "id": "",
+        "aria": "Provider type",
+        "text": "OpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible",
+        "value": "jev",
+        "key": "type",
+        "scrollY": 0
+      },
+      "tabProviderID": false
+    }
+  ],
+  "escape": {
+    "dialogClosed": true,
+    "focus": {
+      "tag": "BUTTON",
+      "id": "add-provider",
+      "aria": null,
+      "text": "＋ Add provider",
+      "value": "",
+      "key": null,
+      "scrollY": 0
+    }
+  },
+  "escapeReturnsAdd": true,
+  "writes": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/session"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    }
+  ],
+  "noConfigWrites": true,
+  "errors": [],
+  "pass": false
+}

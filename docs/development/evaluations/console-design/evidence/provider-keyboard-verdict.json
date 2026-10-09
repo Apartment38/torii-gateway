@@ -1,0 +1,19 @@
+{
+  "focusFixPass": true,
+  "selectedTypes": [
+    "openai",
+    "openai-codex",
+    "ollama",
+    "jev"
+  ],
+  "tabOrderPass": true,
+  "escapeReturnsAdd": true,
+  "noConfigurationWrites": true,
+  "noPageErrors": true,
+  "nativePopupDistinction": "Closed-select Enter opens the native popup; first Tab dismisses it. Once closed, Tab visits Type help, then Provider ID. Open-popup Home/ArrowDown/Enter commits and closes, then Tab visits Type help, then Provider ID.",
+  "rawEvidence": [
+    "provider-keyboard-results.json",
+    "provider-keyboard-native-results.json"
+  ],
+  "pass": true
+}

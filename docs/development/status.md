@@ -44,18 +44,21 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-The premium console redesign is active on `feat/premium-console` in
-`/tmp/torii-premium-console`. Separate visual-shell and workflow builders are
-paired with independent running-browser review against Routerly screenshots and
-workflow documents. The first revision replaces the decorative overview with
-live state, adds a searchable compact model catalog, and clarifies provider,
-activity and accounting screens. Disposable SQLite and controlled local upstreams
-provide test data. Independent reviews verify filters, paging, clipboard values,
-provider cancellation, themes and mobile access. All 87 console tests, full Go
-tests/race tests, vet and build pass. Enabled benchmark density and final first-run
-verification remain active review items.
-The [live visual review page](evaluations/console-design/index.html) records
-screenshots and critique; it does not establish general product superiority.
+The premium console redesign is complete on `feat/premium-console` in
+`/tmp/torii-premium-console`, retained for review. Separate builders and independent
+running-browser critics iterated against Routerly screenshots and workflow docs.
+Both final reviewers prefer Torii on matched console tasks; catalog density and
+scoped accounting remain ties. The operational overview, restrained shell,
+provider choice/editing, searchable catalogs, request investigation, scoped usage,
+compact benchmark evidence and responsive navigation preserve existing controls.
+Real disposable UI checks verify setup, key lifecycle, provider onboarding,
+clipboard values, cancellation, deep links, themes and keyboard focus. All 99
+console tests, full Go/race tests, vet/build, generated assets, affected links and
+disposable non-root container validation pass. No blocking UI issue remains.
+The [visual review page](evaluations/console-design/index.html) preserves captures,
+critiques, comparison limits and [validation](evaluations/console-design/validation.json).
+These subjective comparisons do not establish whole-product superiority. No push,
+merge, publication or deployment was performed.
 
 V1 implementation and authorized rollout are complete. Release publication and
 platform-native checks remain below. The Smart-first catalog repair and

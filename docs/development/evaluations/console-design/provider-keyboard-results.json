@@ -1,0 +1,37 @@
+{
+  "actualKeyboardSelection": true,
+  "replacementFocus": [
+    {
+      "value": "openai",
+      "focused": {
+        "tag": "SELECT",
+        "label": "Provider type"
+      }
+    },
+    {
+      "value": "ollama",
+      "focused": {
+        "tag": "SELECT",
+        "label": "Provider type"
+      }
+    },
+    {
+      "value": "openai-codex",
+      "focused": {
+        "tag": "SELECT",
+        "label": "Provider type"
+      }
+    },
+    {
+      "value": "openai_compatible",
+      "focused": {
+        "tag": "SELECT",
+        "label": "Provider type"
+      }
+    }
+  ],
+  "nextTab": "Provider ID",
+  "cancelReturnsTrigger": true,
+  "configWrites": [],
+  "pageErrors": []
+}

@@ -1,0 +1,46 @@
+{
+  "direct": {
+    "text": "Benchmarks",
+    "rect": {
+      "x": 140.40625,
+      "y": 67.1875,
+      "width": 108.90625,
+      "height": 34,
+      "top": 67.1875,
+      "right": 249.3125,
+      "bottom": 101.1875,
+      "left": 140.40625
+    },
+    "nav": {
+      "x": 0,
+      "y": 67.1875,
+      "width": 390,
+      "height": 44,
+      "top": 67.1875,
+      "right": 390,
+      "bottom": 111.1875,
+      "left": 0
+    },
+    "windowY": 0,
+    "navScroll": 270
+  },
+  "before": 350,
+  "models": {
+    "y": 0,
+    "active": "Models"
+  },
+  "benchmarks": {
+    "y": 3,
+    "active": "Benchmarks",
+    "rect": {
+      "x": 140.40625,
+      "y": 64.1875,
+      "width": 108.90625,
+      "height": 34,
+      "top": 64.1875,
+      "right": 249.3125,
+      "bottom": 98.1875,
+      "left": 140.40625
+    }
+  }
+}

@@ -28,8 +28,20 @@
       "file": "screenshot-connect-client.png",
       "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-connect-client.png",
       "git_blob_sha": "035ab63a0cd4ae1a51a08750c83ad90357fa63d9"
+    },
+    {
+      "file": "screenshot-experiment-metrics.png",
+      "source": "https://github.com/Inebrio/Routerly/blob/develop/docs/assets/screenshot-experiment-metrics.png",
+      "git_blob_sha": "77727b0a11241820a6ffa28ad67d77e4b0f5baa5"
     }
   ],
   "runtime": "Actual Go gateway API, disposable SQLite, controlled local Ollama-compatible fixtures. Chromium headless screenshots and interaction tests. No production deployment.",
-  "review_conditions": "Routerly supplied static references; Torii screenshots captured at 1430/1440 \u00d7 1000 and 390 \u00d7 844. Visible branding prevents fully blind review. Comparisons concern existing Torii workflows, not product feature parity."
+  "review_conditions": "Routerly supplied static references; Torii screenshots captured at 1430/1440 \u00d7 1000 and 390 \u00d7 844. Visible branding prevents fully blind review. Comparisons concern existing Torii workflows, not product feature parity.",
+  "benchmark_fixture": "Synthetic ArtificialAnalysis-shaped values served on localhost:18087, ingested by the real disposable Go gateway. Match/ambiguity/freshness remain backend-derived. Separate zero-cache backend used. No published performance claim.",
+  "latest_capture": "2026-10-09",
+  "latest_implementation_commit": "713ecde",
+  "reviewers": [
+    "Independent workflow critic: round5-workflow-review.md",
+    "Independent shell critic: round5-shell-observations.md"
+  ]
 }

@@ -1,0 +1,156 @@
+{
+  "overview": "Skip to workspace\nTorii Gateway\nMODEL CONTROL PLANE\n\nWORKSPACE\n\nOverview\nProviders\nModels\nSmart routing\nBenchmarks\n\nOPERATIONS\n\nActivity\nUsage & quota\nAPI keys\nServer\nreviewer\nAdministrator\nTorii Gateway / console\nWorkspace\n/\nOverview\nSign out\nRefresh\nOverview\n\nA clear view of your gateway, from connected providers to every request.\n\nReporting period\nToday · UTC\nThis month · UTC\nManage providers\n↗\nRequests today\n12\nClient requests · current UTC day\nProcessed tokens\n5,424\nInput + output · current UTC day\nEstimated cost\n$0.0000\nOperator estimate · USD · current UTC day\nRecent success\n100.0%\n10 of 10 completed · last 30 recorded events\n2 enabled providers · 2 configured\n12 enabled models · 12 discovered\nDeterministic routing\nModel usage today\nCurrent UTC day · input + output tokens\nView usage →\n5,424 tokens\n$0.0000 estimated\nlocal/gemma3:27b\n1,808 tokens\nlocal/llama3.3:70b\n1,808 tokens\nlocal/qwen3:8b\n1,808 tokens\nRecent requests\nLatest completed requests · local time\n10 completed · 10 successful · 0 errors in last 30 recorded events\nView activity →\nlocal/gemma3:27b\n01:00:57 AM · Default gateway key\nsuccess\n2 ms\nlocal/llama3.3:70b\n01:00:57 AM · Default gateway key\nsuccess\n3 ms\nlocal/qwen3:8b\n01:00:57 AM · Default gateway key\nsuccess\n4 ms\nlocal/gemma3:27b\n01:00:57 AM · Default gateway key\nsuccess\n1 ms\nlocal/llama3.3:70b\n01:00:57 AM · Default gateway key\nsuccess\n1 ms\nConnected providers\nManage providers →\nL\nlocal\nOllama\nConnected\n6 models\nL\nlab\nOllama\nConnected\n6 models\nConnect a client\nUse an OpenAI-compatible application or SDK\nAPI keys →\nBase URL\nCopy\nModel\nsmart · gateway routing\nlab/codestral:22b\nlab/deepseek-r1:14b\nlab/gemma3:27b\nlab/llama3.3:70b\nlab/mistral-small:24b\nlab/qwen3:8b\nlocal/codestral:22b\nlocal/deepseek-r1:14b\nlocal/gemma3:27b\nlocal/llama3.3:70b\nlocal/mistral-small:24b\nlocal/qwen3:8b\nCopy\n\nCreate a named gateway API key for each application. Choose smart to use your routing policy.\n\nChanges save automatically\nLoaded from gateway",
+  "transitions": [
+    {
+      "label": "OpenAI Codex",
+      "text": "UPSTREAM CONNECTION\nAdd provider\n\nConnect your OpenAI Codex subscription using OAuth login.\n\nProvider enabled\nTreat models as free\nType\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.\nProvider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.\n\nThis subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.\n\nCancel\nSave provider",
+      "options": [
+        "OpenAI compatible",
+        "OpenAI",
+        "Anthropic",
+        "Google Gemini",
+        "xAI",
+        "OpenRouter",
+        "OpenAI Codex",
+        "Nous",
+        "Ollama",
+        "TypeSafe Jev",
+        "Jev compatible"
+      ]
+    },
+    {
+      "label": "Ollama",
+      "text": "UPSTREAM CONNECTION\nAdd provider\n\nConnect a self-hosted Ollama server and discover its model catalog.\n\nProvider enabled\nTreat models as free\nType\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.\nProvider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.\nAPI URL\n?\nThe complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field.\nRequest timeout\n?\nTime allowed for model loading and the complete response, including streaming. Leave blank for 5 minutes. Client cancellation still applies.\nAdvanced provider options\nCancel\nSave provider",
+      "options": [
+        "OpenAI compatible",
+        "OpenAI",
+        "Anthropic",
+        "Google Gemini",
+        "xAI",
+        "OpenRouter",
+        "OpenAI Codex",
+        "Nous",
+        "Ollama",
+        "TypeSafe Jev",
+        "Jev compatible"
+      ]
+    },
+    {
+      "label": "TypeSafe Jev",
+      "text": "UPSTREAM CONNECTION\nAdd provider\n\nConnect TypeSafe Jev classifier models for Smart routing.\n\nProvider enabled\nTreat models as free\nType\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.\nProvider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.\nAPI URL\n?\nThe complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field.\nAPI key\nReveal\n?\nEnter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.\nAdvanced provider options\nCancel\nSave provider",
+      "options": [
+        "OpenAI compatible",
+        "OpenAI",
+        "Anthropic",
+        "Google Gemini",
+        "xAI",
+        "OpenRouter",
+        "OpenAI Codex",
+        "Nous",
+        "Ollama",
+        "TypeSafe Jev",
+        "Jev compatible"
+      ]
+    },
+    {
+      "label": "OpenAI compatible",
+      "text": "UPSTREAM CONNECTION\nAdd provider\n\nConnect any API that supports OpenAI-compatible endpoints.\n\nProvider enabled\nTreat models as free\nType\nOpenAI compatible\nOpenAI\nAnthropic\nGoogle Gemini\nxAI\nOpenRouter\nOpenAI Codex\nNous\nOllama\nTypeSafe Jev\nJev compatible\n?\nThe provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.\nProvider ID\n?\nThe stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.\nAPI URL\n?\nThe complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field.\nAPI key\nReveal\n?\nEnter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.\nAdvanced provider options\nCancel\nSave provider",
+      "options": [
+        "OpenAI compatible",
+        "OpenAI",
+        "Anthropic",
+        "Google Gemini",
+        "xAI",
+        "OpenRouter",
+        "OpenAI Codex",
+        "Nous",
+        "Ollama",
+        "TypeSafe Jev",
+        "Jev compatible"
+      ]
+    }
+  ],
+  "cancelIdentical": true,
+  "mobileWidth": {
+    "width": 390,
+    "doc": 390
+  },
+  "evidence": "PUBLISHED EVIDENCE\n\nqwen3:8b\nCapability scores\nOverall %\n66.6\nCoding %\n72.0\nAgentic %\n58.0\nKnowledge %\n—\nReasoning %\n71.0\nMath %\n64.0\nInstruction following %\n—\nMultimodal %\n—\nPreference %\n—\nGeneral intelligence %\n68.0\nOperating metrics\nInput USD / 1M\n0.15\nOutput USD / 1M\n0.6\nLatency seconds\n2\nFirst token seconds\n0.18\nTokens / second\n42\nContext tokens\n32768\nProvenance & freshness\nModel ID\nexternal/qwen3:8b\nProviders\n—\nSources\nreview-fixture\nMatch\nAmbiguous · display only\nData status\nCurrent\nObservations\n12\nLatest evaluation\nOct 8, 2026 · 14:00 UTC\nLast retrieval\nOct 8, 2026 · 14:31 UTC\nAge seconds\n54090\nValid until\nOct 15, 2026 · 14:31 UTC\nDone",
+  "exactTitles": [
+    {
+      "text": "Oct 8, 2026 · 14:00 UTC",
+      "title": "2026-10-08T14:00:00Z"
+    },
+    {
+      "text": "Oct 8, 2026 · 14:31 UTC",
+      "title": "2026-10-08T14:31:49.082863946Z"
+    },
+    {
+      "text": "54090",
+      "title": "54089.983801602"
+    },
+    {
+      "text": "Oct 15, 2026 · 14:31 UTC",
+      "title": "2026-10-15T14:31:49.082863946Z"
+    }
+  ],
+  "evidenceGeometry": {
+    "width": 356,
+    "scrollWidth": 356,
+    "scrollTop": 274,
+    "scrollHeight": 1068
+  },
+  "directMobile": [
+    {
+      "text": "Benchmarks",
+      "rect": {
+        "x": 140.40625,
+        "y": -310.8125,
+        "width": 108.90625,
+        "height": 34,
+        "top": -310.8125,
+        "right": 249.3125,
+        "bottom": -276.8125,
+        "left": 140.40625
+      },
+      "parent": {
+        "x": 0,
+        "y": -310.8125,
+        "width": 390,
+        "height": 44,
+        "top": -310.8125,
+        "right": 390,
+        "bottom": -266.8125,
+        "left": 0
+      },
+      "windowY": 378
+    }
+  ],
+  "writes": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/session"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:18081/gateway/v1/providers/test"
+    }
+  ],
+  "errors": []
+}

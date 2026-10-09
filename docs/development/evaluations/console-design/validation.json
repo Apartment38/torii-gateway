@@ -1,0 +1,58 @@
+{
+  "implementation_commit": "713ecde",
+  "date": "2026-10-09",
+  "console_tests": {
+    "passed": 99,
+    "failed": 0,
+    "evidence": "evidence/console-tests.log"
+  },
+  "go_tests": {
+    "status": "pass",
+    "command": "go test ./...",
+    "evidence": "evidence/go-tests.log"
+  },
+  "race_tests": {
+    "status": "pass",
+    "command": "go test -race ./...",
+    "evidence": "evidence/race-tests.log"
+  },
+  "vet_build": {
+    "status": "pass",
+    "commands": [
+      "go vet ./...",
+      "go build ./..."
+    ]
+  },
+  "container": {
+    "status": "pass",
+    "image": "localhost/torii-premium-console-validation:local",
+    "image_id": "1ea5b64cabad4e5299a763c7724abec24407048ebdef96fd7f5b3df6d52fa1fd",
+    "command": "bash scripts/test-credential-container.sh localhost/torii-premium-console-validation:local",
+    "evidence": "evidence/container-validation.log"
+  },
+  "assets_and_docs": {
+    "status": "pass",
+    "checks": [
+      "gofmt: no Go diff",
+      "go mod tidy: unchanged go.mod/go.sum",
+      "build-console --check",
+      "login.js syntax",
+      "git diff --check",
+      "affected local documentation links",
+      "reference Git blob hashes match recorded Routerly tree"
+    ]
+  },
+  "running_ui": {
+    "independent_review": "round5-workflow-review.md",
+    "independent_shell_observations": "round5-shell-observations.md",
+    "independent_keyboard_check": "round5-keyboard-addendum.md",
+    "progress_page": "evidence/progress-page-results.json"
+  },
+  "source_hashes": {
+    "internal/web/static/app.js": "e1b325d522cf8a64c053a68a9bb2f5a2aeeedcef43dcf51a906569ddc73da146",
+    "internal/web/static/styles.css": "d6c8cbcc0784da5a2d61c329f4f03aa8895564e60207e3614dcf9814c8b25dd9",
+    "internal/web/static/index.html": "0a0fc448d83458788f3baa9dac92c45cf9a1e61a5faba6ec32c6bcb24866eafa",
+    "internal/web/static/login.html": "441bc9ed27187394039b5af2527b5a1e4f69388f58522004ff35858eeefccb9f",
+    "internal/web/static/login.js": "49d85e5a67470eb66cd7a9d7c9fa610c0501ce374e550921e36f1365c0d66878"
+  }
+}

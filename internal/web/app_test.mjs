@@ -1470,6 +1470,22 @@ test("new provider drafts can switch out of subscriptions and cancel without cha
  assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,0);
 });
 
+test("changing provider type restores keyboard focus to the replacement chooser",()=>{
+ const app=consoleFixture(()=>response(models(1)));
+ app.run('providers=[{...providerDefaults,id:"draft"}];renderProviders();openProviderEditor(0,true)');
+ const oldType={dataset:{provider:"0",key:"type"},value:"ollama"};
+ let focused=false;
+ const replacement={focus(options){focused=true;assert.equal(options.preventScroll,true);app.context.document.activeElement=replacement;}};
+ const originalQuery=app.list.querySelector.bind(app.list);
+ app.list.querySelector=selector=>selector==='[data-provider="0"][data-key="type"]'?replacement:originalQuery(selector);
+ app.context.oldType=oldType;app.context.document.activeElement=oldType;
+ app.run('updateProvider({target:oldType})');
+ assert.equal(focused,true);
+ assert.equal(app.context.document.activeElement,replacement);
+ assert.equal(app.run('providers[0].type'),"ollama");
+ assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,0);
+});
+
 test("benchmark evidence groups readable UTC dates and preserves exact provenance",()=>{
  const app=consoleFixture(()=>response({}));app.context.evidenceRow={id:"fixture/model",scores:{overall:.9},latest_retrieval:"2026-10-08T14:23:12.123456789Z",latest_evaluation:"2026-10-01",age_seconds:123.456789};
  const html=app.run('benchmarkEvidence(evidenceRow)');

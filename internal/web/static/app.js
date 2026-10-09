@@ -849,6 +849,7 @@ function updateProvider(event       )       {
     }
     if (knownProviderIDs[control.value]) providers[index].id = knownProviderID(control.value, index);
     renderProviders();
+    if(editingProvider===index)providerList.querySelector                   (`[data-provider="${index}"][data-key="type"]`)?.focus?.({preventScroll:true});
     void testProvider(index);
   }
   markDirty();

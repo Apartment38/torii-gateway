@@ -38,10 +38,6 @@ code { color: var(--text-strong); }
 .brand { display: flex; align-items: center; gap: 10px; margin: 0 10px 26px; color: var(--text-strong); text-decoration: none; font-size: 17px; font-weight: 700; letter-spacing: -.045em; white-space: nowrap; }
 .brand img { width: 34px; height: 34px; object-fit: contain; }
 .brand small { display: block; margin-top: 1px; color: var(--muted); font-size: 8px; font-weight: 600; letter-spacing: .13em; }
-.workspace-label { display: flex; align-items: center; gap: 9px; margin: 0 0 25px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text-strong); font-size: 11px; font-weight: 600; }
-.workspace-label small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; }
-.workspace-avatar,.context-icon { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); color: var(--accent); font-weight: 700; }
-.workspace-chevron { margin-left: auto; color: var(--muted); }
 nav { display: grid; gap: 3px; }
 .nav-caption { margin: 0 12px 7px; color: var(--muted); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; }
 .nav-caption.nav-divider { margin-top: 22px; }
@@ -452,3 +448,10 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
  .benchmark-view-controls label:nth-child(3) { grid-row: 1; grid-column: 2; }
  .benchmark-view-controls label:nth-child(2) { grid-row: 2; grid-column: 1/-1; }
 }
+.overview-context { display: flex; grid-column: 1/-1; align-items: center; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 11px; }
+.overview-context a { color: var(--muted); text-decoration: none; }
+.overview-context a:hover { color: var(--accent); }
+.overview-context strong { color: var(--text-strong); font-weight: 550; }
+.benchmark-evidence-section+ .benchmark-evidence-section { border-top: 1px solid var(--line); padding-top: 18px; }
+.benchmark-evidence-section h3 { font-size: 12px; margin: 14px 0 8px; }
+.benchmark-evidence-section .benchmark-evidence-grid { margin-top: 12px; margin-bottom: 18px; }

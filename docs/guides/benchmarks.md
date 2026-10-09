@@ -44,7 +44,9 @@ and capability scores, sources, match safety, and freshness. **Inspect** opens a
 available scores, operational measurements, provenance, dates, age, and validity.
 Choose **All
 benchmark models** or **Configured models only**, filter rows, and select
-25, 50, or 100 models per page (default 25).
+5, 10, 25, 50, or 100 models per page (default 25 on desktop, 5 on mobile).
+Evidence is grouped into capability scores, operating metrics, and provenance;
+dates display in UTC with exact timestamps available in tooltips.
 
 Missing scores are unknown, not zero. Exact identities and explicit aliases
 can supply routing evidence. **Approximate** associations are for display only:

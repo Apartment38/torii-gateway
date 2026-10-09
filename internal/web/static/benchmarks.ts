@@ -14,7 +14,7 @@ let benchmarkAbort: AbortController | null = null;
 let benchmarkReloadSequence = 0;
 let benchmarkProgressLog: string[] = [];
 let benchmarkProgressCounts = {total:0,completed:0,failed:0};
-let benchmarkPageSize = 25;
+let benchmarkPageSize = matchMedia("(max-width: 760px)").matches?5:25;
 // Injected by build-console.mjs from the same presets.json used by the backend.
 declare const benchmarkDefinitions: {name:string; requires_api_key:boolean; note:string; settings:Record<string,any>}[];
 const benchmarkCapabilities = ["coding", "agentic", "knowledge", "reasoning", "math", "instruction_following", "multimodal", "preference", "general_intelligence"];
@@ -49,7 +49,7 @@ function clearBenchmarkConsole(): void {
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
   benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
-  benchmarkPageSize = 25;
+  benchmarkPageSize = matchMedia("(max-width: 760px)").matches?5:25;
   benchmarkDirty = false; benchmarkRefreshRunning = false; benchmarkProgressLog = [];
   benchmarkProgressCounts = {total:0,completed:0,failed:0};
   document.querySelector<HTMLInputElement>("#intelligence-enabled")!.checked = false;
@@ -57,7 +57,7 @@ function clearBenchmarkConsole(): void {
   document.querySelector("#benchmark-refresh-log")!.textContent = "";
   document.querySelector<HTMLInputElement>("#benchmark-table-filter")!.value = "";
   document.querySelector<HTMLSelectElement>("#benchmark-table-view")!.value = "models";
-  document.querySelector<HTMLSelectElement>("#benchmark-page-size")!.value = "25";
+  document.querySelector<HTMLSelectElement>("#benchmark-page-size")!.value = String(benchmarkPageSize);
   renderBenchmarkSources(); renderBenchmarkTable();
 }
 function benchmarkAttributes(source: number, field: string): string {
@@ -130,9 +130,13 @@ function benchmarkLabel(name:string):string{return name.replace(/_/g," ").replac
 function benchmarkEvidence(row:any):string{
  const scores=["overall",...benchmarkCapabilities];
  const operations:Record<string,string>={input_price:"Input USD / 1M",output_price:"Output USD / 1M",latency:"Latency seconds",ttft:"First token seconds",throughput:"Tokens / second",context_length:"Context tokens"};
- const fields=[...scores.map(name=>[`${benchmarkLabel(name)} %`,benchmarkNumber(row.scores?.[name],true)]),...Object.entries(operations).map(([name,label])=>[label,benchmarkNumber(row.operations?.[name])]),["Model ID",row.id],["Providers",(row.provider_ids||[]).join(", ")||"—"],["Sources",(row.sources||[]).join(", ")||"—"],["Match",["approximate","ambiguous","unmatched"].includes(row.match)?`${benchmarkLabel(row.match)} · display only`:"Matched"],["Data status",row.stale?"Stale":"Current"],["Observations",String(row.observation_count||0)],["Latest evaluation",benchmarkDate(row.latest_evaluation)],["Last retrieval",benchmarkDate(row.latest_retrieval)],["Age seconds",benchmarkNumber(row.age_seconds)],["Valid until",benchmarkDate(row.valid_until)]];
- return `<div class="benchmark-evidence-content"><dl class="benchmark-evidence-grid">${fields.map(([label,value])=>`<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(String(value))}</dd></div>`).join("")}</dl></div>`;
+ const scoreFields=scores.map(name=>[`${benchmarkLabel(name)} %`,benchmarkNumber(row.scores?.[name],true)]);
+ const operationFields=Object.entries(operations).map(([name,label])=>[label,benchmarkNumber(row.operations?.[name])]);
+ const provenanceFields=[["Model ID",row.id],["Providers",(row.provider_ids||[]).join(", ")||"—"],["Sources",(row.sources||[]).join(", ")||"—"],["Match",["approximate","ambiguous","unmatched"].includes(row.match)?`${benchmarkLabel(row.match)} · display only`:"Matched"],["Data status",row.stale?"Stale":"Current"],["Observations",String(row.observation_count||0)],["Latest evaluation",benchmarkDate(row.latest_evaluation),String(row.latest_evaluation||"")],["Last retrieval",benchmarkDate(row.latest_retrieval),String(row.latest_retrieval||"")],["Age seconds",typeof row.age_seconds==="number"&&Number.isFinite(row.age_seconds)?String(Math.round(row.age_seconds)):"—",String(row.age_seconds??"")],["Valid until",benchmarkDate(row.valid_until),String(row.valid_until||"")]];
+ const group=(title:string,fields:any[][]):string=>`<section class="benchmark-evidence-section"><h3>${title}</h3><dl class="benchmark-evidence-grid">${fields.map(([label,value,exact])=>`<div><dt>${escapeHTML(label)}</dt><dd${exact?` title="${escapeHTML(exact)}"`:""}>${escapeHTML(String(value))}</dd></div>`).join("")}</dl></section>`;
+ return `<div class="benchmark-evidence-content">${group("Capability scores",scoreFields)}${group("Operating metrics",operationFields)}${group("Provenance & freshness",provenanceFields)}</div>`;
 }
+
 let inspectedBenchmarkModel="";
 function openBenchmarkEvidence(id:string):void{
  const model=benchmarkModels[id];if(!model)return;inspectedBenchmarkModel=id;
@@ -169,7 +173,12 @@ function renderBenchmarkTable(): void {
  if(focused==="benchmark-next"&&next.disabled)(previous.disabled?document.querySelector<HTMLInputElement>("#benchmark-table-filter"):previous)?.focus?.();
  if(focused==="benchmark-previous"&&previous.disabled)(next.disabled?document.querySelector<HTMLInputElement>("#benchmark-table-filter"):next)?.focus?.();
 }
-function benchmarkDate(value: any): string { return value && !String(value).startsWith("0001-") ? String(value) : "Unknown"; }
+function benchmarkDate(value:any):string{
+ if(!value||String(value).startsWith("0001-"))return "Unknown";
+ const date=new Date(String(value));if(Number.isNaN(date.getTime()))return "Unknown";
+ const display=date.toLocaleDateString("en-US",{timeZone:"UTC",month:"short",day:"numeric",year:"numeric"});
+ return /^\d{4}-\d{2}-\d{2}$/.test(String(value))?display:`${display} · ${date.toLocaleTimeString("en-US",{timeZone:"UTC",hour:"2-digit",minute:"2-digit",hour12:false})} UTC`;
+}
 async function loadBenchmarkData(): Promise<boolean> {
   if (!benchmarksEnabledSaved || !consoleSession) return false;
   const sequence = ++benchmarkReloadSequence;
@@ -283,13 +292,14 @@ async function inspectBenchmarks(refresh: boolean): Promise<void> {
   finally { if (benchmarkAbort === abort) { benchmarkRefreshRunning = false; benchmarkAbort = null; updateBenchmarkControls(); } }
 }
 function initializeBenchmarks(): void {
+ document.querySelector<HTMLSelectElement>("#benchmark-page-size")!.value=String(benchmarkPageSize);
  document.querySelector("#close-benchmark-evidence")?.addEventListener("click",closeBenchmarkEvidence);
  const evidence=document.querySelector<HTMLDialogElement>("#benchmark-evidence-dialog");
  evidence?.addEventListener("close",()=>{const buttons=document.querySelectorAll<HTMLButtonElement>("[data-benchmark-inspect]");const opener=Array.from(buttons).find(button=>button.dataset.benchmarkInspect===inspectedBenchmarkModel);(opener||document.querySelector<HTMLInputElement>("#benchmark-table-filter"))?.focus?.();});
  evidence?.addEventListener("keydown",event=>{if(event.key==="Tab"){event.preventDefault();document.querySelector<HTMLButtonElement>("#close-benchmark-evidence")?.focus?.();}});
   const list = document.querySelector("#benchmark-sources-list")!;
   list.addEventListener("input", updateBenchmarkSource); list.addEventListener("click", benchmarkSourceAction);
-  document.querySelector("#benchmark-page-size")!.addEventListener("change",()=>{const size=Number(document.querySelector<HTMLSelectElement>("#benchmark-page-size")!.value);if(![25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;renderBenchmarkTable();});
+  document.querySelector("#benchmark-page-size")!.addEventListener("change",()=>{const size=Number(document.querySelector<HTMLSelectElement>("#benchmark-page-size")!.value);if(![5,10,25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;renderBenchmarkTable();});
   document.querySelector("#benchmark-table-view")!.addEventListener("change",()=>{benchmarkTableView=document.querySelector<HTMLSelectElement>("#benchmark-table-view")!.value;benchmarkPage=0;void loadBenchmarkData();});
   document.querySelector("#benchmark-table-filter")!.addEventListener("input",()=>{benchmarkFilter=document.querySelector<HTMLInputElement>("#benchmark-table-filter")!.value;benchmarkPage=0;renderBenchmarkTable();});
   document.querySelector("#benchmark-previous")!.addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;renderBenchmarkTable();}});

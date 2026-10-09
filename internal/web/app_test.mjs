@@ -1268,7 +1268,7 @@ test("overview request counts exclude model attempts and monthly totals",()=>{
  app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"local",type:"ollama"}];overviewModels=[{id:"local/a",enabled:true},{id:"local/b",enabled:false}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:3},{key_id:"*",period:"2026-10-08",model:"local/a",requests:12},{key_id:"*",period:"2026-10",model:"",requests:99},{key_id:"client",period:"2026-10-08",model:"",requests:3}];renderOverview()');
  const summary=app.run('document.querySelector("#overview-summary").innerHTML');
  assert.match(summary,/Requests today<\/span><strong class="metric-value">3<\/strong>/);
- assert.match(summary,/Enabled models<\/span><strong class="metric-value">1<\/strong>/);
+ assert.match(summary,/<strong>1<\/strong> enabled models/);
  assert.match(summary,/href="#models"/);
 });
 
@@ -1392,12 +1392,12 @@ test("overview period changes use exact monthly totals and qualify bounded activ
  const app=consoleFixture(()=>response({}));
  app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"p"}];overviewModels=[{id:"p/a",enabled:true}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:2},{key_id:"*",period:"2026-10",model:"",requests:17},{key_id:"*",period:"2026-10-08",model:"p/a",input_tokens:100,output_tokens:20,estimated_cost:.5},{key_id:"*",period:"2026-10",model:"p/a",input_tokens:1000,output_tokens:300,estimated_cost:4},{key_id:"client",period:"2026-10",model:"p/a",input_tokens:1000,output_tokens:300,estimated_cost:4}];overviewRecent=[{kind:"request_start"},{kind:"request_complete",outcome:"success"},{kind:"request_complete",outcome:"error",status:500}];renderOverview()');
  assert.equal(app.run('overviewModelUsage()[0].tokens'),120);
- assert.match(app.run('renderOverviewMonitoring()'),/2 completed · 1 errors in last 3 recorded events/);
+ assert.match(app.run('renderOverviewMonitoring()'),/2 completed · 1 successful · 1 errors in last 3 recorded events/);
  app.run('overviewPeriod="monthly";renderOverview()');
  assert.equal(app.run('overviewModelUsage()[0].tokens'),1300);
  assert.equal(app.run('overviewModelUsage()[0].cost'),4);
  assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/Requests this month<\/span><strong class="metric-value">17<\/strong>/);
- assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/Enabled models<\/span><strong class="metric-value">1<\/strong>/);
+ assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/<strong>1<\/strong> enabled models/);
  assert.match(app.run('renderOverviewMonitoring()'),/Current UTC month/);
 });
 
@@ -1448,4 +1448,98 @@ test("opening benchmark evidence focuses its title and starts at the top of the 
  assert.equal(app.run('document.querySelector("#benchmark-evidence-dialog").scrollTop'),0);
  assert.equal(app.context.focusCalls.length,1);
  assert.equal(app.context.focusCalls[0].preventScroll,true);
+});
+
+test("new provider drafts can switch out of subscriptions and cancel without changing saved profiles",async()=>{
+ const app=consoleFixture(()=>response(models(1)));
+ app.setProviders([{...draft("ollama","local"),request_timeout:"10m",headers:'{"X-Profile":{"env":"PROFILE_HEADER"}}'}]);
+ app.run('const savedProfile=providers[0];const savedProfileJSON=JSON.stringify(savedProfile);saveState.textContent="Saved";providers.push({...providerDefaults,api_key:"draft-provider-secret"});renderProviders();openProviderEditor(1,true)');
+ for(const type of ["openai-codex","ollama","nous","openai_compatible","jev_compatible","openai-codex","openai_compatible"]){
+  app.context.nextType=type;
+  app.run('updateProvider({target:{dataset:{provider:"1",key:"type"},value:nextType}})');
+  assert.equal(app.run('providers[1].type'),type);
+  for(const label of ["API providers","Subscriptions","Self-hosted","Classifiers"])assert.ok(app.list.innerHTML.includes(`<optgroup label="${label}">`));
+  assert.doesNotMatch(app.list.innerHTML,/value="draft-provider-secret"/);
+ }
+ app.run('cancelProviderEditor()');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(app.run('providers.length'),1);
+ assert.equal(app.run('providers[0]===savedProfile'),true);
+ assert.equal(app.run('JSON.stringify(providers[0])===savedProfileJSON'),true);
+ assert.equal(app.run('editGeneration'),0);
+ assert.equal(app.run('saveState.textContent'),"Saved");
+ assert.equal(app.calls.filter(call=>call.options?.method==="PUT").length,0);
+});
+
+test("benchmark evidence groups readable UTC dates and preserves exact provenance",()=>{
+ const app=consoleFixture(()=>response({}));app.context.evidenceRow={id:"fixture/model",scores:{overall:.9},latest_retrieval:"2026-10-08T14:23:12.123456789Z",latest_evaluation:"2026-10-01",age_seconds:123.456789};
+ const html=app.run('benchmarkEvidence(evidenceRow)');
+ for(const heading of ["Capability scores","Operating metrics","Provenance & freshness"])assert.ok(html.includes(`<h3>${heading}</h3>`));
+ assert.match(html,/title="2026-10-08T14:23:12\.123456789Z">Oct 8, 2026 · 14:23 UTC/);
+ assert.match(html,/title="123\.456789">123<\/dd>/);
+ assert.equal(app.run('benchmarkDate("0001-01-01T00:00:00Z")'),"Unknown");
+ assert.equal(app.run('benchmarkDate(null)'),"Unknown");
+});
+
+test("mobile benchmarks start with five summaries and preserve desktop page-size choices",()=>{
+ const app=consoleFixture(()=>response({}),{mobile:true});
+ assert.equal(app.run('benchmarkPageSize'),5);
+ assert.equal(app.run('document.querySelector("#benchmark-page-size").value'),"5");
+ app.run('document.querySelector("#benchmark-page-size").value="25";document.querySelector("#benchmark-page-size").listeners.change()');
+ assert.equal(app.run('benchmarkPageSize'),25);
+});
+
+test("operational overview avoids duplicate accounting and qualifies unknown costs and sampled success",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"p"}];overviewModels=[{id:"p/m",enabled:true}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:2,input_tokens:999,estimated_cost:99},{key_id:"*",period:"2026-10-08",model:"p/m",input_tokens:100,output_tokens:20,estimated_cost:.5,unknown_cost_attempts:1},{key_id:"client",period:"2026-10-08",model:"p/m",input_tokens:100,output_tokens:20,estimated_cost:.5,unknown_cost_attempts:1},{key_id:"*",period:"2026-10",model:"p/m",input_tokens:5000,estimated_cost:20}];overviewRecent=[{kind:"request_start"},{kind:"routing"},{kind:"request_complete",outcome:"success",status:200},{kind:"request_complete",outcome:"interrupted",status:200},{kind:"request_complete",outcome:"error",status:500}];renderOverview()');
+ const summary=app.run('document.querySelector("#overview-summary").innerHTML');
+ assert.match(summary,/Requests today<\/span><strong class="metric-value">2<\/strong>/);
+ assert.match(summary,/Processed tokens<\/span><strong class="metric-value">120<\/strong>/);
+ assert.match(summary,/Estimated cost<\/span><strong class="metric-value">\$0.5000<\/strong>/);
+ assert.match(summary,/Partial USD total · 1 unknown-cost attempts/);
+ assert.match(summary,/Recent success<\/span><strong class="metric-value">33.3%<\/strong>/);
+ assert.match(summary,/1 of 3 completed · last 5 recorded events/);
+ assert.match(summary,/<div class="overview-context"/);
+ assert.match(summary,/<strong>Deterministic<\/strong> routing/);
+ assert.equal(app.calls.length,0);
+});
+
+test("overview distinguishes absent data from real zero usage and zero successful requests",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('renderOverview()');
+ let summary=app.run('document.querySelector("#overview-summary").innerHTML');
+ for(const label of ["Requests today","Processed tokens","Estimated cost","Recent success"])assert.match(summary,new RegExp(`${label}<\\/span><strong class="metric-value">—<\\/strong>`));
+ app.run('overviewUsage=[];overviewRecent=[];renderOverview()');
+ summary=app.run('document.querySelector("#overview-summary").innerHTML');
+ assert.match(summary,/Processed tokens<\/span><strong class="metric-value">0<\/strong>/);
+ assert.match(summary,/Estimated cost<\/span><strong class="metric-value">\$0.0000<\/strong>/);
+ assert.match(summary,/Recent success<\/span><strong class="metric-value">—<\/strong>/);
+ app.run('overviewRecent=[{kind:"request_start"},{kind:"request_complete",outcome:"error",status:500}];renderOverview()');
+ summary=app.run('document.querySelector("#overview-summary").innerHTML');
+ assert.match(summary,/Recent success<\/span><strong class="metric-value">0.0%<\/strong>/);
+ assert.match(summary,/0 of 1 completed · last 2 recorded events/);
+});
+
+test("overview usage drill-down follows its period without saving configuration",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('document.querySelector("#overview-summary").querySelectorAll=()=>[document.querySelector("#metric-link")];overviewPeriod="monthly";document.querySelector("#budget-scope").value="client";renderOverview();document.querySelector("#metric-link").listeners.click()');
+ assert.equal(app.run('usagePeriod'),"monthly");
+ assert.equal(app.run('document.querySelector("#budget-scope").value'),"*");
+ assert.equal(app.run('editGeneration'),0);
+ assert.equal(app.calls.length,0);
+});
+
+test("mobile navigation exposes the current section without scrolling the workspace",()=>{
+ const app=consoleFixture(()=>response({}),{mobile:true});
+ app.run(`window.matchMedia=matchMedia;
+ const nav=document.querySelector("#nav");nav.scrollLeft=0;nav.getBoundingClientRect=()=>({left:16,right:374,width:358});
+ const overviewLink={attributes:{"aria-current":"page"},classList:{toggle(){}},getAttribute:()=>"#overview",setAttribute(name,value){this.attributes[name]=value;},removeAttribute(name){delete this.attributes[name];},getBoundingClientRect:()=>({left:16,right:114,width:98})};
+ const benchmarkLink={attributes:{},classList:{toggle(){}},getAttribute:()=>"#intelligence",setAttribute(name,value){this.attributes[name]=value;},removeAttribute(name){delete this.attributes[name];},getBoundingClientRect:()=>({left:420,right:520,width:100})};
+ document.querySelectorAll=selector=>selector===".nav-link"?[overviewLink,benchmarkLink]:[];syncConsoleNavigation("intelligence");`);
+ assert.equal(app.run('benchmarkLink.attributes["aria-current"]'),"page");
+ assert.equal(app.run('overviewLink.attributes["aria-current"]'),undefined);
+ assert.equal(app.run('document.querySelector("#nav").scrollLeft'),275);
+ app.run('benchmarkLink.getBoundingClientRect=()=>({left:150,right:250,width:100});syncConsoleNavigation("intelligence")');
+ assert.equal(app.run('document.querySelector("#nav").scrollLeft'),275);
+ app.run('window.matchMedia=()=>({matches:false});benchmarkLink.getBoundingClientRect=()=>({left:420,right:520,width:100});syncConsoleNavigation("intelligence")');
+ assert.equal(app.run('document.querySelector("#nav").scrollLeft'),275);
 });

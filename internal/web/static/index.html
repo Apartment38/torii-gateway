@@ -19,7 +19,6 @@
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#overview" aria-label="Torii Gateway home"><img src="/web/torii-gateway-icon.png" alt="" /><span>Torii Gateway<small>MODEL CONTROL PLANE</small></span></a>
-        <div class="workspace-label"><span class="workspace-avatar">T</span><span>Gateway workspace<small>Administrator console</small></span></div>
         <nav id="nav" aria-label="Configuration sections"><p class="nav-caption">Workspace</p>
           <a class="nav-link active" href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
           <a class="nav-link" href="#providers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8 4 12l4 4m8-8 4 4-4 4M14 5l-4 14"/></svg><span>Providers</span></a>
@@ -39,7 +38,7 @@
         </div>
       </aside>
       <main id="top" class="content">
-        <header class="topbar"><div class="topbar-context"><span class="context-icon">T</span><span>Workspace</span><span class="context-separator">/</span><strong id="current-page-title">Overview</strong></div>
+        <header class="topbar"><div class="topbar-context"><span>Workspace</span><span class="context-separator">/</span><strong id="current-page-title">Overview</strong></div>
           <div class="top-actions">
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme" title="Toggle light and dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 13a9 9 0 0 1-9.8-9.8A9 9 0 1 0 20.8 13Z"/></svg></button>
             <button id="console-login" class="button secondary" type="button">Sign in</button>
@@ -50,20 +49,20 @@
         </header>
 
         <section id="overview" class="page overview-page">
-          <div class="section-heading page-heading"><div><p class="eyebrow">Your model infrastructure, at a glance</p><h2>Overview</h2><p class="page-description">A clear view of your gateway, from connected providers to every request.</p></div><div class="overview-actions"><label for="overview-period" class="inline-filter"><span class="sr-only">Reporting period</span><select id="overview-period" aria-label="Overview reporting period"><option value="daily">Today · UTC</option><option value="monthly">This month · UTC</option></select></label><a class="button secondary" href="#providers">Manage providers <span aria-hidden="true">↗</span></a></div></div>
+          <div class="section-heading page-heading"><div><h2>Overview</h2><p class="page-description">A clear view of your gateway, from connected providers to every request.</p></div><div class="overview-actions"><label for="overview-period" class="inline-filter"><span class="sr-only">Reporting period</span><select id="overview-period" aria-label="Overview reporting period"><option value="daily">Today · UTC</option><option value="monthly">This month · UTC</option></select></label><a class="button secondary" href="#providers">Manage providers <span aria-hidden="true">↗</span></a></div></div>
           <div id="overview-summary" aria-label="Gateway summary"></div>
           <div id="overview-workspace"></div>
         </section>
 
         <form id="config-form" novalidate>
           <section id="credentials" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Client access</p><h2>Gateway API keys</h2></div><div class="section-actions"><button id="refresh-credentials" class="button quiet" type="button">Refresh keys</button><button id="create-credential" class="button primary" type="button">Create API key</button></div></div>
+            <div class="section-heading"><div><h2>Gateway API keys</h2></div><div class="section-actions"><button id="refresh-credentials" class="button quiet" type="button">Refresh keys</button><button id="create-credential" class="button primary" type="button">Create API key</button></div></div>
             <p>Create a named API key for each client connecting to Torii. Keys are displayed only once; deleting a key immediately blocks subsequent requests using it. Provider credentials are configured on the Providers page.</p>
             <div id="credential-list" class="grid credential-list"></div>
             <details class="settings-disclosure"><summary><span><strong>Rotate the default gateway key</strong><span class="data-secondary">Replace the original inference key</span></span><span class="disclosure-chevron" aria-hidden="true">⌄</span></summary><div class="settings-disclosure-content"><p class="section-note">The previous default key stops working immediately. Named client keys are unaffected.</p><button id="generate-api-key" class="button quiet danger-action" type="button" data-tooltip="Generate and display a new inference API key once. The previous key stops working immediately.">Rotate default key</button></div></details>
           </section>
           <section id="server" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Runtime</p><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
+            <div class="section-heading"><div><h2>Server</h2></div><span class="section-note">Where the gateway listens</span></div>
             <div class="grid two">
               <label data-tooltip="The address and port where Torii listens for HTTP requests. In a container, retain 0.0.0.0:8080 and change the published host port through TORII_PORT or Compose.">Listen address<input name="server.listen" value="127.0.0.1:8080" placeholder="127.0.0.1:8080" /></label>
               <label data-tooltip="The SQLite database for credentials, usage, Codex identity and benchmarks, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
@@ -73,16 +72,16 @@
           </section>
 
           <section id="providers" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Connections</p><h2>Providers</h2></div><button id="add-provider" class="button primary" type="button">＋ Add provider</button></div>
+            <div class="section-heading"><div><h2>Providers</h2></div><button id="add-provider" class="button primary" type="button">＋ Add provider</button></div>
             <div id="providers-empty-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span>No providers have been configured. Click <strong>Add provider</strong> to connect an API or sign in to a subscription. Models will become available after you configure a provider and save.</span></div>
             <div id="classifier-provider-notice" class="notice" role="status" hidden><span>◎</span><span>No classifier models are available. Add a provider with type <strong>TypeSafe AI · Jev</strong> or <strong>Jev compatible · Laya / custom</strong>, then test its connection to discover models for Smart Routing.</span></div>
             <div id="providers-list" class="provider-list"></div>
           </section>
 
-          <section id="models" class="page section-block"><div class="section-heading"><div><p class="eyebrow">Model catalog</p><h2>Models</h2></div><button id="refresh-models" type="button" class="button secondary">Refresh models</button></div><p>Enable eligible models for discovery and Smart routing. Benchmark scores use established identities and explicit aliases; missing data stays unknown.</p><div id="models-list"></div></section>
+          <section id="models" class="page section-block"><div class="section-heading"><div><h2>Models</h2></div><button id="refresh-models" type="button" class="button secondary">Refresh models</button></div><p>Enable eligible models for discovery and Smart routing. Benchmark scores use established identities and explicit aliases; missing data stays unknown.</p><div id="models-list"></div></section>
 
           <section id="routing" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Intelligence</p><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
+            <div class="section-heading"><div><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
             <p class="page-description">Torii checks capabilities, availability, and your policy before selecting a model. Add an optional classifier to tailor selection to each request.</p>
             <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
@@ -120,7 +119,7 @@
           </section>
 
           <section id="intelligence" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Model evidence</p><h2>Benchmark intelligence</h2></div><button id="refresh-benchmarks" class="button secondary" type="button">Refresh benchmarks</button></div>
+            <div class="section-heading"><div><h2>Benchmark intelligence</h2></div><button id="refresh-benchmarks" class="button secondary" type="button">Refresh benchmarks</button></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Automatic saves to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable benchmark intelligence</label></div>
             <div id="benchmark-source-notice" class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it; wait for Saved before refreshing.</span></div>
             <section id="benchmark-refresh-panel" class="benchmark-refresh" aria-label="Benchmark refresh activity" hidden>
@@ -138,7 +137,7 @@
               <div class="grid three compact-fields benchmark-view-controls">
                 <label data-tooltip="Show all imported models from enabled sources or only models matched to configured providers. Approximate matches are display-only and do not supply smart-routing scores. Both views combine scores into one row per model.">View<select id="benchmark-table-view"><option value="models">All benchmark models</option><option value="routable">Configured models only</option></select></label>
                 <label data-tooltip="Filter the model summaries by model name, alias, provider or benchmark source. This does not change routing or stored data.">Filter<input id="benchmark-table-filter" type="search" maxlength="256" placeholder="Model, provider, or source" /></label>
-                <label data-tooltip="Choose how many model summaries appear on each page. Scores are combined before pagination, so a model's capabilities stay together.">Rows per page<select id="benchmark-page-size"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
+                <label data-tooltip="Choose how many model summaries appear on each page. Scores are combined before pagination, so a model's capabilities stay together.">Rows per page<select id="benchmark-page-size"><option value="5">5</option><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
               </div>
               <p class="section-note">Scores are normalized percentages. — means unknown; display-only matches never affect routing.</p>
               <div class="benchmark-table-scroll" tabindex="0" role="region" aria-label="Scrollable benchmark data"><table id="benchmark-table"><thead id="benchmark-table-head"></thead><tbody id="benchmark-table-body"></tbody></table></div>
@@ -146,10 +145,10 @@
             </section>
           </section>
 
-          <section id="activity" class="page section-block"><div class="section-heading"><div><p class="eyebrow">Observability</p><h2>Activity</h2></div><span class="live-label"><span class="status-dot"></span> Live events</span></div><p>Recent request metadata only. Prompts, responses and credentials are excluded. Usage and costs may be conservative estimates.</p><p id="activity-status" role="status">Connecting…</p><div id="activity-list"></div></section>
+          <section id="activity" class="page section-block"><div class="section-heading"><div><h2>Activity</h2></div><span class="live-label"><span class="status-dot"></span> Live events</span></div><p>Recent request metadata only. Prompts, responses and credentials are excluded. Usage and costs may be conservative estimates.</p><p id="activity-status" role="status">Connecting…</p><div id="activity-list"></div></section>
 
           <section id="state" class="page section-block">
-            <div class="section-heading"><div><p class="eyebrow">Operations</p><h2>Usage &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
+            <div class="section-heading"><div><h2>Usage &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>
             <p class="page-description">Monitor requests, token usage, and estimated cost across your gateway.</p>
             <div class="usage-toolbar"><label>Usage scope<select id="budget-scope"><option value="*">Entire gateway</option></select></label><button id="refresh-usage" type="button" class="button secondary">Refresh usage</button></div>
             <div id="usage-list"></div>

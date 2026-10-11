@@ -148,9 +148,10 @@ Daily resets use midnight UTC, weekly resets Monday UTC, and monthly resets the
 first day UTC; explicit effective-budget reset timestamps take precedence for
 that window. Null limits remain unknown, independently of reported spend.
 
-`GET /credits` returns purchased credits and total usage with the separate
-`management_token`. The inference key is used only for `/key`, never for
-management credit reads. Missing or failed quota reads keep inference available
+Updated 2026-10-11: `GET /credits` accepts ordinary API keys as described in
+the maintained Hermes account-usage implementation and subscription meter.
+Torii uses the ordinary key by default and a separate `management_token` when
+configured; management credentials never reach inference. Missing or failed quota reads keep inference available
 with unknown quota; successful account credits remain usable if key lookup fails.
 Live `/models` prompt/completion prices are USD per token and are converted to
 USD per million tokens. Contract tests use synthetic upstreams, not live billing.
@@ -265,8 +266,13 @@ Unix-second `reset_at`; these percentages must not be labeled tokens or USD.
 Torii also observes `x-codex-{primary,secondary}-{used-percent,window-minutes,
 reset-at}` response headers (and legacy relative reset headers). The most
 constrained window controls routing, and each reset remains available to clients.
-Public `chatgpt.tokens.use.direct` credentials have no verified polling endpoint
-in this adapter; their quotas remain unknown unless inference headers report them.
+Updated 2026-10-11: the maintained Hermes account-usage client follows the Codex
+PathStyle split: public endpoints use `/api/codex/usage`; ChatGPT backends use
+`/backend-api/wham/usage`. Torii now polls both paths and retains `credits.balance`,
+`credits.unlimited`, `rate_limit_reset_credits.available_count`, `plan_type` and
+`additional_rate_limits`. These are read-only account fields, not reset redemption.
+A rejected or missing endpoint produces an explicit reason, with headers still
+available as a supplement.
 Quota polling uses refreshed endpoint-bound credentials and a ten-second deadline.
 
 Sources:
@@ -327,16 +333,17 @@ from per-token dollars to its per-million-token catalog units. Rows marked
 purposes. The maintained Hermes implementation also treats the Portal account
 as subscription-billed and uses live model pricing for paid/free-tier display.
 
-No stable Portal quota-balance endpoint was found. Portal tier RPM/TPM limits
-apply across the bearer and are surfaced through inference response headers or
-provider errors; Torii therefore records standard rate-limit headers through
-its quota cache as separate request/token windows with reset timestamps.
-Account-scoped header observations are shared across Portal models; missing
-headers remain unknown. No authenticated live balance or pricing response was
-available in this implementation review. Public Portal documentation still did
-not establish an OAuth-bearer balance endpoint, so Torii does not scrape the
-Portal UI or invent dollar balances. Pricing fixtures verify string/numeric
-prices, explicit subscription billing, and configured-model metadata refresh.
+Updated 2026-10-11: maintained Hermes `hermes_cli/nous_account.py` reads
+`GET {portal}/api/oauth/account` with its OAuth bearer. Torii now uses that
+endpoint and the existing credential refresh path. `subscription` and
+`paid_service_access` supply remaining subscription/top-up/rollover/total usable
+USD credits and renewal times. A valid monthly denominator yields a plan gauge;
+rollover above the cap never yields an invented percentage. Plan/member-spend
+gauges are informational for routing because free models and top-ups have
+different entitlements. Inference headers still supply request/token constraints.
+No browser-cookie scraping or charge/top-up/reset mutations are performed.
+Fixtures cover OAuth headers, balances and renewal; no live billing credentials
+were available for validation.
 
 ### Sources
 
@@ -602,3 +609,38 @@ gets an independent HTTP client, connection pool, TLS roots/server name, dial
 - OpenAI Embeddings: https://platform.openai.com/docs/api-reference/embeddings
 - Go HTTP client redirect policy: https://pkg.go.dev/net/http#Client
 - Go TLS client configuration: https://pkg.go.dev/crypto/tls#Config
+
+
+## Extended account tracking — 2026-10-11
+
+The following user-provided implementations were inspected as protocol/schema
+references, not executed or copied as plugin code:
+
+- [hermes-ai-usage-tracker](https://github.com/lvabarajithan/hermes-ai-usage-tracker): Go/Zen, Z AI, Kimi, MiniMax and DeepSeek probes.
+- [billing](https://github.com/anotherchu/billing): Nous plan/top-up balance presentation and renewal semantics.
+- [hermes-codex-resets](https://github.com/sxuff/hermes-codex-resets): public reset-analysis presentation; its third-party schedule is not an authoritative account quota and is not queried by Torii.
+- [hermes-ledgerline](https://github.com/Adolanium/hermes-ledgerline): gateway estimates versus provider billing and catalog policy.
+- [hermes-nous-prices](https://github.com/Adolanium/hermes-nous-prices): live Nous pricing/catalog propagation.
+- [hermes-resetwatch](https://github.com/Adolanium/hermes-resetwatch): endpoint path styles, credential isolation and optional-read failure behavior.
+- [hermes-subscription-meter](https://github.com/NealZhouPanda/hermes-subscription-meter): xAI sign/cent conversion, optional spend, OpenRouter ordinary-key credits and raw Nous balance fields.
+- [hermes-quota-plugin](https://github.com/rarf/hermes-quota-plugin): Go window aliases, Z AI unit buckets, Kimi ratios, modern MiniMax token-plan used counters, DeepSeek currency preservation and scoped Anthropic/Codex limits.
+
+Primary implementation/docs checked alongside those references:
+
+- [Hermes account usage](https://github.com/NousResearch/hermes-agent/blob/main/agent/account_usage.py) and [Nous account parser](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/nous_account.py).
+- [xAI billing Management API](https://docs.x.ai/developers/rest-api-reference/management/billing): separate management bearer/team, negative cent `total.val` means prepaid credit; usage analytics POST is a read-only query. Zero prepaid credit alone does not prove API exhaustion because postpaid billing can continue.
+- [Anthropic Usage and Cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api): admin key, daily buckets, pagination, organization scope and cost decimal strings in cents. Priority-tier charges are excluded upstream. Torii requests complete reports with bounded pagination; incomplete totals are omitted. OAuth utilization is a percentage, not inferred tokens or dollars, and subscription windows do not gate API-key inference.
+- [Standard Compute budgets](https://docs.standardcompute.com/budgets-and-limits): `x-sc-budget-renews-at`, budget exhaustion and dashboard accounting; no documented public bearer balance endpoint was verified. Torii observes the renewal header and supports an explicitly configured private tracking URL.
+- [OpenCode Zen](https://opencode.ai/docs/zen/) and [upstream wallet API issue](https://github.com/anomalyco/opencode/issues/44189): wallet balance is not reliably exposed publicly. Torii reports this limitation explicitly and never assumes opaque integer wallet units are USD.
+
+Text-model base prices are bundled from the MIT-licensed models.dev provider
+registry at commit `095fbd1b6aed9876b98c3d983c6b03a3a49ece0e`, dated 2026-10-11.
+The extracted input/output pairs and license are in `internal/provider`.
+Live model prices and operator overrides take precedence. These are estimates;
+DeepSeek peak/off-peak differences, cache discounts, context tiers and non-token
+charges are outside the two-rate estimator. No provider credential is sent to
+models.dev or any third-party reference service.
+
+HTTP fixtures verify endpoint paths, credential types, string/number balances,
+independent reset windows, incomplete-data handling and redirect refusal. They
+establish adapter behavior, not live endpoint availability for every account/tier.

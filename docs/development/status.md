@@ -60,35 +60,40 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-Provider cost/usage/quota tracking is implemented on `feat/provider-cost-usage`
-in `/workspace/work/provider-cost-usage`. Live Portal/OpenRouter prices feed
-accounting and routing; OpenRouter key spend, optional management credits and
-free-request caps, Codex subscription windows, and provider response-header
-resets reach model discovery and management metadata. Client usage is scoped to
-its key; administrator usage remains gateway-wide. Quota polling coalesces
-account reads and failures, preserves independent windows and local allowances,
-and expires by reset time. The console selector/catalog and provider-balance
-section show pricing, usage and remaining/reset windows without changing IDs.
-Full Go tests/race tests, final affected-package checks, vet/build, formatting,
-module consistency, all 102 console tests, generated assets and affected document
-links/anchors pass. Chromium checks pass at 1280px and 390px with controlled API
-fixtures and no page exceptions or mobile viewport overflow.
+Expanded provider tracking is complete on `feat/provider-balance-tracking`
+in `/workspace/work/provider-balance-tracking`, based on merged PR #19 and
+retained for the requested follow-up PR. OpenRouter, OpenCode Go/Zen, Standard
+Compute, Z AI, Kimi Coding, MiniMax, DeepSeek, xAI and Anthropic collectors expose
+available usage, quota/reset windows and native-currency balances. Nous account
+credits and Codex public/legacy usage paths, balances and banked resets are fixed.
+Model APIs pass the fields to harnesses; selectors show provider usage separately
+from gateway estimates. Billing credentials are encrypted, isolated, rotated on
+read and use compatible-provider CA trust. Pricing fallback is dated/attributed;
+live rates and operator overrides win. Scoped gauges do not block unrelated
+models, zero OpenRouter dollar balances do not block free models, and response
+headers cannot indefinitely extend billing snapshot freshness.
 
-The final non-root Docker image (`75eae5d20738`) builds the gateway and all five
-helper targets, and passes authenticated pricing/usage/header-quota discovery,
-reset metadata, and cost/token persistence after restart against a synthetic
-upstream. The build used a temporary CA-mounted Dockerfile for this environment's
-proxy; the shipped Dockerfile is unchanged. The Podman-specific full acceptance
-script was unavailable because Podman is not installed. Local Go checks used a
-workspace Go 1.25.1 toolchain, writable cache, and disabled VCS stamping to avoid
-environment-only baseline failures. No application baseline failure remains.
+Full Go tests/race tests, final focused provider/quota/API race checks, vet/build,
+module/format checks, 106 console tests, two release checks, generated assets,
+affected documentation links and Chromium at desktop/mobile widths pass. The
+production image and five login-helper targets built with an ephemeral proxy CA
+secret; the final cache-expiry correction was rebuilt with matching Go 1.25.1
+production flags and layered into the same non-root runtime. Disposable checks
+verify authenticated balance/price discovery, inference usage/reset headers and
+accounting/balances after restart. The shipping Dockerfile remains unchanged.
 
-Portal dollar balance and public direct-scope Codex quota polling remain unknown
-where no verified bearer endpoint is available. Gateway monetary usage remains
-estimated; upstream OpenRouter spend is separately labeled. External harnesses
-must consume the added model metadata to render it. No live billing check,
-push, merge, publication or deployment was performed. The worktree is retained
-for review.
+Public Zen wallet and Standard Compute budget amounts require an explicit private
+endpoint because no supported public balance read was verified; available usage
+and reset metadata are supported. xAI organization billing requires management
+credentials/team ID; Anthropic organization reports require admin credentials,
+and its subscription usage requires OAuth. External harnesses must render the
+additive model fields. Live billing accounts were not exercised. No merge or
+deployment was performed for this extension.
+
+The six extension commits are also applied to the requested
+`feat/provider-cost-usage` branch in `/workspace/work/provider-cost-usage`,
+retained for review. Its implementation matches the validated tracking branch;
+existing routing documentation remains on that branch's original history.
 
 
 The premium console redesign is complete on `feat/premium-console` in

@@ -13,6 +13,13 @@ import (
 func FromHeaders(headers http.Header, now time.Time) (Status, bool) {
 	s := Status{Source: "response_headers"}
 	for _, unit := range []string{"requests", "tokens"} {
+		if headers.Get("Anthropic-RateLimit-"+unit+"-Limit") != "" {
+			limit, lOK := number(headers.Get("Anthropic-RateLimit-" + unit + "-Limit"))
+			remaining, rOK := number(headers.Get("Anthropic-RateLimit-" + unit + "-Remaining"))
+			if lOK && rOK && limit >= 0 && remaining >= 0 {
+				s.Windows = append(s.Windows, Window{Name: "anthropic_" + unit, Unit: unit, Limit: limit, Used: math.Max(0, limit-remaining), ResetAt: ParseReset(headers.Get("Anthropic-RateLimit-"+unit+"-Reset"), now)})
+			}
+		}
 		prefix := "X-RateLimit-"
 		limit, lOK := number(headers.Get(prefix + "Limit-" + unit))
 		remaining, rOK := number(headers.Get(prefix + "Remaining-" + unit))
@@ -39,7 +46,16 @@ func FromHeaders(headers http.Header, now time.Time) (Status, bool) {
 		}
 		s.Windows = append(s.Windows, window)
 	}
-	return s, len(s.Windows) > 0
+	if reset := ParseReset(headers.Get("X-Sc-Budget-Renews-At"), now); reset != nil {
+		s.Source = "standard_compute_headers"
+		s.ResetAt = reset
+	}
+	if headers.Get("X-Codex-Credits-Unlimited") == "true" {
+		s.Balances = append(s.Balances, Balance{Name: "credits", Unit: "USD", Unlimited: true})
+	} else if n, ok := number(headers.Get("X-Codex-Credits-Balance")); ok {
+		s.Balances = append(s.Balances, Balance{Name: "credits", Unit: "USD", Remaining: &n})
+	}
+	return s, len(s.Windows) > 0 || s.ResetAt != nil || len(s.Balances) > 0
 }
 
 func number(raw string) (float64, bool) {

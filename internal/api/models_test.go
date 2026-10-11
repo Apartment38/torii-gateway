@@ -111,7 +111,8 @@ func TestModelDiscoveryTrackingIsScopedAndConsistent(t *testing.T) {
 	}
 	c := quota.NewCache(time.Minute, nil)
 	reset := time.Now().UTC().Add(time.Hour)
-	if err := c.Set("p/model", quota.Status{Windows: []quota.Window{{Name: "weekly", Unit: "percent", Limit: 100, Used: 25, ResetAt: &reset}}, Source: "fixture"}); err != nil {
+	left, resets := 12.5, 2.0
+	if err := c.Set("p/model", quota.Status{Windows: []quota.Window{{Name: "weekly", Unit: "percent", Limit: 100, Used: 25, ResetAt: &reset}}, Source: "fixture", Balances: []quota.Balance{{Name: "account", Unit: "USD", Remaining: &left}}, ResetCredits: &resets, ReportedUsage: []quota.ReportedUsage{{Period: "monthly", Unit: "tokens", Used: 50, Scope: "organization"}}}); err != nil {
 		t.Fatal(err)
 	}
 	h.SetQuotaCache(c)
@@ -141,6 +142,9 @@ func TestModelDiscoveryTrackingIsScopedAndConsistent(t *testing.T) {
 		}
 		if model.Pricing == nil || *model.Pricing.InputPerMillion != 0 || model.Quota == nil || model.Quota.Remaining != 75 || model.Quota.ResetAt == nil || !model.UsageAvailable || len(model.Usage) != 2 {
 			t.Fatalf("model=%+v", model)
+		}
+		if len(model.Quota.Balances) != 1 || *model.Quota.Balances[0].Remaining != 12.5 || model.Quota.ResetCredits == nil || *model.Quota.ResetCredits != 2 || len(model.Quota.ReportedUsage) != 1 {
+			t.Fatalf("missing harness tracking metadata %+v", model.Quota)
 		}
 		for _, row := range model.Usage {
 			if row.Input != 7 {

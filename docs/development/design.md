@@ -118,3 +118,13 @@ Test public endpoint compatibility, unknown fields, cancellation, credential
 isolation, tools/multimodality, session evolution, quota, and commitment boundaries.
 Use fixtures for deterministic behavior; live external checks are separate and
 must not be represented as general answer-quality or savings evidence.
+
+
+Provider tracking uses a separate read-only HTTP client/credential inventory for
+billing surfaces. It normalizes independent windows, native-currency balances,
+provider-reported usage and reset-credit counts into the existing quota cache.
+Balance-only data never fabricates a quota denominator. Scoped/informational
+windows do not gate unrelated inference; calendar USD spend and organization
+reports remain separate from gateway per-key estimates. Concurrent model-picker
+warming shares one ten-second deadline. Dated base pricing fills missing model
+catalog prices; live values and operator overrides retain precedence.

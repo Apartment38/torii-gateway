@@ -90,9 +90,8 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone(), keyQuotaURL: cfg.KeyQuotaURL}, nil
 }
 
-// Quota retrieves OpenRouter account credits when a separate management
-// credential has been configured. Other compatible providers leave quota
-// unknown because they do not expose this contract.
+// accountQuota reads OpenRouter account credits with the configured billing
+// headers, which may use the ordinary key or a separate management credential.
 func (p *Compatible) accountQuota(ctx context.Context) (quota.Status, error) {
 	if p.quotaURL == "" {
 		return quota.Status{Known: false}, nil
@@ -126,7 +125,8 @@ func (p *Compatible) accountQuota(ctx context.Context) (quota.Status, error) {
 	if envelope.Data.TotalCredits == nil || envelope.Data.TotalUsage == nil {
 		return quota.Status{}, errors.New("credit response missing totals")
 	}
-	return quota.Status{Known: true, Limit: *envelope.Data.TotalCredits, Used: *envelope.Data.TotalUsage, Unit: "USD", Source: "openrouter_credits"}, nil
+	remaining := *envelope.Data.TotalCredits - *envelope.Data.TotalUsage
+	return quota.Status{Known: true, Limit: *envelope.Data.TotalCredits, Used: *envelope.Data.TotalUsage, Unit: "USD", Source: "openrouter_credits", Balances: []quota.Balance{{Name: "account", Unit: "USD", Remaining: &remaining}}}, nil
 }
 
 func (p *Compatible) ID() string { return p.id }

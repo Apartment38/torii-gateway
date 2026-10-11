@@ -68,3 +68,13 @@ and advanced selection settings are shared. Current enablement, capabilities,
 quotas, and session safety rules still apply. See the
 [configuration reference](../reference/configuration.md#custom-smart-routers)
 for pool semantics and import fields.
+
+Provider editors include optional tracking credentials, billing team ID, mode
+and endpoint overrides. Stored token values remain hidden. Model selectors show
+native-currency balances, subscription/reset windows and banked Codex resets,
+alongside model prices and gateway usage. Available monthly provider spend/token
+usage is labeled with its account or organization scope. Inspect metadata for price source,
+provider-reported organization usage and partial-read reasons. Public Zen wallet
+balance and Standard Compute budget amounts remain unknown unless their service
+returns them through an explicitly configured tracking endpoint; available reset
+headers still appear. See [provider tracking](../reference/configuration.md#provider-tracking).

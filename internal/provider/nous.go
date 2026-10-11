@@ -181,10 +181,19 @@ func (p *Nous) ID() string { return p.id }
 
 func (p *Nous) QuotaKey(string) string { return p.id + "/@account" }
 
-// Portal has no verified bearer-accessible balance endpoint. Account-scoped
-// windows are populated by response headers rather than browser cookies.
-func (p *Nous) Quota(context.Context, string) (quota.Status, error) {
-	return quota.Status{Source: "nous_response_headers"}, nil
+func (p *Nous) Quota(ctx context.Context, _ string) (quota.Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	credential, err := p.credential(ctx)
+	if err != nil {
+		return quota.Status{}, errors.New("Nous quota requires login")
+	}
+	cfg := TrackingConfig{Client: p.client, Headers: http.Header{"Authorization": {"Bearer " + credential.AccessToken}}}
+	payload, err := trackingJSON(ctx, cfg, http.MethodGet, p.portalBase+"/api/oauth/account", nil)
+	if err != nil {
+		return quota.Status{Source: "nous_account", UnavailableReason: trackingReason(err)}, nil
+	}
+	return parseNousAccount(payload, time.Now().UTC()), nil
 }
 
 func (p *Nous) Models(ctx context.Context) ([]Model, error) {

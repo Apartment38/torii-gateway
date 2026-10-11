@@ -282,80 +282,27 @@ Sources:
 
 ## Nous Portal
 
-### Status
+### API-key connection (verified 2026-10-11)
 
-Research status: partially verified from Nous-maintained Hermes documentation
-and adapter source; public API definition unavailable during this review
-Implementation status: complete through the Portal device-code login,
-endpoint-bound refresh flow, subscription-aware model metadata, and standard
-OpenAI-compatible inference transport. Quota is learned from gateway response
-rate-limit headers; no stable public balance endpoint was found.
-Last verified: 2026-10-10
+Live `GET https://inference-api.nousresearch.com/v1/models` accepts the operator's API key as a bearer credential. The response contains context lengths and per-token `pricing.prompt`/`pricing.completion`; Torii converts prices to per-million units. OAuth login is no longer exposed for Nous by the gateway or console. Existing OAuth credentials must be replaced with a provider API key.
 
-### Authentication
+The inference origin returned HTTP 404 for `/openapi.json`, `/v1/credits`, `/v1/balance`, `/v1/usage`, `/v1/account`, and `/v1/user`. The Portal API documentation was login-gated. No account balance or quota contract was verified for API keys. Absent provider telemetry remains unknown; inference response headers can still supply rate limits.
 
-Verify:
-
-- OAuth flow
-- refresh-token behavior
-- short-lived inference tokens
-- API-key availability, if any
-
-The maintained Hermes integration documents a browser OAuth login against
-`portal.nousresearch.com`, stores a refresh token separately from configuration,
-and obtains short-lived runtime credentials for the inference API. The current
-implementation uses the Portal OAuth token endpoint
-`https://portal.nousresearch.com/api/oauth/token`; the runtime inference base
-is `https://inference-api.nousresearch.com/v1`. The maintained adapter uses
-bearer credentials and refreshes them lazily, retrying once after a 401.
-
-The current source also documents rotating refresh tokens and a device-code to
-runtime-credential path for inference. Token values must remain outside YAML
-and must be persisted atomically in the gateway credential store.
-
-### Model Discovery
-
-The maintained proxy exposes `GET /models`, but the public Portal API
-definition was not retrievable on 2026-09-30. Do not infer catalog shape,
-pricing, or quota semantics from the subscription marketing page. Before
-implementation, capture a real authenticated response and document model IDs,
-capabilities, context limits, pricing, and subscription/quota fields.
-
-The inference adapter currently allows `/chat/completions`, `/completions`,
-`/embeddings`, and `/models`; a maintained issue reports that the upstream
-also serves `/responses`, so Responses support should be verified and added or
-explicitly rejected in the Torii adapter.
-
-The live `/v1/models` response is the pricing source when it includes
-`pricing.prompt` and `pricing.completion` values. Torii converts those values
-from per-token dollars to its per-million-token catalog units. Rows marked
-`billing_mode: subscription` are represented as zero marginal cost for routing
-purposes. The maintained Hermes implementation also treats the Portal account
-as subscription-billed and uses live model pricing for paid/free-tier display.
+Sources: [Nous API documentation](https://portal.nousresearch.com/api-docs), [Nous model catalog](https://portal.nousresearch.com/models), and live authenticated discovery (credentials omitted).
 
 Updated 2026-10-11: maintained Hermes `hermes_cli/nous_account.py` reads
-`GET {portal}/api/oauth/account` with its OAuth bearer. Torii now uses that
-endpoint and the existing credential refresh path. `subscription` and
+`GET {portal}/api/oauth/account` with its OAuth bearer. The account collector supports that
+endpoint for bearers with account access; API-key access remains unverified. `subscription` and
 `paid_service_access` supply remaining subscription/top-up/rollover/total usable
 USD credits and renewal times. A valid monthly denominator yields a plan gauge;
 rollover above the cap never yields an invented percentage. Plan/member-spend
 gauges are informational for routing because free models and top-ups have
 different entitlements. Inference headers still supply request/token constraints.
 No browser-cookie scraping or charge/top-up/reset mutations are performed.
-Fixtures cover OAuth headers, balances and renewal; no live billing credentials
+Fixtures cover bearer headers, balances and renewal; no live billing credentials
 were available for validation.
 
-### Sources
 
-- https://github.com/NousResearch/hermes-agent/blob/main/website/docs/integrations/nous-portal.md
-- https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/proxy/adapters/nous_portal.py
-- https://github.com/NousResearch/hermes-agent/blob/main/plugins/dashboard_auth/nous/__init__.py
-- https://portal.nousresearch.com/api-docs (definition failed to load during review)
-- https://github.com/NousResearch/hermes-agent/issues/104505
-- https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/model-catalog.md
-- https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/models.py
-
----
 
 ## Google Gemini
 
@@ -644,3 +591,7 @@ models.dev or any third-party reference service.
 HTTP fixtures verify endpoint paths, credential types, string/number balances,
 independent reset windows, incomplete-data handling and redirect refusal. They
 establish adapter behavior, not live endpoint availability for every account/tier.
+
+## Codex quota windows (verified 2026-10-11)
+
+The [upstream backend client](https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client/rate_limit_resets.rs) polls `/wham/usage` beneath the ChatGPT backend API root. Torii uses the same account-bound credential headers as model discovery. Primary and secondary windows carry used percentages, window lengths, and reset timestamps. The most depleted window governs eligibility, and snapshots expire no later than the next window reset. Telemetry failures remain distinct from exhaustion.

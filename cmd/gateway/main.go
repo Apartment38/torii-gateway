@@ -328,6 +328,9 @@ func runAuth(args []string, output io.Writer) error {
 	if providerConfig == nil {
 		return fmt.Errorf("provider %q is not configured", providerID)
 	}
+	if providerConfig.Type == "nous" {
+		return errors.New("Nous uses an API key; configure bearer_token through the provider editor")
+	}
 	if *browser && providerConfig.Type != "openai-codex" {
 		return errors.New("--browser is supported only for openai-codex")
 	}
@@ -687,120 +690,15 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		}
 		openAI.SetActivity(runtime.activityStore)
 	}
-	var configuredClassifier classifier.Classifier
-	decisionOptions := classifier.DecisionOptions{Questions: cfg.Router.Classifier.Questions, NoulThresholds: cfg.Router.Classifier.NoulThresholds}
-	if cfg.Router.Classifier.Type == "jev" {
-		if cfg.Router.Classifier.Transport == "provider" {
-			var selected provider.OpenAIProvider
-			for _, candidate := range providers {
-				if candidate.ID() == cfg.Router.Classifier.Provider {
-					selected = candidate
-					break
-				}
-			}
-			decisionProvider, ok := selected.(provider.DecisionProvider)
-			if !ok {
-				return nil, fmt.Errorf("initialize Jev classifier: provider %q does not support decision transport", cfg.Router.Classifier.Provider)
-			}
-			configuredClassifier, err = classifier.NewJevTransportWithOptions(decisionProvider, cfg.Router.Classifier.Model, decisionOptions)
-			if err != nil {
-				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
-			}
-		} else {
-			apiKey, resolveErr := cfg.Router.Classifier.APIKey.Resolve()
-			if resolveErr != nil {
-				return nil, fmt.Errorf("resolve Jev API key: %w", resolveErr)
-			}
-			client := &http.Client{}
-			if cfg.Credentials != nil {
-				apiKey = "database-managed"
-				client.Transport = &secretTransport{base: http.DefaultTransport, headers: map[string]config.SecretRef{"Authorization": *cfg.Router.Classifier.APIKey}, bearer: true}
-			}
-			if accountingStore != nil {
-				base := client.Transport
-				if base == nil {
-					base = http.DefaultTransport
-				}
-				client.Transport = &accounting.Transport{Base: base, Store: accountingStore, Settings: cfg.Budgets, Describe: openAI.AccountingDescriptor}
-			}
-			configuredClassifier, err = classifier.NewJevWithOptions(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, client, decisionOptions)
-			if err != nil {
-				return nil, fmt.Errorf("initialize Jev classifier: %w", err)
-			}
-		}
+	if err := configureSmartRouter(openAI, cfg, providers, accountingStore); err != nil {
+		return nil, err
 	}
-	if classifierModel := cfg.Router.Classifier.Model; classifierModel != "" && cfg.Router.Classifier.Type != "embedding" && cfg.Router.Classifier.Type != "jev" {
-		connected, classifierErr := classifier.NewConnectedModel(classifierModel, providers)
-		if classifierErr != nil {
-			return nil, fmt.Errorf("initialize classifier: %w", classifierErr)
-		}
-		configuredClassifier = connected
-	}
-	if cfg.Router.Classifier.Type == "embedding" {
-		var embeddingProvider provider.OpenAIProvider
-		for _, candidate := range providers {
-			if candidate.ID() == cfg.Router.Classifier.Provider {
-				embeddingProvider = candidate
-				break
-			}
-		}
-		if embeddingProvider == nil {
-			return nil, fmt.Errorf("initialize embedding classifier: provider %q is unavailable", cfg.Router.Classifier.Provider)
-		}
-		embedder := classifier.ProviderEmbedder{Provider: embeddingProvider, Model: cfg.Router.Classifier.Model}
-		prototype, classifierErr := classifier.NewPrototypeClassifier(context.Background(), embedder)
-		if classifierErr != nil {
-			return nil, fmt.Errorf("initialize embedding classifier: %w", classifierErr)
-		}
-		configuredClassifier = prototype
-	}
-	if configuredClassifier != nil {
-		failure := classifier.FailureCapabilityFallback
-		if cfg.Router.Classifier.OnFailure == string(classifier.FailureFail) {
-			failure = classifier.FailureFail
-		}
-		timeout := 10 * time.Second
-		if configured := cfg.Router.Classifier.Timeout; configured != "" {
-			timeout, err = time.ParseDuration(configured)
-			if err != nil {
-				return nil, fmt.Errorf("initialize classifier timeout: %w", err)
-			}
-		}
-		openAI.SetClassifier(classifier.Runner{Classifier: configuredClassifier, Timeout: timeout, MinimumConfidence: cfg.Router.Classifier.MinimumConfidence, OnFailure: failure})
-	}
-	selection := router.DefaultSelectionPolicy()
-	if cfg.Router.AllowPaidModels != nil {
-		selection.AllowPaidModels = *cfg.Router.AllowPaidModels
-	}
-	if value := cfg.Router.Selection.ContextUtilizationLimit; value > 0 {
-		selection.MaxContextFraction = value
-	}
-	if value := cfg.Router.Selection.DefaultExpectedOutputTokens; value > 0 {
-		selection.DefaultExpectedOutputTokens = value
-	}
-	if value := cfg.Router.Selection.LocationPreference; value != "" {
-		selection.LocationPreference = router.LocationPreference(value)
-	}
-	if cfg.Router.Selection.MinimumQuality != nil {
-		selection.MinimumQuality = cfg.Router.Selection.MinimumQuality
-	}
-	openAI.SetSelectionPolicy(selection)
 	benchmarkManager, err := buildIntelligence(cfg, openAI.CatalogModels())
 	if err != nil {
 		return nil, fmt.Errorf("initialize benchmark intelligence: %w", err)
 	}
 	if benchmarkManager != nil {
-		selection.Intelligence = cfg.Intelligence.Routing
-		openAI.SetSelectionPolicy(selection)
 		openAI.SetIntelligence(benchmarkManager)
-	}
-	if raw := cfg.Router.Sessions.InactivityTimeout; raw != "" {
-		if timeout, parseErr := time.ParseDuration(raw); parseErr == nil {
-			openAI.SetSessionTimeout(timeout)
-		}
-	}
-	if cfg.Router.Sessions.OnModelFailure != "" {
-		openAI.SetModelFailurePolicy(cfg.Router.Sessions.OnModelFailure)
 	}
 	quotaTTL := time.Minute
 	if raw := cfg.Router.Quota.CacheTTL; raw != "" {
@@ -808,10 +706,10 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			quotaTTL = parsed
 		}
 	}
-	quotaFetchers := make(map[string]quota.Fetcher)
+	quotaFetchers := make(map[string]*quota.Cache)
 	for _, upstream := range providers {
 		if fetcher, ok := upstream.(quota.Fetcher); ok {
-			quotaFetchers[upstream.ID()] = fetcher
+			quotaFetchers[upstream.ID()] = quota.NewCache(quotaTTL, fetcher)
 		}
 	}
 	var quotaFetcher quota.Fetcher
@@ -847,6 +745,39 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		_ = quotaCache.SetLocal(model, limit, used)
 	}
 
+	for _, profile := range cfg.SmartRouters {
+		overrides := profile.CatalogOverrides
+		if profile.CatalogFile != "" {
+			var err error
+			overrides, err = loadCatalogOverrides(profile.CatalogFile)
+			if err != nil {
+				return nil, err
+			}
+		}
+		child, err := openAI.NewRouter(providers, overrides)
+		if err != nil {
+			return nil, err
+		}
+		childConfig := *cfg
+		childConfig.Router = profile
+		if err := configureSmartRouter(child, &childConfig, providers, accountingStore); err != nil {
+			return nil, fmt.Errorf("router %s: %w", profile.ModelName, err)
+		}
+		ttl := time.Minute
+		if profile.Quota.CacheTTL != "" {
+			ttl, _ = time.ParseDuration(profile.Quota.CacheTTL)
+		}
+		cache := quota.NewCache(ttl, quotaFetcher)
+		for model, limit := range profile.Quota.Allowances {
+			used := float64(0)
+			if summary, ok := usageStore.Get(model); ok {
+				used = summary.EstimatedCost
+			}
+			_ = cache.SetLocal(model, limit, used)
+		}
+		child.SetQuotaCache(cache)
+		openAI.AddRouter(profile.ModelName, child)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -878,6 +809,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		protect("PUT /gateway/v1/config", runtime.putConfig)
 		protect("POST /gateway/v1/config", runtime.putConfig)
 		protect("POST /gateway/v1/providers/test", runtime.testProvider)
+		protect("POST /gateway/v1/providers/ollama-detect", runtime.detectOllama)
 		protect("POST /gateway/v1/providers/login", runtime.startProviderLogin)
 		protect("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
 		protect("/gateway/v1/credentials", runtime.credentialAPI)
@@ -1182,8 +1114,8 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 			providerConfig.BaseURL = provider.DefaultCodexBaseURL
 		}
 	}
-	if providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" {
-		writeConfigError(w, http.StatusBadRequest, errors.New("browser login is supported only for openai-codex and nous providers"))
+	if providerConfig.Type != "openai-codex" {
+		writeConfigError(w, http.StatusBadRequest, errors.New("browser login is supported only for openai-codex; Nous uses an API key"))
 		return
 	}
 	if providerConfig.Type == "openai-codex" {
@@ -1596,15 +1528,15 @@ func writeConfigError(w http.ResponseWriter, status int, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-type providerQuotaFetcher struct{ providers map[string]quota.Fetcher }
+type providerQuotaFetcher struct{ providers map[string]*quota.Cache }
 
 func (f providerQuotaFetcher) QuotaKey(model string) string {
 	id, _, err := provider.ParseModelID(model)
 	if err != nil {
 		return model
 	}
-	if keyer, ok := f.providers[id].(quota.Keyer); ok {
-		return keyer.QuotaKey(model)
+	if cache := f.providers[id]; cache != nil {
+		return cache.QuotaKey(model)
 	}
 	return model
 }
@@ -1618,7 +1550,7 @@ func (f providerQuotaFetcher) Quota(ctx context.Context, model string) (quota.St
 	if upstream == nil {
 		return quota.Status{Known: false}, nil
 	}
-	return upstream.Quota(ctx, model)
+	return upstream.Get(ctx, model)
 }
 
 func loadCatalogOverrides(path string) ([]catalog.Descriptor, error) {
@@ -1701,29 +1633,24 @@ func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*st
 		return provider.NewOllama(cfg.ID, cfg.BaseURL, &http.Client{Timeout: timeout})
 	}
 	if cfg.Type == "nous" {
-		if db == nil {
-			return nil, errors.New("application database is required for nous")
-		}
-		var credentialStore state.CredentialStore = db
-		loader := func(id string) (provider.NousCredential, error) {
-			credential, loadErr := credentialStore.Load(id)
-			if loadErr != nil {
-				return provider.NousCredential{}, loadErr
-			}
-			return provider.NousCredential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, Endpoint: credential.Endpoint, ExpiresAt: credential.ExpiresAt}, nil
-		}
-		saver := func(id string, value provider.NousCredential) error {
-			return credentialStore.Save(id, &state.Credential{AccessToken: value.AccessToken, RefreshToken: value.RefreshToken, ExpiresAt: value.ExpiresAt, Endpoint: value.Endpoint, TokenType: "Bearer"})
-		}
-		discover := true
-		if cfg.DiscoverModels != nil {
-			discover = *cfg.DiscoverModels
-		}
-		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		ref := cfg.BearerToken
 		if db != nil {
-			client.Transport = &secretTransport{base: http.DefaultTransport}
+			value := secretHeaders["Authorization"]
+			ref = &value
 		}
-		return provider.NewNous(cfg.ID, cfg.BaseURL, cfg.PortalURL, cfg.ClientID, cfg.Models, discover, loader, saver, client)
+		if ref == nil {
+			return nil, errors.New("Nous API key is required")
+		}
+		loader := func(string) (provider.NousCredential, error) {
+			key, err := ref.Resolve()
+			if err != nil {
+				return provider.NousCredential{}, err
+			}
+			return provider.NousCredential{AccessToken: key, Endpoint: strings.TrimRight(cfg.BaseURL, "/")}, nil
+		}
+		discover := cfg.DiscoverModels == nil || *cfg.DiscoverModels
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		return provider.NewNous(cfg.ID, cfg.BaseURL, cfg.PortalURL, "", cfg.Models, discover, loader, nil, client)
 	}
 	if cfg.Type == "anthropic" {
 		key, err := cfg.BearerToken.Resolve()
@@ -1883,4 +1810,119 @@ func compatibleHTTPTransport(cfg config.ProviderConfig) (*http.Transport, error)
 		httpTransport.TLSClientConfig = tlsConfig
 	}
 	return httpTransport, nil
+}
+
+func configureSmartRouter(openAI *api.OpenAIHandler, cfg *config.Config, providers []provider.OpenAIProvider, accountingStore *accounting.Store) error {
+	var err error
+	openAI.SetRouterScope(cfg.Router.ModelName, cfg.Router.Providers, cfg.Router.Models)
+	var configuredClassifier classifier.Classifier
+	decisionOptions := classifier.DecisionOptions{Questions: cfg.Router.Classifier.Questions, NoulThresholds: cfg.Router.Classifier.NoulThresholds}
+	if cfg.Router.Classifier.Type == "jev" {
+		if cfg.Router.Classifier.Transport == "provider" {
+			var selected provider.OpenAIProvider
+			for _, candidate := range providers {
+				if candidate.ID() == cfg.Router.Classifier.Provider {
+					selected = candidate
+					break
+				}
+			}
+			decisionProvider, ok := selected.(provider.DecisionProvider)
+			if !ok {
+				return fmt.Errorf("initialize Jev classifier: provider %q does not support decision transport", cfg.Router.Classifier.Provider)
+			}
+			configuredClassifier, err = classifier.NewJevTransportWithOptions(decisionProvider, cfg.Router.Classifier.Model, decisionOptions)
+			if err != nil {
+				return fmt.Errorf("initialize Jev classifier: %w", err)
+			}
+		} else {
+			apiKey, resolveErr := cfg.Router.Classifier.APIKey.Resolve()
+			if resolveErr != nil {
+				return fmt.Errorf("resolve Jev API key: %w", resolveErr)
+			}
+			client := &http.Client{}
+			if cfg.Credentials != nil {
+				apiKey = "database-managed"
+				client.Transport = &secretTransport{base: http.DefaultTransport, headers: map[string]config.SecretRef{"Authorization": *cfg.Router.Classifier.APIKey}, bearer: true}
+			}
+			if accountingStore != nil {
+				base := client.Transport
+				if base == nil {
+					base = http.DefaultTransport
+				}
+				client.Transport = &accounting.Transport{Base: base, Store: accountingStore, Settings: cfg.Budgets, Describe: openAI.AccountingDescriptor}
+			}
+			configuredClassifier, err = classifier.NewJevWithOptions(cfg.Router.Classifier.BaseURL, apiKey, cfg.Router.Classifier.Model, client, decisionOptions)
+			if err != nil {
+				return fmt.Errorf("initialize Jev classifier: %w", err)
+			}
+		}
+	}
+	if classifierModel := cfg.Router.Classifier.Model; classifierModel != "" && cfg.Router.Classifier.Type != "embedding" && cfg.Router.Classifier.Type != "jev" {
+		connected, classifierErr := classifier.NewConnectedModel(classifierModel, providers)
+		if classifierErr != nil {
+			return fmt.Errorf("initialize classifier: %w", classifierErr)
+		}
+		configuredClassifier = connected
+	}
+	if cfg.Router.Classifier.Type == "embedding" {
+		var embeddingProvider provider.OpenAIProvider
+		for _, candidate := range providers {
+			if candidate.ID() == cfg.Router.Classifier.Provider {
+				embeddingProvider = candidate
+				break
+			}
+		}
+		if embeddingProvider == nil {
+			return fmt.Errorf("initialize embedding classifier: provider %q is unavailable", cfg.Router.Classifier.Provider)
+		}
+		embedder := classifier.ProviderEmbedder{Provider: embeddingProvider, Model: cfg.Router.Classifier.Model}
+		prototype, classifierErr := classifier.NewPrototypeClassifier(context.Background(), embedder)
+		if classifierErr != nil {
+			return fmt.Errorf("initialize embedding classifier: %w", classifierErr)
+		}
+		configuredClassifier = prototype
+	}
+	if configuredClassifier != nil {
+		failure := classifier.FailureCapabilityFallback
+		if cfg.Router.Classifier.OnFailure == string(classifier.FailureFail) {
+			failure = classifier.FailureFail
+		}
+		timeout := 10 * time.Second
+		if configured := cfg.Router.Classifier.Timeout; configured != "" {
+			timeout, err = time.ParseDuration(configured)
+			if err != nil {
+				return fmt.Errorf("initialize classifier timeout: %w", err)
+			}
+		}
+		openAI.SetClassifier(classifier.Runner{Classifier: configuredClassifier, Timeout: timeout, MinimumConfidence: cfg.Router.Classifier.MinimumConfidence, OnFailure: failure})
+	}
+	selection := router.DefaultSelectionPolicy()
+	if cfg.Router.AllowPaidModels != nil {
+		selection.AllowPaidModels = *cfg.Router.AllowPaidModels
+	}
+	if value := cfg.Router.Selection.ContextUtilizationLimit; value > 0 {
+		selection.MaxContextFraction = value
+	}
+	if value := cfg.Router.Selection.DefaultExpectedOutputTokens; value > 0 {
+		selection.DefaultExpectedOutputTokens = value
+	}
+	if value := cfg.Router.Selection.LocationPreference; value != "" {
+		selection.LocationPreference = router.LocationPreference(value)
+	}
+	if cfg.Router.Selection.MinimumQuality != nil {
+		selection.MinimumQuality = cfg.Router.Selection.MinimumQuality
+	}
+	selection.AllowFreeModels = cfg.Router.AllowFreeModels
+	selection.Intelligence = cfg.Intelligence.Routing
+	openAI.SetSelectionPolicy(selection)
+	if raw := cfg.Router.Sessions.InactivityTimeout; raw != "" {
+		if timeout, parseErr := time.ParseDuration(raw); parseErr == nil {
+			openAI.SetSessionTimeout(timeout)
+		}
+	}
+	if cfg.Router.Sessions.OnModelFailure != "" {
+		openAI.SetModelFailurePolicy(cfg.Router.Sessions.OnModelFailure)
+	}
+
+	return nil
 }

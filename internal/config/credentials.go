@@ -39,6 +39,13 @@ func (c *Config) VisitSecrets(fn func(path, service, purpose string, ref *Secret
 			return err
 		}
 	}
+	for i := range c.SmartRouters {
+		if ref := c.SmartRouters[i].Classifier.APIKey; ref != nil {
+			if err := fn("smart_routers/"+strconv.Itoa(i)+"/classifier/api_key", "classifier:"+c.SmartRouters[i].ModelName, "api_key", ref); err != nil {
+				return err
+			}
+		}
+	}
 	for i := range c.Intelligence.Sources {
 		s := &c.Intelligence.Sources[i]
 		if s.APIKey != nil {

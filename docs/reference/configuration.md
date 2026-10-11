@@ -36,8 +36,8 @@ administrator login, and gateway API keys are never YAML settings.
 | `base_url` | Required HTTP(S) URL | No userinfo/query/fragment; path prefix permitted except origin-locked profiles |
 | `api_path` | String, profile API path | Absolute path without query/fragment; profile restrictions apply |
 | `portal_url` | String, `https://portal.nousresearch.com` | Nous HTTPS Portal origin/path |
-| `client_id` | String, `hermes-agent` | Nous device-login client identifier |
-| `bearer_token` | Secret reference, absent | Required for named API profiles and hosted Jev; optional generic/compatible Jev; not subscription OAuth |
+| `client_id` | String, `hermes-agent` | Legacy Nous client identifier; not used for API-key authentication |
+| `bearer_token` | Secret reference, absent | Required for Nous, named API profiles and hosted Jev; optional generic/compatible Jev; not subscription OAuth |
 | `management_token` | Secret reference, absent | Separate OpenRouter credits key, xAI management key, or Anthropic admin key |
 | `headers` | Map of secret references, empty | Compatible custom headers; reserved routing/auth/hop-by-hop headers forbidden |
 | `tls.ca_file` | String, system roots | Compatible provider custom PEM trust file; path readable by gateway |
@@ -104,8 +104,8 @@ tracking:
   discovers, and disallows static models, custom headers/TLS/rewrites/transport.
 - `openai-codex` requires HTTPS; OAuth is managed in SQLite, not bearer/custom
   headers/TLS. `models` is an optional discovery fallback, not an allowlist.
-- `nous` requires HTTPS and provider-managed authentication/transport; it
-  disallows bearer/custom headers/TLS/rewrites/organization/project options.
+- `nous` requires HTTPS and a `bearer_token` API key; it disallows
+  custom headers/TLS/rewrites/organization/project options.
 - `anthropic` locks to `https://api.anthropic.com`, requires its key, and disallows
   custom headers/TLS/api_path/transport/organization/project/rewrites.
 - Named API profiles use compatible options with required keys; see the provider
@@ -120,7 +120,10 @@ tracking:
 | `model_name` | String, `smart` | Only `smart` accepted |
 | `catalog_file` | String, absent | Legacy import only: strict JSON descriptor array imported into `catalog_overrides` |
 | `catalog_overrides` | Descriptor array, empty | Persistent provider-qualified metadata and pricing overrides, applied after bundled/live metadata |
-| `allow_paid_models` | Boolean, true | Hard gate for smart paid candidates; explicit model requests bypass smart |
+| `allow_paid_models` | Boolean, true | Allows paid and unknown-price candidates; explicit physical-model requests bypass smart |
+| `allow_free_models` | Boolean, true | Allows models positively known to have zero input/output cost; independent of paid permission |
+| `providers` | Provider ID list, empty | Empty allows all; otherwise only listed providers are eligible |
+| `models` | Provider-qualified model ID list, empty | Empty allows all; otherwise narrows the eligible provider pool to these models |
 | `classifier.type` | String, absent | `disabled`, `model`, `laya`, `embedding`, `jev`; absent means no configured classifier |
 | `classifier.model` | String, conditional | Physical `provider/model` for connected `model`/`laya`; provider-local model for typed/embedding transport; never `smart` |
 | `classifier.provider` | String, conditional | Required for embedding and Jev provider transport |
@@ -318,3 +321,9 @@ Reservations count one client request and every upstream attempt, including clas
 ## Activity and structured logs
 
 `activity.retention_days` defaults to 7 (1–3650); `activity.max_bytes` defaults to 104857600 (100 MiB; minimum 8192). The cap includes serialized metadata plus a per-row storage allowance; deleted SQLite pages are reused. Retention runs at startup, on writes and every minute. `activity.log_file` optionally duplicates JSON stdout logs to a rotating file. `log_max_bytes` defaults to 10485760 (minimum 4096) and `log_backups` to 3 (1–20). The log directory must exist and be writable. File logging and listener changes require restart; a successful configuration response reports `restart_required`. Activity retains request metadata, never prompts, responses, credential values or authorization headers.
+
+## Additional smart routers
+
+`smart_routers` is a list of router objects using the same fields and defaults as `router`. Each requires a unique `model_name` in provider-ID syntax, other than `smart`. All routers are advertised by `/v1/models` and accepted as inference model names. Each has independent classifier controls, selection policy, quota cache/local allowances, and session affinity. Model enablement, provider credentials, client budgets, and imported benchmark evidence remain gateway-wide.
+
+The console's **Create router** copies the default router's current settings. Select a router to edit those settings. Provider restrictions and model restrictions intersect; an empty restriction means all. A restricted or exhausted pool fails without escaping to models outside that router.

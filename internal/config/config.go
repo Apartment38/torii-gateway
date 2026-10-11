@@ -33,11 +33,15 @@ type Config struct {
 	Server       ServerConfig        `yaml:"server"`
 	State        StateConfig         `yaml:"state"`
 	Providers    []ProviderConfig    `yaml:"providers"`
+	SmartRouters []RouterConfig      `yaml:"smart_routers,omitempty"`
 	Router       RouterConfig        `yaml:"router,omitempty"`
 	Intelligence IntelligenceConfig  `yaml:"intelligence,omitempty"`
 }
 
 type RouterConfig struct {
+	Providers        []string             `yaml:"providers,omitempty"`
+	Models           []string             `yaml:"models,omitempty"`
+	AllowFreeModels  *bool                `yaml:"allow_free_models,omitempty"`
 	ModelName        string               `yaml:"model_name,omitempty"`
 	CatalogOverrides []catalog.Descriptor `yaml:"catalog_overrides,omitempty"`
 	CatalogFile      string               `yaml:"catalog_file,omitempty"`
@@ -350,6 +354,27 @@ func (c Config) Validate() error {
 			return fmt.Errorf("%s: portal_url and client_id require type nous", field)
 		}
 	}
+	if c.Router.ModelName != "" && c.Router.ModelName != "smart" {
+		return errors.New("router.model_name must be smart")
+	}
+	names := map[string]bool{"smart": true}
+	for _, r := range c.SmartRouters {
+		if err := provider.ValidateID(r.ModelName); err != nil {
+			return fmt.Errorf("smart router name: %w", err)
+		}
+		if names[r.ModelName] {
+			return errors.New("smart router names must be unique")
+		}
+		names[r.ModelName] = true
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("smart router %s: %w", r.ModelName, err)
+		}
+		for _, id := range r.Providers {
+			if _, exists := ids[id]; !exists {
+				return fmt.Errorf("unknown smart router provider %s", id)
+			}
+		}
+	}
 	if err := c.Router.Validate(); err != nil {
 		return fmt.Errorf("router: %w", err)
 	}
@@ -360,8 +385,14 @@ func (c Config) Validate() error {
 }
 
 func validateNousProvider(p ProviderConfig) error {
-	if p.BearerToken != nil || len(p.Headers) > 0 || p.TLS != nil || p.Transport != "" || p.Organization != "" || p.Project != "" || len(p.ModelRewrites) > 0 {
-		return errors.New("Nous credentials and transport are managed by the provider")
+	if len(p.Headers) > 0 || p.TLS != nil || p.Transport != "" || p.Organization != "" || p.Project != "" || len(p.ModelRewrites) > 0 {
+		return errors.New("Nous uses bearer_token API authentication")
+	}
+	if p.BearerToken == nil {
+		return errors.New("Nous bearer_token API key is required")
+	}
+	if err := p.BearerToken.Validate(); err != nil {
+		return err
 	}
 	if p.BaseURL == "" {
 		return errors.New("base_url is required")
@@ -383,8 +414,15 @@ func validateNousProvider(p ProviderConfig) error {
 }
 
 func (r RouterConfig) Validate() error {
-	if r.ModelName != "" && r.ModelName != "smart" {
-		return errors.New("model_name must be smart")
+	for _, id := range r.Models {
+		if _, _, err := provider.ParseModelID(id); err != nil {
+			return fmt.Errorf("router model: %w", err)
+		}
+	}
+	for _, id := range r.Providers {
+		if err := provider.ValidateID(id); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(r.CatalogFile) != "" && strings.ContainsAny(r.CatalogFile, "\r\n") {
 		return errors.New("catalog_file must not contain newlines")

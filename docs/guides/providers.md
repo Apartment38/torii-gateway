@@ -10,7 +10,7 @@ key, or the subscription account required by the selected profile.
 2. Give it a unique lowercase ID, such as `local` or `openrouter`.
 3. Set its API URL, using the profile defaults in [Provider support](../reference/providers.md).
 4. For API-key services, enter the upstream key in the provider's key field.
-   For Codex/Nous subscriptions, use **Log in** after configuring the provider.
+   For Codex subscriptions, use **Log in** after configuring the provider.
 5. Test the connection, inspect the returned model list, and choose **Save provider**.
 6. List `/v1/models` or check the console, then use a discovered `provider/model`
    in your client. Connection tests exercise discovery, not billable inference.
@@ -264,7 +264,11 @@ or file flags, an RFC3339 `--expires-at`, and account/principal identifiers.
 Command output reports state only and never prints stored token values.
 
 Local `auth` commands require the database master key and administrator password.
-Use the [CLI reference](../reference/cli.md) for all flags. Nous uses its Portal
-device-code/refresh-token flow; normal OpenAI API-key credentials are separate
-from Codex subscription credentials. Provider-specific protocol limitations are
+Use the [CLI reference](../reference/cli.md) for all flags. Nous uses an API key
+entered in its provider card; it does not use `auth login`. Normal API-key
+credentials are separate from Codex subscription credentials. Provider-specific protocol limitations are
 listed in [Provider support](../reference/providers.md).
+
+For a local Ollama service, enter its port or click **Detect Ollama**. Detection checks localhost and container host addresses, using existing Ollama ports, `OLLAMA_HOST`, and 11434. Enter a remote API URL under advanced options for a different machine.
+
+Nous API-key discovery supplies model prices from its live catalog. Account balances and provider quotas remain unknown when the service exposes no verified API-key telemetry endpoint.

@@ -23,6 +23,8 @@ let consoleSession = "";
 let csrfToken="";
 let configurationRevision = "";
 let loadedConfiguration:Record<string,any> = {};
+let smartRouterDrafts:Record<string,any>={};
+let selectedSmartRouter="smart";
 let editGeneration=0;
 let saveRunning=false;
 let saveQueued=false;
@@ -62,8 +64,8 @@ function renderOverviewMonitoring():string{
 }
 function renderClientConnection():string{
  const baseURL=location.origin?`${location.origin}/v1`:"/v1";const smart=loadedConfiguration.router?.model_name||"smart";const enabled=(overviewModels||[]).filter(model=>model.enabled);
- const models=[smart,...enabled.map(model=>model.id)];if(!models.includes(overviewClientModel))overviewClientModel=smart;
- return `<section class="overview-panel connect-client"><div class="section-heading"><div><h3>Connect a client</h3><span class="data-secondary">Use an OpenAI-compatible application or SDK</span></div><a href="#credentials">API keys →</a></div><label>Base URL<div class="copy-field"><input id="overview-base-url" value="${escapeHTML(baseURL)}" readonly aria-label="Client base URL"><button id="copy-client-url" class="button secondary" type="button">Copy</button></div></label><label>Model<div class="copy-field"><select id="overview-client-model">${models.map(id=>`<option value="${escapeHTML(id)}" ${id===overviewClientModel?"selected":""}>${escapeHTML(id===smart?`${id} · gateway routing`:modelSelectorLabel(enabled.find(model=>model.id===id)))}</option>`).join("")}</select><button id="copy-client-model" class="button secondary" type="button">Copy</button></div></label><p class="section-note">Create a named <a href="#credentials">gateway API key</a> for each application. Choose ${escapeHTML(smart)} to use your routing policy.</p></section>`;
+ const models=[smart,...(loadedConfiguration.smart_routers||[]).map((r:any)=>r.model_name),...enabled.map(model=>model.id)];if(!models.includes(overviewClientModel))overviewClientModel=smart;
+ return `<section class="overview-panel connect-client"><div class="section-heading"><div><h3>Connect a client</h3><span class="data-secondary">Use an OpenAI-compatible application or SDK</span></div><a href="#credentials">API keys →</a></div><label>Base URL<div class="copy-field"><input id="overview-base-url" value="${escapeHTML(baseURL)}" readonly aria-label="Client base URL"><button id="copy-client-url" class="button secondary" type="button">Copy</button></div></label><label>Model<div class="copy-field"><select id="overview-client-model">${models.map(id=>`<option value="${escapeHTML(id)}" ${id===overviewClientModel?"selected":""}>${escapeHTML(!id.includes("/")?`${id} · gateway routing`:modelSelectorLabel(enabled.find(model=>model.id===id)))}</option>`).join("")}</select><button id="copy-client-model" class="button secondary" type="button">Copy</button></div></label><p class="section-note">Create a named <a href="#credentials">gateway API key</a> for each application. Choose ${escapeHTML(smart)} to use your routing policy.</p></section>`;
 }
 function initializeClientConnection():void{
  document.querySelector<HTMLSelectElement>("#overview-client-model")?.addEventListener("change",event=>{overviewClientModel=(event.target as HTMLSelectElement).value;});
@@ -87,15 +89,15 @@ function renderOverview():void{
  summary.querySelectorAll<HTMLAnchorElement>('a[href="#state"]').forEach(link=>link.addEventListener("click",()=>{usagePeriod=overviewPeriod;const scope=document.querySelector<HTMLSelectElement>("#budget-scope");if(scope)scope.value="*";}));
  workspace.className="overview-grid";
  workspace.innerHTML=`${providers.length?renderOverviewMonitoring():""}<section class="overview-panel"><div class="section-heading"><h3>Connected providers</h3><a href="#providers">Manage providers →</a></div>${providers.length?providers.slice(0,6).map(p=>{const status=providerStatuses.get(p);const count=classifierProvider(p)?classifierCatalogs.get(p)?.length:overviewModels?.filter(m=>m.provider_id===p.id).length;return `<div class="overview-provider-row"><span class="provider-avatar">${escapeHTML(String(p.id||"P").slice(0,1).toUpperCase())}</span><div><strong>${value(p,"id")}</strong><span class="data-secondary">${escapeHTML(providerTypeLabel(String(p.type)))}</span></div><span class="status-badge ${p.enabled===false?"neutral":status?.state||"neutral"}">${p.enabled===false?"Disabled":status?.state==="success"?"Connected":status?.state==="failure"?"Needs attention":status?.state==="pending"?"Checking…":"Not checked"}</span>${count===undefined?"":`<span class="data-secondary">${count} models</span>`}</div>`;}).join(""):`<div class="empty-state"><strong>${configurationLoaded?"Your gateway starts here":"Welcome to your control plane"}</strong><p>${configurationLoaded?"Connect an upstream to discover models and start routing requests.":"Sign in to manage providers, model access and routing."}</p><a class="button primary" href="${configurationLoaded?"#providers":"/login"}">${configurationLoaded?"Connect a provider":"Sign in"}</a></div>`}</section>${providers.length?renderClientConnection():`<section class="overview-panel"><h3>Your next step</h3><a class="workflow-link" href="#providers"><span class="workflow-number">01</span><span><strong>Connect your providers</strong><span class="data-secondary">API endpoints and subscription accounts</span></span><span>→</span></a><a class="workflow-link" href="#models"><span class="workflow-number">02</span><span><strong>Choose your model catalog</strong><span class="data-secondary">Inspect capabilities and control model access</span></span><span>→</span></a><a class="workflow-link" href="#routing"><span class="workflow-number">03</span><span><strong>Shape your routing policy</strong><span class="data-secondary">Choose intelligent or deterministic selection</span></span><span>→</span></a><a class="workflow-link" href="#credentials"><span class="workflow-number">04</span><span><strong>Create a client API key</strong><span class="data-secondary">Give each application its own gateway access</span></span><span>→</span></a></section>`}${overviewError?`<p class="notice" role="status">${escapeHTML(overviewError)}</p>`:""}`;
- initializeClientConnection();
+ initializeClientConnection();renderSmartRouterScope();
 }
 function providerTypeLabel(type:string):string{return ({"opencode-go":"OpenCode Go","opencode-zen":"OpenCode Zen","standard-compute":"Standard Compute",zai:"Z AI","kimi-coding":"Kimi Coding",minimax:"MiniMax",deepseek:"DeepSeek",openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"} as Record<string,string>)[type]||type;}
 function providerTypeOptions(provider:Record<string,string|boolean>,subscriptionOnly=false):string{
- const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter","opencode-go","opencode-zen","standard-compute","zai","kimi-coding","minimax","deepseek"]},{label:"Subscriptions",types:["openai-codex","nous"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["jev","jev_compatible"]}];
+ const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter","opencode-go","opencode-zen","standard-compute","zai","kimi-coding","minimax","deepseek","nous"]},{label:"Subscriptions",types:["openai-codex"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["jev","jev_compatible"]}];
  return groups.filter(group=>!subscriptionOnly||group.label==="Subscriptions").map(group=>`<optgroup label="${group.label}">${group.types.map(type=>`<option value="${type}" ${provider.type===type?"selected":""}>${escapeHTML(providerTypeLabel(type))}</option>`).join("")}</optgroup>`).join("");
 }
 function providerTypeDescription(type:string):string{
- return ({openai_compatible:"Connect any API that supports OpenAI-compatible endpoints.",openai:"Connect OpenAI with your API key.",anthropic:"Connect Anthropic with your API key.",gemini:"Connect Google Gemini with your API key.",xai:"Connect xAI with your API key.",openrouter:"Connect OpenRouter with your API key.","openai-codex":"Connect your OpenAI Codex subscription using OAuth login.",nous:"Connect your Nous subscription using OAuth login.",ollama:"Connect a self-hosted Ollama server and discover its model catalog.",jev:"Connect TypeSafe Jev classifier models for Smart routing.",jev_compatible:"Connect a Jev-compatible classifier, such as Laya, for Smart routing."} as Record<string,string>)[type]||"Configure this provider integration.";
+ return ({openai_compatible:"Connect any API that supports OpenAI-compatible endpoints.",openai:"Connect OpenAI with your API key.",anthropic:"Connect Anthropic with your API key.",gemini:"Connect Google Gemini with your API key.",xai:"Connect xAI with your API key.",openrouter:"Connect OpenRouter with your API key.","openai-codex":"Connect your OpenAI Codex subscription using OAuth login.",nous:"Connect Nous Portal with your API key.",ollama:"Connect a self-hosted Ollama server and discover its model catalog.",jev:"Connect TypeSafe Jev classifier models for Smart routing.",jev_compatible:"Connect a Jev-compatible classifier, such as Laya, for Smart routing."} as Record<string,string>)[type]||"Configure this provider integration.";
 }
 async function loadOverview():Promise<void>{
  if(!consoleSession||!configurationLoaded||overviewLoading)return;const login=consoleSession;overviewLoading=true;overviewError="";renderOverview();
@@ -115,7 +117,7 @@ function expireConsoleSession():void{
 }
 function signOutConsole(): void {
  stopActivity();
-  consoleSession = "";csrfToken="";loadedConfiguration={};editingProvider=null;editingOriginal=null;
+  consoleSession = "";csrfToken="";loadedConfiguration={};smartRouterDrafts={};selectedSmartRouter="smart";editingProvider=null;editingOriginal=null;
   configurationRevision = "";
   signedInUsername = "";
   clearNewAPIKey();
@@ -243,6 +245,7 @@ function setProviderStatus(provider: Record<string, string | boolean>, status: P
     result.className = `provider-result ${status.state}`;
     result.textContent = status.message;
   }
+  const editor=providerList.querySelector<HTMLElement>(`[data-editor-status="${index}"]`);if(editor)editor.textContent=status.message;
   const button = providerList.querySelector<HTMLButtonElement>(`[data-test="${index}"]`);
   if (button) button.disabled = status.state === "pending";
   updateClassifierOptions();
@@ -259,7 +262,7 @@ function redactProviderKeys(message: string): string {
 function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;"}[ch]!)); }
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider: Record<string, string | boolean>, key: string): string { return provider[key] === false ? "" : "checked"; }
-function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex" || provider.type === "nous"; }
+function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex"; }
 const knownProviderIDs: Record<string, string> = { "opencode-go":"opencode-go","opencode-zen":"opencode-zen","standard-compute":"standard-compute",zai:"zai","kimi-coding":"kimi-coding",minimax:"minimax",deepseek:"deepseek", openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous", jev: "jev" };
 function knownProviderID(type: string, index: number): string {
   const base = knownProviderIDs[type];
@@ -305,11 +308,11 @@ function renderProviders(): void {
       <dialog class="provider-editor" data-provider-dialog="${index}" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title-${index}"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3 id="provider-editor-title-${index}">${editingProvider===index&&!editingOriginal?"Add provider":provider.id?`Edit ${value(provider,"id")}`:"Add provider"}</h3><p>${escapeHTML(providerTypeDescription(String(provider.type)))}</p></div><div data-editor-status="${index}" role="status" aria-live="polite"></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,editingProvider!==index||editingOriginal!==null)}</select></label><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
         <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,false)}</select></label>
         <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
-        <label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>
+        ${provider.type==="ollama"?`<label>Port<input type="number" min="1" max="65535" data-provider="${index}" data-key="ollama_port" value="${value(provider,"ollama_port")}" placeholder="Auto-detect" /></label><button type="button" class="button secondary" data-detect-ollama="${index}">Detect Ollama</button>`:`<label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>`}
         ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Reveal entered provider API key" aria-pressed="false">Reveal</button></span></label>`}
         ${provider.type === "ollama" ? `<label data-tooltip="Time allowed for model loading and the complete response, including streaming. Leave blank for 5 minutes. Client cancellation still applies.">Request timeout<input data-provider="${index}" data-key="request_timeout" value="${value(provider,"request_timeout")}" placeholder="5m" /></label>` : ""}
       </div>
-      <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
+      <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">${provider.type==="ollama"?`<label>Remote API URL<input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="http://server:11434" /></label>`:""}
         <label data-tooltip="An existing encrypted provider credential reference. Gateway client API keys cannot be used here.">Stored API credential<input data-provider="${index}" data-key="credential_id" value="${escapeHTML(String((provider.bearer_token as any)?.credential || provider.credential_id || ""))}" placeholder="Credential ID" /></label>
         <label data-tooltip="An existing encrypted management credential used for quota lookup. This is separate from gateway client API keys.">Management credential<input data-provider="${index}" data-key="management_id" value="${escapeHTML(String((provider.management_token as any)?.credential || provider.management_id || ""))}" placeholder="Credential ID" /></label>
         <label data-tooltip="Optional tracking integration for a custom OpenAI-compatible provider, such as deepseek or opencode-go.">Tracking provider<input data-provider="${index}" data-key="tracking_provider" value="${value(provider,"tracking_provider")}" /></label>
@@ -345,6 +348,7 @@ function renderProviders(): void {
     dialog.addEventListener("keydown",event=>{if(event.key!=="Tab")return;const controls=Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])')).filter(node=>node.getClientRects().length>0);const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}});
   });
   providerList.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach(button => button.addEventListener("click", () => { providers.splice(Number(button.dataset.remove), 1); renderProviders(); markDirty();void saveConfig(); }));
+  providerList.querySelectorAll<HTMLButtonElement>("[data-detect-ollama]").forEach(button=>button.addEventListener("click",async()=>{button.disabled=true;const provider=providers[Number(button.dataset.detectOllama)];try{await detectOllama(provider);await testProvider(providers.indexOf(provider));}catch(error){setProviderStatus(provider,{state:"failure",message:error instanceof Error?error.message:"Ollama detection failed"});}finally{button.disabled=false;}}));
   providerList.querySelectorAll<HTMLButtonElement>("[data-test]").forEach(button => button.addEventListener("click", () => { void testProvider(Number(button.dataset.test)); }));
   providerList.querySelectorAll<HTMLButtonElement>("[data-login]").forEach(button => button.addEventListener("click", () => { void loginProvider(Number(button.dataset.login), button); }));
   providerList.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-provider]").forEach(control => {control.setAttribute("aria-label",({id:"Provider ID",type:"Provider type",api_url:"API URL",api_key:"API key",enabled:"Provider enabled",treat_models_as_free:"Treat models as free",discover:"Discover models"} as Record<string,string>)[control.dataset.key!]||control.dataset.key!.replace(/_/g," "));control.addEventListener("input", updateProvider);});
@@ -387,6 +391,7 @@ function updateProvider(event: Event): void {
   if(key==="tracking_token"&&control.value)providers[index].tracking_credential_id="";
   if(key==="tracking_credential_id"&&control.value)providers[index].tracking_token="";
   if (key === "management_env") delete providers[index].management_token;
+  if(key==="ollama_port") providers[index].api_url="";
   if(key==="credential_id"){providers[index].api_key="";providers[index].api_key_env="";providers[index].api_key_file="";providers[index].bearer_token=control.value.trim()?{credential:control.value.trim()} as any:undefined as any;}
   if(key==="management_id"){providers[index].management_token=control.value.trim()?{credential:control.value.trim()} as any:undefined as any;}
   setProviderStatus(providers[index], { state: "unchecked", message: "Settings changed · check connection again" });
@@ -406,6 +411,7 @@ function updateProvider(event: Event): void {
     const trackingDefaults:Record<string,string>={"opencode-go":"https://opencode.ai/zen/go/v1","opencode-zen":"https://opencode.ai/zen/v1","standard-compute":"https://api.stdcmpt.com/v1",zai:"https://api.z.ai/api/coding/paas/v4","kimi-coding":"https://api.kimi.com/coding/v1",minimax:"https://api.minimax.io/v1",deepseek:"https://api.deepseek.com/v1"};
     if(trackingDefaults[control.value])providers[index].api_url=trackingDefaults[control.value];
     if(previousType!==control.value){delete providers[index].tracking;Object.keys(providers[index]).filter(k=>k.startsWith("tracking_")).forEach(k=>delete providers[index][k]);}
+    if(control.value==="ollama") { providers[index].api_url=""; providers[index].ollama_port=""; }
     if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
     if (classifierProvider(providers[index])) {
       providers[index].api_url = control.value === "jev" ? "https://api.typesafe.ai/v1" : "";
@@ -514,6 +520,10 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   (form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement).value = Object.entries(allowances).map(([key, raw]) => `${key} = ${raw}`).join("\n");
   const quality = config.router?.selection?.minimum_quality;
   if (quality) (form.elements.namedItem("router.selection.minimum_quality") as HTMLInputElement).value = JSON.stringify(quality);
+  smartRouterDrafts={smart:structuredClone(config.router||{})};
+  for(const profile of config.smart_routers||[])smartRouterDrafts[profile.model_name]=structuredClone(profile);
+  if(!smartRouterDrafts[selectedSmartRouter])selectedSmartRouter="smart";
+  renderSmartRouterEditor();
   updateClassifierOptions();
   if (location.hash === "#intelligence" && benchmarksEnabledSaved) void loadBenchmarkData();
 }
@@ -623,7 +633,7 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
     const mapped = map[key] || key;
     if (key === "api_url") {
       const url = new URL(String(raw));
-      if (subscriptionProvider(provider) || provider.type === "ollama" || provider.type === "anthropic") {
+      if (subscriptionProvider(provider) || provider.type === "nous" || provider.type === "ollama" || provider.type === "anthropic") {
         output.base_url = `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`;
       } else {
         output.base_url = `${url.protocol}//${url.host}`;
@@ -654,13 +664,14 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
 }
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = structuredClone(loadedConfiguration);
- config.server={...config.server};config.state={...config.state};config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
+ config.server={...config.server};config.state={...config.state};config.router=structuredClone(smartRouterDrafts[selectedSmartRouter]||config.router||{});config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
   config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
   config.router.allow_paid_models = Boolean((form.elements.namedItem("router.allow_paid_models") as HTMLInputElement)?.checked);
+ config.router.allow_free_models = (form.elements.namedItem("router.allow_free_models") as HTMLInputElement)?.checked !== false;
   const selected = classifierSelect.value;
   const onFailure = String((form.elements.namedItem("router.classifier.on_failure") as HTMLSelectElement)?.value || "");
   const controls: Record<string, any> = {};
@@ -689,6 +700,9 @@ function readConfig(): Record<string, any> {
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
   config.intelligence = readBenchmarkConfiguration();
+  smartRouterDrafts[selectedSmartRouter]=structuredClone(config.router);
+  config.router=structuredClone(smartRouterDrafts.smart||{});
+  config.smart_routers=Object.entries(smartRouterDrafts).filter(([name])=>name!=="smart").map(([,draft])=>structuredClone(draft));
   return config;
 }
 
@@ -712,6 +726,7 @@ async function testProvider(index: number): Promise<void> {
   const pending: ProviderStatus = { state: "pending", message: "Checking connection and discovering models…" };
   setProviderStatus(provider, pending);
   try {
+    if(provider.type==="ollama" && !provider.api_url) { await detectOllama(provider);setProviderStatus(provider,pending); }
     if (!provider.id || !provider.api_url) throw new Error("Configure the provider before checking its connection");
     // Snapshot the draft before awaiting, so a re-render cannot change which
     // provider this request tests. Ignore responses for edited or removed drafts.
@@ -818,7 +833,7 @@ document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => {
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target:HTMLElement):boolean{return ["budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target as HTMLElement))markDirty();});
 form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
@@ -905,3 +920,39 @@ function clearNewAPIKey():void{document.querySelector<HTMLTextAreaElement>("#new
 document.querySelector("#new-key-dialog")!.addEventListener("close",clearNewAPIKey);
 document.querySelector("#new-key-dialog")!.addEventListener("cancel",clearNewAPIKey);
 document.querySelector("#close-new-key")!.addEventListener("click",()=>{clearNewAPIKey();document.querySelector<HTMLDialogElement>("#new-key-dialog")!.close();});
+
+async function detectOllama(provider:Record<string,any>):Promise<void>{
+ setProviderStatus(provider,{state:"pending",message:"Looking for Ollama on the gateway host…"});
+ const response=await gatewayFetch("/gateway/v1/providers/ollama-detect",{method:"POST",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({port:Number(provider.ollama_port||0)})});
+ const result=await response.json();if(!response.ok)throw new Error(result.error||"Ollama detection failed");provider.api_url=result.base_url;provider.ollama_port=String(result.port);
+ const index=providers.indexOf(provider);const input=providerList.querySelector<HTMLInputElement>(`[data-provider="${index}"][data-key="ollama_port"]`);if(input)input.value=provider.ollama_port;
+}
+
+function renderSmartRouterScope():void{
+ const draft=smartRouterDrafts[selectedSmartRouter]||{};
+ for(const [selector,ids,chosen] of [["#smart-router-providers",providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),draft.providers||[]],["#smart-router-models",(overviewModels||[]).map(m=>m.id),draft.models||[]]] as [string,string[],string[]][]){
+  const control=document.querySelector<HTMLSelectElement>(selector);if(!control)continue;
+  const options=[...new Set([...ids,...chosen])].sort();control.innerHTML=options.map(id=>`<option value="${escapeHTML(id)}" ${chosen.includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ }
+}
+function renderSmartRouterEditor():void{
+ const selector=document.querySelector<HTMLSelectElement>("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
+ const draft=smartRouterDrafts[selectedSmartRouter]||{};
+ const fields=["model_name","allow_paid_models","allow_free_models","sessions.on_model_failure","sessions.inactivity_timeout","quota.cache_ttl","quota.allowances","selection.context_utilization_limit","selection.default_expected_output_tokens","selection.location_preference","selection.minimum_quality","classifier.on_failure","classifier.timeout","classifier.minimum_confidence"];
+ for(const field of fields){const control=form.elements.namedItem(`router.${field}`) as HTMLInputElement|null;if(!control)continue;let value:any=draft;for(const part of field.split("."))value=value?.[part];
+ if(field.startsWith("allow_"))control.checked=value!==false;else if(field==="model_name"){control.value=draft.model_name||selectedSmartRouter;control.readOnly=selectedSmartRouter==="smart";}else if(field==="quota.allowances")control.value=Object.entries(value||{}).map(([id,v])=>`${id} = ${v}`).join("\n");else if(field==="selection.minimum_quality")control.value=value?JSON.stringify(value):"";else control.value=value===undefined?"":String(value);
+ }
+ const c=draft.classifier||{};classifierQuestionOverrides=structuredClone(c.questions||{});classifierNoulThresholds={...(c.noul_thresholds||{})};
+ requestedClassifier=c.type==="disabled"?"disabled":c.type==="jev"&&c.transport==="provider"?`${c.provider}/${c.model}`:c.model||"";
+ legacyClassifier=c.type&&!["jev","disabled"].includes(c.type)?structuredClone(c):null;
+ renderClassifierQuestion();updateClassifierOptions();renderSmartRouterScope();
+ const remove=document.querySelector<HTMLButtonElement>("#remove-smart-router");if(remove)remove.disabled=selectedSmartRouter==="smart";
+}
+document.querySelector<HTMLSelectElement>("#smart-router-select")?.addEventListener("change",event=>{readConfig();selectedSmartRouter=(event.target as HTMLSelectElement).value;renderSmartRouterEditor();});
+document.querySelector("#add-smart-router")?.addEventListener("click",async()=>{
+ const input=document.querySelector<HTMLInputElement>("#smart-router-new-name")!;const name=input.value.trim();
+ if(!/^[a-z0-9][a-z0-9._-]*$/.test(name)||name==="smart"||smartRouterDrafts[name]){toast("Enter a unique router name using letters, numbers, dots, underscores or hyphens.");return;}
+ readConfig();smartRouterDrafts[name]={...structuredClone(smartRouterDrafts.smart),model_name:name};selectedSmartRouter=name;input.value="";renderSmartRouterEditor();markDirty();await saveConfig();
+});
+document.querySelector("#remove-smart-router")?.addEventListener("click",async()=>{if(selectedSmartRouter==="smart")return;delete smartRouterDrafts[selectedSmartRouter];selectedSmartRouter="smart";renderSmartRouterEditor();markDirty();await saveConfig();});
+for(const [id,key] of [["smart-router-providers","providers"],["smart-router-models","models"]])document.querySelector<HTMLSelectElement>(`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target as HTMLSelectElement).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});

@@ -1,12 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +33,10 @@ const maxRequestBody = 32 << 20
 
 // OpenAIHandler serves the currently implemented OpenAI-compatible endpoints.
 type OpenAIHandler struct {
+	namedRouters        map[string]*OpenAIHandler
+	routerName          string
+	allowedProviders    map[string]bool
+	allowedModels       map[string]bool
 	activity            *activity.Store
 	accounting          *accounting.Store
 	accountingOverrides []catalog.Descriptor
@@ -165,6 +171,9 @@ func (h *OpenAIHandler) deleteSession(w http.ResponseWriter, _ *http.Request, id
 		return
 	}
 	h.sessions.Delete(id)
+	for _, child := range h.namedRouters {
+		child.sessions.Delete(id)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -179,7 +188,9 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 	modelUsage, usageAvailable := h.modelUsage(r, false)
 	// Clients may show only the first page of a provider's catalog. Keep the
 	// gateway routing choice visible before the sorted physical models.
-	models = append(models, clientModel{Model: provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"}})
+	for _, name := range h.RouterNames() {
+		models = append(models, clientModel{Model: provider.Model{ID: name, Object: "model", OwnedBy: "torii"}})
+	}
 	for _, descriptor := range descriptors {
 		if !h.enabled(descriptor.PublicID) {
 			continue
@@ -193,8 +204,8 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
-	if publicID == "smart" {
-		writeJSON(w, http.StatusOK, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
+	if publicID == h.smartName() || h.namedRouters[publicID] != nil {
+		writeJSON(w, http.StatusOK, provider.Model{ID: publicID, Object: "model", OwnedBy: "torii"})
 		return
 	}
 	providerID, _, err := provider.ParseModelID(publicID)
@@ -240,6 +251,12 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
 		return
 	}
+	if child := h.namedRouters[fields.Model]; child != nil {
+		clone := r.Clone(r.Context())
+		clone.Body = io.NopCloser(bytes.NewReader(body))
+		child.forward(w, clone)
+		return
+	}
 	if r.URL.Path == "/v1/responses" {
 		if fields.PreviousResponseID {
 			writeUnsupportedParameter(w, "previous_response_id")
@@ -268,7 +285,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	requestedModel := fields.Model
 	var routing *smartRouting
-	if requestedModel == "smart" {
+	if requestedModel == h.smartName() {
 		routing, err = h.prepareSmartRouting(r, body)
 		defer routing.logEvidence(r.Context())
 		if subject := accounting.SubjectFrom(r.Context()); subject != nil && subject.BudgetFailure() != nil {
@@ -527,4 +544,54 @@ func writeAPIErrorWithParam(w http.ResponseWriter, status int, message, errorTyp
 		Param:   param,
 		Code:    code,
 	}})
+}
+
+func (h *OpenAIHandler) smartName() string {
+	if h.routerName != "" {
+		return h.routerName
+	}
+	return "smart"
+}
+func (h *OpenAIHandler) RouterNames() []string {
+	names := []string{}
+	for name := range h.namedRouters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return append([]string{h.smartName()}, names...)
+}
+func (h *OpenAIHandler) AddRouter(name string, child *OpenAIHandler) {
+	if h.namedRouters == nil {
+		h.namedRouters = map[string]*OpenAIHandler{}
+	}
+	h.namedRouters[name] = child
+}
+func (h *OpenAIHandler) SetRouterScope(name string, providers, models []string) {
+	h.routerName = name
+	h.allowedProviders = map[string]bool{}
+	h.allowedModels = map[string]bool{}
+	for _, id := range providers {
+		h.allowedProviders[id] = true
+	}
+	for _, id := range models {
+		h.allowedModels[id] = true
+	}
+}
+func (h *OpenAIHandler) NewRouter(providers []provider.OpenAIProvider, overrides []catalog.Descriptor) (*OpenAIHandler, error) {
+	child, err := NewOpenAIHandlerWithOverrides(providers, overrides)
+	if err != nil {
+		return nil, err
+	}
+	if len(overrides) == 0 {
+		child.catalog = h.catalog
+	}
+	child.accounting = h.accounting
+	child.accountingOverrides = h.accountingOverrides
+	child.budgets = h.budgets
+	child.activity = h.activity
+	child.intelligence = h.intelligence
+	child.usage = h.usage
+	child.modelEnabled = h.modelEnabled
+	child.freeProviders = h.freeProviders
+	return child, nil
 }

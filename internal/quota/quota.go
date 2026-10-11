@@ -104,6 +104,13 @@ func NewCache(ttl time.Duration, fetcher Fetcher) *Cache {
 	}
 	return &Cache{ttl: ttl, now: time.Now, fetcher: fetcher, entries: map[string]Status{}, locals: map[string]Status{}, errors: map[string]error{}, calls: map[string]*call{}}
 }
+
+func (c *Cache) QuotaKey(model string) string {
+	if keyer, ok := c.fetcher.(Keyer); ok {
+		return keyer.QuotaKey(model)
+	}
+	return model
+}
 func (c *Cache) Get(ctx context.Context, model string) (Status, error) {
 	status, err := c.get(ctx, model)
 	upstream := model
@@ -197,7 +204,7 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 		}
 	}
 	if err != nil {
-		value = Status{Source: "unavailable", CheckedAt: now, ExpiresAt: now.Add(c.ttl)}
+		value = Status{Source: "unavailable", CheckedAt: now, ExpiresAt: now.Add(min(c.ttl, 15*time.Second))}
 	}
 	c.mu.Lock()
 	c.entries[model] = clone(value)

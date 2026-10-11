@@ -44,7 +44,7 @@ administrator password during credential replacement.
 | `--principal-id ID` | Optional upstream principal identifier |
 | `--browser` | Codex browser authorization-code/PKCE instead of default device-code login; Codex only |
 
-Without imported token flags, Codex/Nous start their device-code login flow.
+Without imported token flags, Codex starts its device-code login flow. Nous uses the API key in its provider card.
 Import values from protected files/environment references, not literal CLI args.
 Login-only token/account flags are rejected by `status` and `logout`.
 

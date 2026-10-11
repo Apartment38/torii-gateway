@@ -2,11 +2,14 @@ package provider
 
 import (
 	"context"
+	"github.com/Apartment38/torii-gateway/internal/quota"
 	"net/http"
 )
 
 // Model is the OpenAI-compatible metadata exposed for a physical model.
 type Model struct {
+	Quota            *quota.Status   `json:"quota,omitempty"`
+	QuotaError       string          `json:"quota_error,omitempty"`
 	ID               string          `json:"id"`
 	Object           string          `json:"object"`
 	Created          int64           `json:"created"`

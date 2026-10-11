@@ -25,6 +25,8 @@ class Element {
   querySelectorAll() { return []; }
 }
 class ProviderList extends Element {
+  dialogs = new Map();
+  editorStatuses = new Map();
   results = new Map();
   buttons = new Map();
   inputs = [];
@@ -35,6 +37,9 @@ class ProviderList extends Element {
     this.buttons = new Map();
     this.inputs = [];
     this.reveals = new Map();
+    this.dialogs = new Map();
+    this.editorStatuses = new Map();
+    for(const match of html.matchAll(/data-provider-dialog="(\d+)"/g)){const dialog=new Element();const status=new Element();dialog.querySelector=selector=>selector==="[data-editor-status]"?status:null;this.dialogs.set(match[1],dialog);this.editorStatuses.set(match[1],status);}
     for (const match of html.matchAll(/<input\b[^>]*data-provider="(\d+)"[^>]*data-key="([^"]+)"[^>]*>/g)) {
       const node = new Element();
       node.dataset = { provider:match[1], key:match[2] };
@@ -53,14 +58,17 @@ class ProviderList extends Element {
       node.textContent = "Not checked yet";
       this.results.set(match[1], node);
     }
-    for (const match of html.matchAll(/data-(test|login|remove)="(\d+)"/g)) {
+    for (const match of html.matchAll(/data-(test|login|remove|confirm-provider|cancel-provider|edit|detect-ollama)="(\d+)"/g)) {
       const node = new Element();
       node.dataset[match[1]] = match[2];
+      node.closest=()=>this.dialogs.get(match[2]);
       this.buttons.set(`${match[1]}:${match[2]}`, node);
     }
   }
   get innerHTML() { return this.html; }
   querySelector(selector) {
+    const dialog=/\[data-provider-dialog="(\d+)"\]/.exec(selector);if(dialog)return this.dialogs.get(dialog[1]);
+    const status=/\[data-editor-status="(\d+)"\]/.exec(selector);if(status)return this.editorStatuses.get(status[1]);
     if (selector.startsWith("#")) return this.inputs.find(node => node.id === selector.slice(1));
     const field = /\[data-provider="(\d+)"\]\[data-key="([^"]+)"\]/.exec(selector);
     if (field) return this.inputs.find(node => node.dataset.provider === field[1] && node.dataset.key === field[2]);
@@ -72,7 +80,8 @@ class ProviderList extends Element {
     if (selector === "[data-reveal-provider-key]") return [...this.reveals.values()];
     if (selector === "[data-provider]") return this.inputs;
     if (selector === '[data-key="api_key"]') return this.inputs.filter(node => node.dataset.key === "api_key");
-    const match = /\[data-(test|login|remove)\]/.exec(selector);
+    if(selector==="[data-provider-dialog]")return [...this.dialogs.values()];
+    const match = /\[data-(test|login|remove|confirm-provider|cancel-provider|edit|detect-ollama)\]/.exec(selector);
     return match ? [...this.buttons.values()].filter(node => match[1] in node.dataset) : [];
   }
 }
@@ -225,7 +234,7 @@ test("all provider types show a working status and discovered model count", asyn
   await app.run("testAllProviders()");
   assert.equal(app.calls.length, 3);
   assert.equal(app.status(0).textContent, "Logged in · Working · 5 models discovered");
-  assert.equal(app.status(1).textContent, "Logged in · Working · 1 model discovered");
+  assert.equal(app.status(1).textContent, "Connected · Working · 1 model discovered");
   assert.equal(app.status(2).textContent, "Connected · Working · 1 model discovered");
   assert.equal(app.status(0).className, "provider-result success");
 });
@@ -562,7 +571,8 @@ test("stored credential references survive reload without exposing keys", () => 
   assert.equal(app.run("readProviderConfig(providers[0]).bearer_token.value"), "replacement-key");
   assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_key_env"]'),undefined);
   app.setProviders([draft("openai-codex"), draft("nous"), draft("ollama")]);
-  assert.equal(app.list.inputs.some(input => input.dataset.key === "api_key"), false);
+  assert.equal(app.list.inputs.some(input => input.dataset.provider === "0" && input.dataset.key === "api_key"), false);
+  assert.equal(app.list.inputs.some(input => input.dataset.provider === "1" && input.dataset.key === "api_key"), true);
 });
 
 test("connection and save errors redact directly entered provider keys", async () => {
@@ -1620,4 +1630,25 @@ test("selectors label provider usage separately from gateway estimates",()=>{
  const app=consoleFixture(()=>response({}));
  const label=app.run('modelSelectorLabel({id:"anthropic/m",quota:{usage_usd:{monthly:1.5},reported_usage:[{period:"monthly",unit:"USD",used:1.5,scope:"organization"},{period:"monthly",unit:"tokens",used:500,scope:"organization"}]},usage_available:true,usage:[]})');
  assert.match(label,/Provider this month: \$1.50 \(organization\); 500 tokens \(organization\)/);assert.match(label,/No gateway usage/);assert.equal((label.match(/\$1.50/g)||[]).length,1);
+});
+
+test("provider editor shows progress, retains errors and closes after successful save",async()=>{
+ let reject=true,release;const app=consoleFixture((url,options)=>{
+  if(url.endsWith("providers/test"))return reject?response({error:"upstream unreachable"},false):new Promise(resolve=>{release=()=>resolve(response(models(1)));});
+  if(url.endsWith("config"))return response(options?.method==="PUT"?{status:"saved"}:{server:{listen:"127.0.0.1:8080"},providers:[{id:"openai_compatible",type:"openai_compatible",base_url:"https://openai_compatible.example",api_path:"/v1"}],router:{}});
+  return response({});
+ });
+ app.setProviders([draft("openai_compatible")]);app.run('configurationRevision=fixtureRevision;openProviderEditor(0,true)');
+ let dialog=app.list.dialogs.get("0"),button=app.list.buttons.get("confirm-provider:0");
+ await button.listeners.click();assert.equal(dialog.open,true);assert.match(app.list.editorStatuses.get("0").textContent,/upstream unreachable/);assert.equal(app.calls.some(c=>c.options?.method==="PUT"),false);
+ reject=false;const promise=button.listeners.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(button.disabled,true);assert.match(app.list.editorStatuses.get("0").textContent,/Checking/);release();await promise;assert.equal(dialog.open,false,app.run("saveState.textContent"));assert.equal(app.run("editingProvider"),null);
+});
+test("named router settings persist independently across selector changes",()=>{
+ const app=consoleFixture(()=>response({}));app.run('applyConfig({providers:[],router:{allow_paid_models:true},smart_routers:[{model_name:"local-only",allow_paid_models:false,allow_free_models:true,models:["ollama/model"]}]})');
+ app.run('selectedSmartRouter="local-only";renderSmartRouterEditor()');assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'),false);
+ const config=app.run('readConfig()');assert.equal(config.router.allow_paid_models,true);assert.equal(config.smart_routers[0].allow_paid_models,false);assert.deepEqual(Array.from(config.smart_routers[0].models),["ollama/model"]);
+ app.run('selectedSmartRouter="smart";renderSmartRouterEditor()');assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'),true);
+});
+test("overview counts classifier models outside the chat catalog",()=>{
+ const app=consoleFixture(()=>response({}));app.setProviders([draft("jev")]);app.run('overviewModels=[];classifierCatalogs.set(providers[0],["jev/a","jev/b"]);renderOverview()');assert.match(app.run('document.querySelector("#overview-workspace").innerHTML'),/2 models/);
 });

@@ -7,6 +7,7 @@ let modelStatusFilter="";
 let modelSort="name";
 let modelPage=0;
 let modelPageSize=matchMedia("(max-width: 760px)").matches?5:10;
+function modelQuotaSummary(model:any):string{const q=model.quota;return q?.known?`${Number(q.fraction_remaining*100).toFixed(1)}% quota remaining${q.windows?.length?` · ${q.windows.map((w:any)=>`${w.name}: ${quotaResetLabel(w.reset_at)}`).join(" · ")}`:""}`:model.quota_error||"Provider quota unknown";}
 function modelPrice(raw:number):string{return raw>0&&raw<.000001?`$${raw.toPrecision(3)}`:`$${raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:6})}`;}
 function modelPricingText(model:any):string{
  const p=model.pricing||{};

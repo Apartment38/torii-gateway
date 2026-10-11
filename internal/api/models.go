@@ -149,3 +149,10 @@ func (h *OpenAIHandler) ManagementModels(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, 200, map[string]any{"models": models})
 }
+
+func (h *OpenAIHandler) ModelQuota(ctx context.Context, id string) (quota.Status, error) {
+	if h.quota == nil {
+		return quota.Status{}, nil
+	}
+	return h.quota.Get(ctx, id)
+}

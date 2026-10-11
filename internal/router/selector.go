@@ -20,6 +20,7 @@ const (
 )
 
 type SelectionPolicy struct {
+	AllowFreeModels             *bool
 	AllowPaidModels             bool
 	MaxContextFraction          float64
 	MinimumQuality              map[string]float64
@@ -146,6 +147,9 @@ func evaluate(candidate Candidate, req RequestRequirements, complexity string, p
 		}
 		needed := req.EstimatedInputTokens + output
 		headroom = *m.ContextWindow - needed
+	}
+	if policy.AllowFreeModels != nil && !*policy.AllowFreeModels && knownFree(m) {
+		return ranked{}, "free models are disabled", false
 	}
 	if !policy.AllowPaidModels && !knownFree(m) {
 		return ranked{}, "model is not positively known to be free", false

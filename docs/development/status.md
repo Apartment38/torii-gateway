@@ -79,6 +79,8 @@ The six extension commits are also applied to the requested
 retained for review. Its implementation matches the validated tracking branch;
 existing routing documentation remains on that branch's original history.
 
+Provider/router fixes are in progress on `fix/provider-connections-smart-routers` in `/tmp/torii-provider-router-fixes`. Implemented classifier counts, in-card connection/save feedback, Nous API-key authentication and pricing, host-aware Ollama port detection, Codex quota/reset metadata, named smart router pools with independent policy/session controls, and separate paid/free gates. Go and console fixture checks pass. Live Podman acceptance and restoration remain in progress. Nous API-key account balance/usage endpoints could not be verified; the operator has been asked how to handle that limitation.
+
 
 The premium console redesign is complete on `feat/premium-console` in
 `/tmp/torii-premium-console`, retained for review. Separate builders and independent

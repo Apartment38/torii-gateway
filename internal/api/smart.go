@@ -105,7 +105,7 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 	candidates := make([]router.Candidate, 0)
 	var budgetErr error
 	for _, model := range h.CatalogModels() {
-		if model.PublicID == excluded || !h.enabled(model.PublicID) {
+		if model.PublicID == excluded || !h.enabled(model.PublicID) || len(h.allowedProviders) > 0 && !h.allowedProviders[model.ProviderID] || len(h.allowedModels) > 0 && !h.allowedModels[model.PublicID] {
 			continue
 		}
 		providerID, _, err := provider.ParseModelID(model.PublicID)

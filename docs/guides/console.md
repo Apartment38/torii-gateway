@@ -64,3 +64,5 @@ returns them through an explicitly configured tracking endpoint; available reset
 headers still appear. See [provider tracking](../reference/configuration.md#provider-tracking).
 
 Provider editors show connection checks and save progress inside the card. A successful check and save closes the editor; connection or save errors keep the draft open for correction. Overview counts include discovered classifier models, even though those models are excluded from the chat catalog.
+
+Smart routing supports **Create router** and named provider/model pools. Choose a router in the selector to edit its full policy. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.

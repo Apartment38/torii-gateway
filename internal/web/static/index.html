@@ -82,6 +82,9 @@
 
           <section id="routing" class="page section-block">
             <div class="section-heading"><div><h2>Smart routing</h2></div><span class="section-note">Deterministic by default</span></div>
+            <div class="grid three"><label>Router<select id="smart-router-select"><option value="smart">smart · default</option></select></label><label>New router name<input id="smart-router-new-name" placeholder="coding-local" /></label><div class="check-row"><button id="add-smart-router" class="button secondary" type="button">Create router</button><button id="remove-smart-router" class="button quiet" type="button" disabled>Remove router</button></div></div>
+            <div class="grid two"><label>Allowed providers<select id="smart-router-providers" multiple size="4" aria-describedby="smart-router-scope-note"></select></label><label>Allowed models<select id="smart-router-models" multiple size="5" aria-describedby="smart-router-scope-note"></select></label></div><p id="smart-router-scope-note" class="section-note">An empty selection allows all. Select providers to limit the pool; select models to narrow it further. Each router has its own settings below. Clients select the router by its model name.</p>
+
             <p class="page-description">Torii checks capabilities, availability, and your policy before selecting a model. Add an optional classifier to tailor selection to each request.</p>
             <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
@@ -112,7 +115,7 @@
               <label data-tooltip="Choose whether to prefer local models, cloud models, or neither. Capability and policy requirements still apply.">Location preference<select name="router.selection.location_preference"><option value="">Use default preference</option><option value="neutral">No preference</option><option value="local">Prefer local models</option><option value="cloud">Prefer cloud models</option></select></label>
 
             </div>
-            <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid models</label></div>
+            <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid models</label><label class="checkbox"><input name="router.allow_free_models" type="checkbox" checked /> Allow free models</label></div>
             <details class="advanced-fields"><summary>Advanced quality thresholds</summary><p class="section-note">Optional quality floors use scores from 0 to 1. Catalog metadata overrides remain in database settings; see the <a href="https://github.com/Apartment38/torii-gateway/blob/main/docs/reference/configuration.md" target="_blank" rel="noopener noreferrer">configuration reference</a> for descriptor fields.</p>
               <label data-tooltip="JSON quality thresholds for deterministic selection. Each score must be between 0 and 1.">Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
             </details>

@@ -53,6 +53,7 @@ type OpenAIHandler struct {
 	policy              router.SelectionPolicy
 	usage               *usage.Store
 	quota               *quota.Cache
+	observedQuotas      *quota.Cache
 	intelligence        *intelligence.Manager
 	latencyMu           sync.Mutex
 	latency             map[string]time.Duration
@@ -86,7 +87,7 @@ func NewOpenAIHandlerWithOverrides(providers []provider.OpenAIProvider, override
 	if err != nil {
 		return nil, err
 	}
-	return &OpenAIHandler{byID: registered, catalog: modelCatalog, sessions: session.NewManager(30*time.Minute, session.MaxSessions), policy: router.DefaultSelectionPolicy(), latency: make(map[string]time.Duration), rerouteOnFailure: true}, nil
+	return &OpenAIHandler{byID: registered, catalog: modelCatalog, sessions: session.NewManager(30*time.Minute, session.MaxSessions), policy: router.DefaultSelectionPolicy(), observedQuotas: quota.NewCache(time.Minute, nil), latency: make(map[string]time.Duration), rerouteOnFailure: true}, nil
 }
 
 // SetClassifier configures the bounded semantic classifier used by smart.
@@ -428,6 +429,14 @@ func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
 			}
 		}
 		_ = h.quota.Observe(model, status)
+
+		// Share account windows across independently configured routers without
+		// replacing their cached billing snapshots or model-scoped limits.
+		if h.observedQuotas != nil && (headers.Get("X-Codex-Primary-Used-Percent") != "" || headers.Get("X-Codex-Secondary-Used-Percent") != "") {
+			if id, _, err := provider.ParseModelID(model); err == nil {
+				_ = h.observedQuotas.Observe(id, status)
+			}
+		}
 	}
 }
 
@@ -591,6 +600,7 @@ func (h *OpenAIHandler) NewRouter(providers []provider.OpenAIProvider, overrides
 	child.activity = h.activity
 	child.intelligence = h.intelligence
 	child.usage = h.usage
+	child.observedQuotas = h.observedQuotas
 	child.modelEnabled = h.modelEnabled
 	child.freeProviders = h.freeProviders
 	return child, nil

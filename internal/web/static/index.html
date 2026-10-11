@@ -117,6 +117,7 @@
             </div>
             <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid models</label><label class="checkbox"><input name="router.allow_free_models" type="checkbox" checked /> Allow free models</label></div>
             <details class="advanced-fields"><summary>Advanced quality thresholds</summary><p class="section-note">Optional quality floors use scores from 0 to 1. Catalog metadata overrides remain in database settings; see the <a href="https://github.com/Apartment38/torii-gateway/blob/main/docs/reference/configuration.md" target="_blank" rel="noopener noreferrer">configuration reference</a> for descriptor fields.</p>
+              <label>Benchmark routing weights JSON<input name="router.intelligence_weights" placeholder='{"capabilities":{"coding":1},"price":0.2}' /></label>
               <label data-tooltip="JSON quality thresholds for deterministic selection. Each score must be between 0 and 1.">Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
             </details>
           </section>

@@ -339,28 +339,6 @@ func runAuth(args []string, output io.Writer) error {
 	}
 	switch action {
 	case "login":
-		if providerConfig.Type == "nous" && *accessEnv == "" && *accessFile == "" && *refreshEnv == "" && *refreshFile == "" {
-			portalURL := providerConfig.PortalURL
-			if portalURL == "" {
-				portalURL = provider.DefaultNousPortalURL
-			}
-			clientID := providerConfig.ClientID
-			if clientID == "" {
-				clientID = provider.DefaultNousClientID
-			}
-			credential, loginErr := provider.NousDeviceCodeLogin(context.Background(), portalURL, clientID, "inference:invoke", &http.Client{}, func(url, code string) {
-				_, _ = fmt.Fprintf(output, "open %s and enter code %s\n", url, code)
-			})
-			if loginErr != nil {
-				return loginErr
-			}
-			credential.Endpoint = strings.TrimRight(providerConfig.BaseURL, "/")
-			if err := store.Save(providerID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: credential.Endpoint, TokenType: "Bearer"}); err != nil {
-				return err
-			}
-			_, err := fmt.Fprintf(output, "provider %s: logged in\n", providerID)
-			return err
-		}
 		if providerConfig.Type == "openai-codex" && *accessEnv == "" && *accessFile == "" && *refreshEnv == "" && *refreshFile == "" {
 			var credential provider.CodexCredential
 			var loginErr error
@@ -1914,6 +1892,9 @@ func configureSmartRouter(openAI *api.OpenAIHandler, cfg *config.Config, provide
 	}
 	selection.AllowFreeModels = cfg.Router.AllowFreeModels
 	selection.Intelligence = cfg.Intelligence.Routing
+	if cfg.Router.IntelligenceWeights != nil {
+		selection.Intelligence = *cfg.Router.IntelligenceWeights
+	}
 	openAI.SetSelectionPolicy(selection)
 	if raw := cfg.Router.Sessions.InactivityTimeout; raw != "" {
 		if timeout, parseErr := time.ParseDuration(raw); parseErr == nil {

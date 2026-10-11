@@ -4,6 +4,7 @@ package quota
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -230,6 +231,10 @@ func (c *Cache) SetLocal(model string, limit, used float64) error {
 
 // Set records an observed model-scoped snapshot; configured local allowances
 // remain independent of shared provider-account snapshots.
+func (c *Cache) SetSnapshot(model string, value Status) error {
+	return c.Set(model, value)
+}
+
 func (c *Cache) Set(model string, value Status) error {
 	return c.set(model, value, time.Time{})
 }
@@ -420,4 +425,14 @@ func normalize(s *Status) error {
 		s.Exhausted = s.Remaining == 0 || s.Blocked
 	}
 	return nil
+}
+
+// HTTPError carries only a status code, never an upstream response or token.
+type HTTPError struct{ StatusCode int }
+
+func (e *HTTPError) Error() string {
+	if e.StatusCode == 401 || e.StatusCode == 403 {
+		return fmt.Sprintf("Quota endpoint HTTP %d · reconnect a credential with account-usage access", e.StatusCode)
+	}
+	return fmt.Sprintf("Quota endpoint HTTP %d", e.StatusCode)
 }

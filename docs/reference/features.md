@@ -11,7 +11,7 @@ still depends on your account, model capabilities, quotas, and upstream availabi
 | Translated transport | Codex Responses and Anthropic Messages adapters | Explicit protocol restrictions; not all native features exposed |
 | Console | Embedded light/dark UI, connection tests, live validated save/reload | Management requires one admin; listener/database changes require restart |
 | Credentials | AES-256-GCM encrypted SQLite payloads, provider references, default/named client keys | Master key required; saved secrets cannot be retrieved; no automatic key rotation |
-| Subscription access | Codex local/remote login/helper and Nous Portal login/refresh | Account eligibility and provider token scopes required |
+| Subscription access | Codex local/remote login/helper; Nous Portal API-key access | Account eligibility and provider token scopes required |
 | Smart routing | Deterministic selection; optional connected, embedding, typed Jev/Laya classification | Only eligible candidates; classifier-only models never answer inference |
 | Routing policies | Capabilities/context, quality floors, paid-model gate, estimated cost, location, quotas, latency | Unknown measurements remain unknown; estimates are not bills |
 | Sessions | In-memory bounded affinity, explicit deletion, safe tool pinning, pre-stream rerouting | Lost on restart; tool continuation cannot move to an unpinned model; no retry after bytes sent |

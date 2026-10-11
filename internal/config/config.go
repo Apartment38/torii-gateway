@@ -19,6 +19,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/router"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,17 +40,18 @@ type Config struct {
 }
 
 type RouterConfig struct {
-	Providers        []string             `yaml:"providers,omitempty"`
-	Models           []string             `yaml:"models,omitempty"`
-	AllowFreeModels  *bool                `yaml:"allow_free_models,omitempty"`
-	ModelName        string               `yaml:"model_name,omitempty"`
-	CatalogOverrides []catalog.Descriptor `yaml:"catalog_overrides,omitempty"`
-	CatalogFile      string               `yaml:"catalog_file,omitempty"`
-	AllowPaidModels  *bool                `yaml:"allow_paid_models,omitempty"`
-	Classifier       ClassifierConfig     `yaml:"classifier,omitempty"`
-	Sessions         SessionConfig        `yaml:"sessions,omitempty"`
-	Quota            QuotaConfig          `yaml:"quota,omitempty"`
-	Selection        SelectionConfig      `yaml:"selection,omitempty"`
+	IntelligenceWeights *router.IntelligenceWeights `yaml:"intelligence_weights,omitempty"`
+	Providers           []string                    `yaml:"providers,omitempty"`
+	Models              []string                    `yaml:"models,omitempty"`
+	AllowFreeModels     *bool                       `yaml:"allow_free_models,omitempty"`
+	ModelName           string                      `yaml:"model_name,omitempty"`
+	CatalogOverrides    []catalog.Descriptor        `yaml:"catalog_overrides,omitempty"`
+	CatalogFile         string                      `yaml:"catalog_file,omitempty"`
+	AllowPaidModels     *bool                       `yaml:"allow_paid_models,omitempty"`
+	Classifier          ClassifierConfig            `yaml:"classifier,omitempty"`
+	Sessions            SessionConfig               `yaml:"sessions,omitempty"`
+	Quota               QuotaConfig                 `yaml:"quota,omitempty"`
+	Selection           SelectionConfig             `yaml:"selection,omitempty"`
 }
 
 type ClassifierConfig struct {
@@ -414,6 +416,11 @@ func validateNousProvider(p ProviderConfig) error {
 }
 
 func (r RouterConfig) Validate() error {
+	if r.IntelligenceWeights != nil {
+		if err := (IntelligenceConfig{Routing: *r.IntelligenceWeights}).Validate(); err != nil {
+			return fmt.Errorf("intelligence_weights: %w", err)
+		}
+	}
 	for _, id := range r.Models {
 		if _, _, err := provider.ParseModelID(id); err != nil {
 			return fmt.Errorf("router model: %w", err)

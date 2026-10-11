@@ -284,7 +284,7 @@ Sources:
 
 ### API-key connection (verified 2026-10-11)
 
-Live `GET https://inference-api.nousresearch.com/v1/models` accepts the operator's API key as a bearer credential. The response contains context lengths and per-token `pricing.prompt`/`pricing.completion`; Torii converts prices to per-million units. OAuth login is no longer exposed for Nous by the gateway or console. Existing OAuth credentials must be replaced with a provider API key.
+Live `GET https://inference-api.nousresearch.com/v1/models` accepts the operator's API key as a bearer credential. The response contains context lengths and per-token `pricing.prompt`/`pricing.completion`; Torii converts prices to per-million units. The service returns Cloudflare HTTP 403 for the default `Go-http-client/1.1` user agent; `ToriiGateway` succeeds. Torii identifies itself on discovery and inference requests. OAuth login is no longer exposed for Nous by the gateway or console. Existing OAuth credentials must be replaced with a provider API key.
 
 The inference origin returned HTTP 404 for `/openapi.json`, `/v1/credits`, `/v1/balance`, `/v1/usage`, `/v1/account`, and `/v1/user`. The Portal API documentation was login-gated. No account balance or quota contract was verified for API keys. Absent provider telemetry remains unknown; inference response headers can still supply rate limits.
 

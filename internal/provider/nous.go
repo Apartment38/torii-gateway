@@ -133,9 +133,8 @@ func decodeJSONResponse(resp *http.Response, target any) error {
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(target)
 }
 
-// Nous is the Nous Portal subscription provider. The inference API is
-// OpenAI-compatible, but credentials are obtained and refreshed through the
-// Portal OAuth service.
+// Nous provides API-key access to the OpenAI-compatible Nous inference API.
+// The legacy credential callback can still refresh when a saver is supplied.
 type Nous struct {
 	id, inferenceBase, portalBase, clientID string
 	models                                  []string
@@ -156,7 +155,7 @@ func NewNous(id, inferenceBase, portalBase, clientID string, models []string, di
 	clonedClient := *client
 	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	client = &clonedClient
-	if load == nil || save == nil {
+	if load == nil {
 		return nil, errors.New("Nous credential store is required")
 	}
 	if clientID == "" {
@@ -226,6 +225,7 @@ func (p *Nous) Models(ctx context.Context) ([]Model, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+credential.AccessToken)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "ToriiGateway")
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("discover Nous models: %w", err)
@@ -281,7 +281,7 @@ func (p *Nous) Forward(ctx context.Context, endpoint string, body []byte, model 
 	if err != nil {
 		return nil, err
 	}
-	transportClient, err := transport.NewOpenAICompatibleWithHeaders(p.inferenceBase, p.client, http.Header{"Authorization": []string{"Bearer " + credential.AccessToken}})
+	transportClient, err := transport.NewOpenAICompatibleWithHeaders(p.inferenceBase, p.client, http.Header{"Authorization": []string{"Bearer " + credential.AccessToken}, "User-Agent": []string{"ToriiGateway"}})
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func (p *Nous) Forward(ctx context.Context, endpoint string, body []byte, model 
 	if err != nil {
 		return nil, err
 	}
-	transportClient, err = transport.NewOpenAICompatibleWithHeaders(p.inferenceBase, p.client, http.Header{"Authorization": []string{"Bearer " + refreshed.AccessToken}})
+	transportClient, err = transport.NewOpenAICompatibleWithHeaders(p.inferenceBase, p.client, http.Header{"Authorization": []string{"Bearer " + refreshed.AccessToken}, "User-Agent": []string{"ToriiGateway"}})
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +331,9 @@ func (p *Nous) credential(ctx context.Context) (NousCredential, error) {
 }
 
 func (p *Nous) refresh(ctx context.Context, credential NousCredential) error {
+	if p.save == nil {
+		return errors.New("Nous API key cannot be refreshed; replace it in the provider editor")
+	}
 	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
 	latest, err := p.load(p.id)

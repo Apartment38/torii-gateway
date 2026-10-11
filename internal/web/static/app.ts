@@ -665,7 +665,7 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router=structuredClone(smartRouterDrafts[selectedSmartRouter]||config.router||{});config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
-  new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
+  new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality" || name==="router.intelligence_weights") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
   config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
@@ -700,6 +700,7 @@ function readConfig(): Record<string, any> {
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
   if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
   config.intelligence = readBenchmarkConfiguration();
+  if(!String((form.elements.namedItem("router.intelligence_weights") as HTMLInputElement)?.value||"").trim())delete config.router.intelligence_weights;
   smartRouterDrafts[selectedSmartRouter]=structuredClone(config.router);
   config.router=structuredClone(smartRouterDrafts.smart||{});
   config.smart_routers=Object.entries(smartRouterDrafts).filter(([name])=>name!=="smart").map(([,draft])=>structuredClone(draft));
@@ -938,9 +939,9 @@ function renderSmartRouterScope():void{
 function renderSmartRouterEditor():void{
  const selector=document.querySelector<HTMLSelectElement>("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
- const fields=["model_name","allow_paid_models","allow_free_models","sessions.on_model_failure","sessions.inactivity_timeout","quota.cache_ttl","quota.allowances","selection.context_utilization_limit","selection.default_expected_output_tokens","selection.location_preference","selection.minimum_quality","classifier.on_failure","classifier.timeout","classifier.minimum_confidence"];
+ const fields=["model_name","allow_paid_models","allow_free_models","sessions.on_model_failure","sessions.inactivity_timeout","quota.cache_ttl","quota.allowances","selection.context_utilization_limit","selection.default_expected_output_tokens","selection.location_preference","selection.minimum_quality","intelligence_weights","classifier.on_failure","classifier.timeout","classifier.minimum_confidence"];
  for(const field of fields){const control=form.elements.namedItem(`router.${field}`) as HTMLInputElement|null;if(!control)continue;let value:any=draft;for(const part of field.split("."))value=value?.[part];
- if(field.startsWith("allow_"))control.checked=value!==false;else if(field==="model_name"){control.value=draft.model_name||selectedSmartRouter;control.readOnly=selectedSmartRouter==="smart";}else if(field==="quota.allowances")control.value=Object.entries(value||{}).map(([id,v])=>`${id} = ${v}`).join("\n");else if(field==="selection.minimum_quality")control.value=value?JSON.stringify(value):"";else control.value=value===undefined?"":String(value);
+ if(field.startsWith("allow_"))control.checked=value!==false;else if(field==="model_name"){control.value=draft.model_name||selectedSmartRouter;control.readOnly=selectedSmartRouter==="smart";}else if(field==="quota.allowances")control.value=Object.entries(value||{}).map(([id,v])=>`${id} = ${v}`).join("\n");else if(field==="selection.minimum_quality" || field==="intelligence_weights")control.value=value?JSON.stringify(value):"";else control.value=value===undefined?"":String(value);
  }
  const c=draft.classifier||{};classifierQuestionOverrides=structuredClone(c.questions||{});classifierNoulThresholds={...(c.noul_thresholds||{})};
  requestedClassifier=c.type==="disabled"?"disabled":c.type==="jev"&&c.transport==="provider"?`${c.provider}/${c.model}`:c.model||"";

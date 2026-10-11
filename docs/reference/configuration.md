@@ -124,6 +124,7 @@ tracking:
 | `allow_free_models` | Boolean, true | Allows models positively known to have zero input/output cost; independent of paid permission |
 | `providers` | Provider ID list, empty | Empty allows all; otherwise only listed providers are eligible |
 | `models` | Provider-qualified model ID list, empty | Empty allows all; otherwise narrows the eligible provider pool to these models |
+| `intelligence_weights` | Routing weights object, absent | Per-router override of `intelligence.routing`; same validated categories and units; absence inherits gateway weights |
 | `classifier.type` | String, absent | `disabled`, `model`, `laya`, `embedding`, `jev`; absent means no configured classifier |
 | `classifier.model` | String, conditional | Physical `provider/model` for connected `model`/`laya`; provider-local model for typed/embedding transport; never `smart` |
 | `classifier.provider` | String, conditional | Required for embedding and Jev provider transport |

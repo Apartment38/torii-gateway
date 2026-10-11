@@ -125,7 +125,7 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 		}
 		candidate := router.Candidate{Model: model, LatencyEWMA: h.getLatency(model.PublicID), Intelligence: h.modelIntelligence(model.PublicID)}
 		if h.quota != nil {
-			if status, quotaErr := h.quota.Get(ctx, model.PublicID); quotaErr == nil {
+			if status, quotaErr := h.ModelQuota(ctx, model.PublicID); quotaErr == nil {
 				candidate.QuotaKnown, candidate.QuotaRemaining, candidate.QuotaExhausted = status.Known, status.FractionRemaining, status.Exhausted
 			}
 		}

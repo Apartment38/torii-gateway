@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/intelligence"
@@ -82,7 +83,7 @@ func (h *OpenAIHandler) modelUsage(r *http.Request, management bool) (map[string
 
 func (h *OpenAIHandler) modelQuota(ctx context.Context, id string) quota.Status {
 	if h.quota != nil {
-		status, _ := h.quota.Get(ctx, id)
+		status, _ := h.ModelQuota(ctx, id)
 		return status
 	}
 	return quota.Status{}
@@ -154,5 +155,21 @@ func (h *OpenAIHandler) ModelQuota(ctx context.Context, id string) (quota.Status
 	if h.quota == nil {
 		return quota.Status{}, nil
 	}
-	return h.quota.Get(ctx, id)
+	status, err := h.quota.Get(ctx, id)
+	if !status.Known && h.observedQuotas != nil {
+		if providerID, _, parseErr := provider.ParseModelID(id); parseErr == nil {
+			if observed, observeErr := h.observedQuotas.Get(ctx, providerID); observeErr == nil && observed.Known {
+				return observed, nil
+			}
+		}
+	}
+	return status, err
+}
+
+func quotaErrorMessage(err error) string {
+	var remote *quota.HTTPError
+	if errors.As(err, &remote) {
+		return remote.Error()
+	}
+	return "Provider quota unavailable"
 }

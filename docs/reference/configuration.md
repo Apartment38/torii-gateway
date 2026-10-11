@@ -87,7 +87,9 @@ Proxy-Connection, Transfer-Encoding, Upgrade, or X-Request-Id.
 | `model_name` | String, `smart` | Only `smart` accepted |
 | `catalog_file` | String, absent | Legacy import only: strict JSON descriptor array imported into `catalog_overrides` |
 | `catalog_overrides` | Descriptor array, empty | Persistent provider-qualified metadata and pricing overrides, applied after bundled/live metadata |
-| `allow_paid_models` | Boolean, true | Hard gate for smart paid candidates; explicit model requests bypass smart |
+| `allow_paid_models` | Boolean, true | Built-in `smart` gate: when false, only models positively known to be free are eligible; explicit physical model requests bypass routing policy |
+| `allow_free_models` | Boolean, true | Built-in `smart` gate: when false, models with known zero input and output prices are excluded |
+| `custom_routers` | Array, empty | Named virtual models with restricted candidate pools; fields below |
 | `classifier.type` | String, absent | `disabled`, `model`, `laya`, `embedding`, `jev`; absent means no configured classifier |
 | `classifier.model` | String, conditional | Physical `provider/model` for connected `model`/`laya`; provider-local model for typed/embedding transport; never `smart` |
 | `classifier.provider` | String, conditional | Required for embedding and Jev provider transport |
@@ -149,6 +151,46 @@ router:
 ```
 
 See [Smart routing](../guides/smart-routing.md) for setup and session behavior.
+
+### Custom smart routers
+
+Each entry under `router.custom_routers` has the following fields:
+
+| Field | Type/default | Rules and purpose |
+| --- | --- | --- |
+| `name` | Required string | Unique virtual model ID matching `[a-z0-9][a-z0-9._-]*`; `smart` is reserved |
+| `providers` | String array, empty | Provider IDs whose entire model catalogs are included, including newly discovered models |
+| `models` | String array, empty | Individual public `provider/model` IDs; upstream IDs may contain additional slashes |
+| `allow_paid_models` | Boolean, true | Independent paid/unknown-price gate for this router |
+| `allow_free_models` | Boolean, true | Independent known-free gate for this router |
+
+Select at least one provider or model. The two lists add to one pool: selecting a
+provider includes all its models, while `models` adds individual models from
+other providers. To restrict a provider to particular models, use only `models`.
+Custom pricing defaults are both enabled, independently of the built-in `smart`
+settings. Disabling both leaves no eligible candidates. Unknown prices require
+paid routing to be allowed; a model is known free only when both input and output
+prices are known and zero.
+
+Example excerpt (merge under `router` in an import configuration):
+
+```yaml
+custom_routers:
+  - name: smart-local
+    providers: [ollama]
+  - name: smart-team
+    models: [openai/gpt-4.1, anthropic/claude-sonnet-4]
+    allow_paid_models: true
+    allow_free_models: true
+```
+
+Custom names appear in `/v1/models`, model lookup, and `gateway models`. Use the
+name as the request's `model` on the supported inference endpoints. Custom routers
+share the classifier, quality thresholds, quotas, and session rules with `smart`.
+Every attempt, retry, and reused session pin must remain inside the pool and
+satisfy current model enablement and pricing policy. An empty or unavailable pool
+fails rather than falling back outside its scope. A physical classifier may use a
+model outside the inference pool; these restrictions apply to inference selection.
 
 ## Intelligence
 

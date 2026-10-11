@@ -129,6 +129,14 @@ providers:
 #   model_name: smart
 #   catalog_file: ./catalog-overrides.json
 #   allow_paid_models: true
+#   allow_free_models: true
+#   custom_routers:
+#     - name: smart-local
+#       providers: [ollama]
+#     - name: smart-selected
+#       models: [ollama/qwen3]
+#       allow_paid_models: true
+#       allow_free_models: true
 #   classifier:
 #     type: jev
 #     transport: provider

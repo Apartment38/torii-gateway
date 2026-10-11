@@ -112,7 +112,19 @@
               <label data-tooltip="Choose whether to prefer local models, cloud models, or neither. Capability and policy requirements still apply.">Location preference<select name="router.selection.location_preference"><option value="">Use default preference</option><option value="neutral">No preference</option><option value="local">Prefer local models</option><option value="cloud">Prefer cloud models</option></select></label>
 
             </div>
-            <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid models</label></div>
+            <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow paid</label><label class="checkbox" data-tooltip="Allow models positively known to have zero input and output prices."><input name="router.allow_free_models" type="checkbox" checked /> Allow free</label></div>
+            <div class="section-heading"><div><h3>Custom smart routers</h3><p class="section-note">Create a model that routes only among selected providers and models. Selecting a provider includes all its current and future models; individual models add to that pool.</p></div><button id="add-custom-router" class="button secondary" type="button">Create smart router</button></div>
+            <div id="custom-router-list"></div>
+            <dialog id="custom-router-dialog">
+              <h3 id="custom-router-title">Create smart router</h3>
+              <label>Model name<input id="custom-router-name" placeholder="smart-coding" maxlength="100" /></label>
+              <p class="section-note">Use lowercase letters, numbers, dots, underscores, or hyphens. Clients use this name as the model ID.</p>
+              <fieldset><legend>Providers (all models)</legend><div id="custom-router-providers"></div></fieldset>
+              <fieldset><legend>Individual models</legend><div id="custom-router-models"></div></fieldset>
+              <div class="check-row"><label class="checkbox"><input id="custom-router-paid" type="checkbox" checked /> Allow paid</label><label class="checkbox"><input id="custom-router-free" type="checkbox" checked /> Allow free</label></div>
+              <p id="custom-router-error" role="alert"></p>
+              <div class="check-row"><button id="save-custom-router" type="button" class="button primary">Save router</button><button id="cancel-custom-router" type="button" class="button secondary">Cancel</button></div>
+            </dialog>
             <details class="advanced-fields"><summary>Advanced quality thresholds</summary><p class="section-note">Optional quality floors use scores from 0 to 1. Catalog metadata overrides remain in database settings; see the <a href="https://github.com/Apartment38/torii-gateway/blob/main/docs/reference/configuration.md" target="_blank" rel="noopener noreferrer">configuration reference</a> for descriptor fields.</p>
               <label data-tooltip="JSON quality thresholds for deterministic selection. Each score must be between 0 and 1.">Minimum quality JSON<input name="router.selection.minimum_quality" placeholder='{"reasoning":0.8}' /></label>
             </details>

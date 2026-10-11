@@ -1,6 +1,22 @@
 # Project status
 
-Updated 2026-10-10. This is the sole project progress and backlog tracker.
+Updated 2026-10-11. This is the sole project progress and backlog tracker.
+
+## Custom smart routers
+
+Implemented on `feat/custom-smart-routers` in `/workspace/torii-smart-routers`:
+named virtual model discovery and inference, additive provider/model pools,
+restricted retry and affinity selection, independent paid/free gates defaulting
+on, and a console create/edit/delete dialog with persisted scopes and pricing.
+The overview client selector includes custom names. Updated configuration and
+console guidance; added backend regression tests and three console tests.
+
+Validation: all 105 console tests pass, generated script freshness and
+`git diff --check` pass. Backend baseline and final Go tests, vet, race, build,
+module tidy and gofmt checks could not run: the workspace lacks the Go compiler
+(`/usr/bin/go` is an unrelated program), and the configured HTTP proxy refuses
+connections when downloading the toolchain. Go changes were reviewed manually;
+these checks remain required before merge. No deployment was performed.
 
 ## v1 implementation and rollout
 

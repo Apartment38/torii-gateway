@@ -1586,3 +1586,47 @@ test("usage page includes provider limits separately from operator budgets",()=>
  const html=app.run('document.querySelector("#usage-list").innerHTML');
  assert.match(html,/Provider balances &amp; subscription limits/);assert.equal((html.match(/<strong>nous<\/strong>/g)||[]).length,1);assert.match(html,/Quota unknown/);
 });
+
+test("free and paid gates default on and preserve independent false values", async () => {
+ let persisted={providers:[],router:{allow_free_models:false,classifier:{type:"disabled"}}};
+ const app=consoleFixture((_url,options)=>{if(options?.method==="PUT")persisted=JSON.parse(options.body);return response(persisted);});
+ app.context.config=persisted;app.run("applyConfig(config,fixtureRevision)");
+ assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'),true);
+ assert.equal(app.run('form.elements.namedItem("router.allow_free_models").checked'),false);
+ await app.run("saveConfig()");assert.equal(persisted.router.allow_free_models,false);
+ app.run("applyConfig({providers:[],router:{classifier:{type:'disabled'}}},fixtureRevision)");
+ assert.equal(app.run('form.elements.namedItem("router.allow_free_models").checked'),true);
+ app.run('form.elements.namedItem("router.allow_paid_models").checked=false');
+ assert.equal(app.run("readConfig().router.allow_paid_models"),false);
+ assert.equal(app.run("readConfig().router.allow_free_models"),true);
+});
+
+test("custom router editor creates mixed pools, persists pricing and retains offline models", async () => {
+ let persisted={providers:[{id:"local",type:"ollama",base_url:"http://localhost:11434",models:["qwen"],discover_models:false}],router:{classifier:{type:"disabled"}}};
+ const app=consoleFixture((_url,options)=>{if(options?.method==="PUT")persisted=JSON.parse(options.body);return response(persisted);});
+ app.context.config=persisted;await app.run("applyConfig(config,fixtureRevision);openCustomRouter()");
+ assert.match(app.run('document.querySelector("#custom-router-models").innerHTML'),/local\/qwen/);
+ assert.equal(app.run('document.querySelector("#custom-router-paid").checked'),true);
+ assert.equal(app.run('document.querySelector("#custom-router-free").checked'),true);
+ app.run('document.querySelector("#custom-router-name").value="smart-team";document.querySelector("#custom-router-paid").checked=false;document.querySelectorAll=selector=>selector.includes("provider")?[{checked:true,value:"local"}]:selector.includes("model")?[{checked:true,value:"cloud/vendor/model"}]:[];saveCustomRouter()');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(persisted.router.custom_routers,[{name:"smart-team",providers:["local"],models:["cloud/vendor/model"],allow_paid_models:false,allow_free_models:true}]);
+ app.context.config=persisted;await app.run("applyConfig(config,fixtureRevision);openCustomRouter(0)");
+ assert.match(app.run('document.querySelector("#custom-router-models").innerHTML'),/cloud\/vendor\/model/);
+ assert.equal(app.run('document.querySelector("#custom-router-paid").checked'),false);
+ app.run('document.querySelector("#custom-router-name").value="unsaved";document.querySelector("#cancel-custom-router").listeners.click()');
+ assert.equal(app.run("readConfig().router.custom_routers[0].name"),"smart-team");
+ assert.match(app.run("renderClientConnection()"),/smart-team · gateway routing/);
+});
+
+test("custom router editor rejects empty pools, reserved names and duplicate names", () => {
+ const app=consoleFixture(()=>response({}));
+ app.run('openCustomRouter();document.querySelector("#custom-router-name").value="smart";saveCustomRouter()');
+ assert.match(app.run('document.querySelector("#custom-router-error").textContent'),/other than smart/);
+ app.run('document.querySelector("#custom-router-name").value="team";saveCustomRouter()');
+ assert.match(app.run('document.querySelector("#custom-router-error").textContent'),/at least one/);
+ app.run('customRoutersDraft=[{name:"team",providers:["p"]}];saveCustomRouter()');
+ assert.match(app.run('document.querySelector("#custom-router-error").textContent'),/already exists/);
+ assert.equal(app.run("customRoutersDraft.length"),1);
+ assert.equal(app.run('isConsoleViewControl({id:"",dataset:{routerChoice:"model"}})'),true);
+});

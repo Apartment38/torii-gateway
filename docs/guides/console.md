@@ -51,3 +51,20 @@ Listener changes require restart. Database paths and master-key inputs are boots
 Session expiry preserves drafts for reauthentication. Browser reload/sign-out loses unsaved drafts. Administrator login uses an HttpOnly, SameSite=Lax cookie with a seven-day default expiry. It survives browser reloads and gateway restarts. Sign out revokes the session. Saved
 classifier tuning and advanced source settings survive configuration saves.
 For first-time setup, follow [Getting Started](../getting-started.md).
+
+## Custom smart routers
+
+Open **Smart routing** and choose **Create smart router**. Enter a unique model
+name, then select providers to include all their models or select individual
+models across providers. These selections add together. Choose **Save router**;
+validated settings save automatically. The custom name is available in client
+model discovery and the overview's client model selector. Use **Edit** to change
+its pool and **Delete** to remove it.
+
+**Allow paid** and **Allow free** both start enabled for the built-in router and
+each new custom router. Turn either off to exclude that category. Unknown prices
+require **Allow paid**. Each custom router has its own pricing choices; classifier
+and advanced selection settings are shared. Current enablement, capabilities,
+quotas, and session safety rules still apply. See the
+[configuration reference](../reference/configuration.md#custom-smart-routers)
+for pool semantics and import fields.

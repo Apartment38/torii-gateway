@@ -48,7 +48,10 @@ labels while allowing rubric edits. Malformed probabilities/answers fail validat
 
 Objective endpoint/tools/images/schema/reasoning/context requirements survive
 classifier failure. Hard gates exclude unavailable, exhausted, incompatible,
-insufficient-context, policy-disallowed paid models and insufficient quality.
+insufficient-context, policy-disallowed paid/free models and insufficient quality. Named custom smart
+routers restrict the inference candidate pool to the union of selected providers
+and public model IDs, including retry attempts and reused pins; their paid/free
+gates default independently to enabled.
 Unknown quality is admitted only when no known-quality candidate meets the floor.
 Deterministic ranking considers estimated cost, quota, location, latency,
 context headroom, then public ID. Optional usable intelligence adds weighted

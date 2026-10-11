@@ -62,8 +62,8 @@ function renderOverviewMonitoring():string{
 }
 function renderClientConnection():string{
  const baseURL=location.origin?`${location.origin}/v1`:"/v1";const smart=loadedConfiguration.router?.model_name||"smart";const enabled=(overviewModels||[]).filter(model=>model.enabled);
- const models=[smart,...enabled.map(model=>model.id)];if(!models.includes(overviewClientModel))overviewClientModel=smart;
- return `<section class="overview-panel connect-client"><div class="section-heading"><div><h3>Connect a client</h3><span class="data-secondary">Use an OpenAI-compatible application or SDK</span></div><a href="#credentials">API keys →</a></div><label>Base URL<div class="copy-field"><input id="overview-base-url" value="${escapeHTML(baseURL)}" readonly aria-label="Client base URL"><button id="copy-client-url" class="button secondary" type="button">Copy</button></div></label><label>Model<div class="copy-field"><select id="overview-client-model">${models.map(id=>`<option value="${escapeHTML(id)}" ${id===overviewClientModel?"selected":""}>${escapeHTML(id===smart?`${id} · gateway routing`:modelSelectorLabel(enabled.find(model=>model.id===id)))}</option>`).join("")}</select><button id="copy-client-model" class="button secondary" type="button">Copy</button></div></label><p class="section-note">Create a named <a href="#credentials">gateway API key</a> for each application. Choose ${escapeHTML(smart)} to use your routing policy.</p></section>`;
+ const virtual=[smart,...customRoutersDraft.map(router=>router.name)];const models=[...virtual,...enabled.map(model=>model.id)];if(!models.includes(overviewClientModel))overviewClientModel=smart;
+ return `<section class="overview-panel connect-client"><div class="section-heading"><div><h3>Connect a client</h3><span class="data-secondary">Use an OpenAI-compatible application or SDK</span></div><a href="#credentials">API keys →</a></div><label>Base URL<div class="copy-field"><input id="overview-base-url" value="${escapeHTML(baseURL)}" readonly aria-label="Client base URL"><button id="copy-client-url" class="button secondary" type="button">Copy</button></div></label><label>Model<div class="copy-field"><select id="overview-client-model">${models.map(id=>`<option value="${escapeHTML(id)}" ${id===overviewClientModel?"selected":""}>${escapeHTML(virtual.includes(id)?`${id} · gateway routing`:modelSelectorLabel(enabled.find(model=>model.id===id)))}</option>`).join("")}</select><button id="copy-client-model" class="button secondary" type="button">Copy</button></div></label><p class="section-note">Create a named <a href="#credentials">gateway API key</a> for each application. Choose ${escapeHTML(smart)} to use your routing policy.</p></section>`;
 }
 function initializeClientConnection():void{
  document.querySelector<HTMLSelectElement>("#overview-client-model")?.addEventListener("change",event=>{overviewClientModel=(event.target as HTMLSelectElement).value;});
@@ -123,6 +123,7 @@ function signOutConsole(): void {
   document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();
   document.querySelector<HTMLInputElement>("#client-key-name")!.value = "";
   providers = [];
+  customRoutersDraft=[];customRouterEditing=null;renderCustomRouters();document.querySelector<HTMLDialogElement>("#custom-router-dialog")?.close();
   overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];usageData=null;usageKeyMetadata=[];document.querySelector("#models-list")!.textContent="";document.querySelector("#usage-list")!.textContent="";
   configurationLoaded = false;
   classifierQuestionOverrides = {};
@@ -440,6 +441,11 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   legacyClassifier = null;
   const classifier = config.router?.classifier || {};
   (form.elements.namedItem("router.allow_paid_models") as HTMLInputElement).checked = config.router?.allow_paid_models !== false;
+  (form.elements.namedItem("router.allow_free_models") as HTMLInputElement).checked = config.router?.allow_free_models !== false;
+  customRoutersDraft = structuredClone(config.router?.custom_routers || []);
+  customRouterEditing = null;
+  document.querySelector<HTMLDialogElement>("#custom-router-dialog")?.close();
+  renderCustomRouters();
   classifierQuestionOverrides = structuredClone(classifier.questions || {});
   classifierNoulThresholds = { ...(classifier.noul_thresholds || {}) };
   (form.elements.namedItem("router.classifier.timeout") as HTMLInputElement).value = "";
@@ -498,6 +504,7 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   const quality = config.router?.selection?.minimum_quality;
   if (quality) (form.elements.namedItem("router.selection.minimum_quality") as HTMLInputElement).value = JSON.stringify(quality);
   updateClassifierOptions();
+  if (location.hash === "#routing") void loadModelsPage();
   if (location.hash === "#intelligence" && benchmarksEnabledSaved) void loadBenchmarkData();
 }
 
@@ -577,7 +584,7 @@ function navigate(): void {
   if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models"){if(configurationLoaded)void loadModelsPage();else document.querySelector("#models-list")!.innerHTML=modelLoadingMarkup;}
-  if (current === "routing") updateClassifierOptions();
+  if (current === "routing") { updateClassifierOptions(); if(configurationLoaded)void loadModelsPage(); }
   if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
 }
 
@@ -633,12 +640,14 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
-  new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
+  new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models" || name === "router.allow_free_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
   config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
   config.router.allow_paid_models = Boolean((form.elements.namedItem("router.allow_paid_models") as HTMLInputElement)?.checked);
+  config.router.allow_free_models = Boolean((form.elements.namedItem("router.allow_free_models") as HTMLInputElement)?.checked);
+  config.router.custom_routers = structuredClone(customRoutersDraft);
   const selected = classifierSelect.value;
   const onFailure = String((form.elements.namedItem("router.classifier.on_failure") as HTMLSelectElement)?.value || "");
   const controls: Record<string, any> = {};
@@ -790,13 +799,52 @@ async function testAllProviders(): Promise<void> {
 }
 function toast(message: string): void { const node = document.querySelector<HTMLDivElement>("#toast")!; node.textContent = message; node.classList.add("show"); window.setTimeout(() => node.classList.remove("show"), 2400); }
 
+let customRoutersDraft: Record<string, any>[] = [];
+let customRouterEditing: number | null = null;
+function renderCustomRouters(): void {
+ const list = document.querySelector<HTMLElement>("#custom-router-list"); if (!list) return;
+ list.innerHTML = customRoutersDraft.length ? customRoutersDraft.map((router,index)=>`<div class="overview-panel"><strong>${escapeHTML(router.name)}</strong><p>${escapeHTML([...(router.providers||[]).map((id:string)=>`${id} (all models)`),...(router.models||[])].join(" · "))}</p><p>${router.allow_paid_models!==false?"Paid allowed":"Paid blocked"} · ${router.allow_free_models!==false?"Free allowed":"Free blocked"}</p><button type="button" class="button secondary" data-router-edit="${index}">Edit</button> <button type="button" class="button secondary" data-router-remove="${index}">Delete</button></div>`).join("") : '<p class="section-note">No custom routers yet. The built-in smart model uses all enabled models.</p>';
+ list.querySelectorAll<HTMLButtonElement>("[data-router-edit]").forEach(button=>button.addEventListener("click",()=>openCustomRouter(Number(button.dataset.routerEdit))));
+ list.querySelectorAll<HTMLButtonElement>("[data-router-remove]").forEach(button=>button.addEventListener("click",()=>{customRoutersDraft.splice(Number(button.dataset.routerRemove),1);renderCustomRouters();markDirty();void saveConfig();}));
+}
+async function openCustomRouter(index: number | null = null): Promise<void> {
+ if(configurationLoaded && !physicalModels.length)await loadModelsPage();
+ customRouterEditing=index;const router=index===null?{}:customRoutersDraft[index];
+ document.querySelector<HTMLInputElement>("#custom-router-name")!.value=router.name||"";
+ document.querySelector("#custom-router-title")!.textContent=index===null?"Create smart router":"Edit smart router";
+ document.querySelector<HTMLInputElement>("#custom-router-paid")!.checked=router.allow_paid_models!==false;
+ document.querySelector<HTMLInputElement>("#custom-router-free")!.checked=router.allow_free_models!==false;
+ document.querySelector("#custom-router-error")!.textContent="";
+ const ids=[...new Set([...providers.filter(p=>!classifierProvider(p)).map(p=>p.id).filter(Boolean),...(router.providers||[])])].sort();
+ const modelIDs=[...new Set([...physicalModels.map(model=>model.id),...providers.filter(p=>!classifierProvider(p)).flatMap(p=>String(p.models||"").split(",").map(id=>id.trim()).filter(Boolean).map(id=>`${p.id}/${id}`)),...(router.models||[])])].sort();
+ const choices=(values:string[],selected:string[],kind:string)=>values.map(id=>`<label class="checkbox"><input type="checkbox" data-router-choice="${kind}" value="${escapeHTML(id)}" ${selected.includes(id)?"checked":""} /> ${escapeHTML(id)}</label>`).join("") || '<p class="section-note">No choices available. Connect a provider and refresh the model catalog.</p>';
+ document.querySelector("#custom-router-providers")!.innerHTML=choices(ids,router.providers||[],"provider");
+ document.querySelector("#custom-router-models")!.innerHTML=choices(modelIDs,router.models||[],"model");
+ document.querySelector<HTMLDialogElement>("#custom-router-dialog")!.showModal();
+}
+function saveCustomRouter(): void {
+ const name=document.querySelector<HTMLInputElement>("#custom-router-name")!.value.trim();
+ const selected=(kind:string)=>Array.from(document.querySelectorAll<HTMLInputElement>(`[data-router-choice="${kind}"]`)).filter(input=>input.checked).map(input=>input.value);
+ const router={name,providers:selected("provider"),models:selected("model"),allow_paid_models:document.querySelector<HTMLInputElement>("#custom-router-paid")!.checked,allow_free_models:document.querySelector<HTMLInputElement>("#custom-router-free")!.checked};
+ let error="";
+ if(!/^[a-z0-9][a-z0-9._-]*$/.test(name)||name==="smart")error="Choose a valid model name other than smart.";
+ else if(customRoutersDraft.some((router,index)=>index!==customRouterEditing&&router.name===name))error="A router with this name already exists.";
+ else if(!router.providers.length&&!router.models.length)error="Select at least one provider or model.";
+ if(error){document.querySelector("#custom-router-error")!.textContent=error;return;}
+ if(customRouterEditing===null)customRoutersDraft.push(router);else customRoutersDraft[customRouterEditing]=router;
+ document.querySelector<HTMLDialogElement>("#custom-router-dialog")!.close();renderCustomRouters();renderOverview();markDirty();void saveConfig();
+}
+document.querySelector("#add-custom-router")?.addEventListener("click",()=>openCustomRouter());
+document.querySelector("#save-custom-router")?.addEventListener("click",saveCustomRouter);
+document.querySelector("#cancel-custom-router")?.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#custom-router-dialog")!.close());
+
 document.querySelector("#add-provider")!.addEventListener("click", () => { providers.push({ ...providerDefaults }); renderProviders(); openProviderEditor(providers.length-1,true); });
 document.querySelector("#refresh-benchmarks")!.addEventListener("click", () => inspectBenchmarks(true));
 document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => { void inspectBenchmarks(false); });
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target:HTMLElement):boolean{return ["budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target:HTMLElement):boolean{return target.dataset?.routerChoice !== undefined || target.id.startsWith("custom-router-") || ["budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target as HTMLElement))markDirty();});
 form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);

@@ -1615,3 +1615,9 @@ test("new tracked provider integrations are selectable and retain billing config
  const label=app.run('modelQuotaText({quota:{known:false,windows:[{name:"weekly",unit:"percent",remaining:12,informational:true,reset_at:"2030-01-01T00:00:00Z"}],balances:[{name:"credits",unit:"USD",remaining:4}],reset_credits:2}})');
  assert.match(label,/12.0% remaining \(informational\)/);assert.match(label,/resets/);assert.match(label,/credits: \$4.00/);assert.match(label,/2 banked resets/);
  });
+
+test("selectors label provider usage separately from gateway estimates",()=>{
+ const app=consoleFixture(()=>response({}));
+ const label=app.run('modelSelectorLabel({id:"anthropic/m",quota:{usage_usd:{monthly:1.5},reported_usage:[{period:"monthly",unit:"USD",used:1.5,scope:"organization"},{period:"monthly",unit:"tokens",used:500,scope:"organization"}]},usage_available:true,usage:[]})');
+ assert.match(label,/Provider this month: \$1.50 \(organization\); 500 tokens \(organization\)/);assert.match(label,/No gateway usage/);assert.equal((label.match(/\$1.50/g)||[]).length,1);
+});

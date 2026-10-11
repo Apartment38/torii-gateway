@@ -40,7 +40,13 @@ function modelUsageText(model:any):string{
  if(!row)return "No gateway usage this month";
  return `${consoleNumber(Number(row.input_tokens||0)+Number(row.output_tokens||0))} tokens · ${modelPrice(Number(row.estimated_cost||0))} est. this month${row.unknown_cost_attempts?" + unknown costs":""}`;
 }
-function modelSelectorLabel(model:any):string{return `${model.id} · ${modelPricingText(model)} · ${modelQuotaText(model)} · ${modelUsageText(model)}`;}
+function modelProviderUsageText(model:any):string{
+ const q=model.quota||{};const monthly=(q.reported_usage||[]).filter((u:any)=>u.period==="monthly");
+ const parts=monthly.map((u:any)=>`${u.unit==="USD"?modelPrice(u.used):`${consoleNumber(u.used)} ${u.unit}`} (${u.scope||"account"})`);
+ if(typeof q.usage_usd?.monthly==="number"&&!monthly.some((u:any)=>u.unit==="USD"))parts.unshift(`${modelPrice(q.usage_usd.monthly)} (account)`);
+ return parts.length?`Provider this month: ${parts.join("; ")}`:"";
+}
+function modelSelectorLabel(model:any):string{return [model.id,modelPricingText(model),modelQuotaText(model),modelProviderUsageText(model),modelUsageText(model)].filter(Boolean).join(" · ");}
 function modelTrackingMarkup(model:any):string{
  const q=model.quota||{};const reported=q.usage_usd;
  const usage=(q.reported_usage||[]).map((u:any)=>`${u.period}: ${u.unit==="USD"?modelPrice(u.used):`${consoleNumber(u.used)} ${u.unit}`} (${u.scope||"account"})`).join(" · ");

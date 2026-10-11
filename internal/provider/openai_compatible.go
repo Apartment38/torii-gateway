@@ -90,9 +90,8 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone(), keyQuotaURL: cfg.KeyQuotaURL}, nil
 }
 
-// Quota retrieves OpenRouter account credits when a separate management
-// credential has been configured. Other compatible providers leave quota
-// unknown because they do not expose this contract.
+// accountQuota reads OpenRouter account credits with the configured billing
+// headers, which may use the ordinary key or a separate management credential.
 func (p *Compatible) accountQuota(ctx context.Context) (quota.Status, error) {
 	if p.quotaURL == "" {
 		return quota.Status{Known: false}, nil

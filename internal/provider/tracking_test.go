@@ -266,3 +266,27 @@ func TestZAIWebToolAllowanceDoesNotBlockChat(t *testing.T) {
 		t.Fatalf("web tools gated chat: %+v %v", got, err)
 	}
 }
+
+func TestOpenRouterFreeModelsRetainExhaustedBalancesWithoutBeingBlocked(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/credits" {
+			io.WriteString(w, `{"data":{"total_credits":0,"total_usage":0}}`)
+			return
+		}
+		io.WriteString(w, `{"data":{"limit":0,"limit_remaining":0,"free_model_daily_requests":{"limit":100,"remaining":75}}}`)
+	}))
+	defer server.Close()
+	p, err := NewOpenAICompatibleProvider(OpenAICompatibleConfig{ID: "or", BaseURL: server.URL, StaticModels: []string{"m", "m:free"}, QuotaURL: server.URL + "/credits", KeyQuotaURL: server.URL + "/key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := quota.NewCache(time.Minute, p)
+	free, err := c.Get(context.Background(), "or/m:free")
+	if err != nil || free.Exhausted || free.Remaining != 75 || free.Unit != "requests" || len(free.Balances) != 1 || *free.Balances[0].Remaining != 0 {
+		t.Fatalf("free model incorrectly blocked: %+v %v", free, err)
+	}
+	paid, err := c.Get(context.Background(), "or/m")
+	if err != nil || !paid.Exhausted {
+		t.Fatalf("paid quota lost: %+v %v", paid, err)
+	}
+}

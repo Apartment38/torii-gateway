@@ -64,7 +64,7 @@ plans; Anthropic OAuth tracking is informational alongside API inference pricing
 
 | Provider | Tracking behavior |
 | --- | --- |
-| OpenRouter | `/key` spend/caps and `/credits` account balance; ordinary key by default, separate management key when supplied; free request limits apply only to `:free` models |
+| OpenRouter | `/key` spend/caps and `/credits` account balance; ordinary key by default, separate management key when supplied; free request limits apply only to `:free` models, whose dollar balances/caps stay informational |
 | OpenCode Go | Rolling, weekly and monthly `/zen/go/v1/usage` windows and resets |
 | OpenCode Zen | Usage/explicitly denominated wallet fields when returned; public wallet balance is not exposed reliably; optional `tracking.usage_url` supports an authenticated private credits endpoint |
 | Standard Compute | `x-sc-budget-renews-at` reset header; optional private usage endpoint for reported `budget_usd`, `used_usd`, `remaining_usd` and renewal time |

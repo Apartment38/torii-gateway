@@ -28,6 +28,8 @@ model supports it. Use an upstream model suited to the requested task.
 
 ## Compatibility details
 
+- Ollama discovery collapses duplicate loaded/installed entries with the same model ID.
+
 - Codex credentials are endpoint-bound and separate from normal OpenAI API keys.
   Direct-scope helper tokens and legacy Codex OAuth tokens use their appropriate
   endpoint/refresh flow. Configured model fallbacks are not an allowlist.

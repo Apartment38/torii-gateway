@@ -77,4 +77,5 @@ before any response bytes are sent, according to the failure policy.
 
 To explicitly end a session, call `DELETE /gateway/v1/sessions/SESSION_ID` with
 a gateway bearer key or administrator login. See [API](../reference/api.md).
-For implementation and evaluation evidence, see [Routing contracts](../development/routing.md).
+For the full decision and dispatch path, see
+[Smart routing end to end](../development/routing.md).

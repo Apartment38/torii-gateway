@@ -1,6 +1,6 @@
 # Project status
 
-Updated 2026-10-10. This is the sole project progress and backlog tracker.
+Updated 2026-10-11. This is the sole project progress and backlog tracker.
 
 ## v1 implementation and rollout
 
@@ -44,22 +44,35 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-Expanded provider tracking is in progress on `feat/provider-balance-tracking`
-in `/workspace/work/provider-balance-tracking`, based on merged PR #19.
-Provider fixtures cover OpenRouter, OpenCode Go/Zen, Standard Compute, Z AI,
-Kimi Coding, MiniMax, DeepSeek, xAI, Anthropic, Nous and Codex. Native-currency
-balances, provider usage, reset credits and scoped windows flow through model
-APIs; provider editors and console selectors consume them. Nous OAuth account
-balances and Codex public usage paths replace earlier unavailable placeholders.
-Billing credentials remain isolated from inference and are encrypted through the
-configuration inventory. Base-rate fallback pricing is dated and attributed.
-Baseline provider/quota/API/config/catalog and all 102 console checks passed.
-Focused expanded provider checks and full validation are being completed.
-Public Zen wallet and Standard Compute budget amounts still depend on an explicit
-private endpoint because no supported public balance read was verified. Their
-available usage/reset fields are supported; missing data stays explicit. No live
-billing-account checks, push, merge or deployment have been performed for this
-extension.
+Expanded provider tracking is complete on `feat/provider-balance-tracking`
+in `/workspace/work/provider-balance-tracking`, based on merged PR #19 and
+retained for the requested follow-up PR. OpenRouter, OpenCode Go/Zen, Standard
+Compute, Z AI, Kimi Coding, MiniMax, DeepSeek, xAI and Anthropic collectors expose
+available usage, quota/reset windows and native-currency balances. Nous account
+credits and Codex public/legacy usage paths, balances and banked resets are fixed.
+Model APIs pass the fields to harnesses; selectors show provider usage separately
+from gateway estimates. Billing credentials are encrypted, isolated, rotated on
+read and use compatible-provider CA trust. Pricing fallback is dated/attributed;
+live rates and operator overrides win. Scoped gauges do not block unrelated
+models, zero OpenRouter dollar balances do not block free models, and response
+headers cannot indefinitely extend billing snapshot freshness.
+
+Full Go tests/race tests, final focused provider/quota/API race checks, vet/build,
+module/format checks, 106 console tests, two release checks, generated assets,
+affected documentation links and Chromium at desktop/mobile widths pass. The
+production image and five login-helper targets built with an ephemeral proxy CA
+secret; the final cache-expiry correction was rebuilt with matching Go 1.25.1
+production flags and layered into the same non-root runtime. Disposable checks
+verify authenticated balance/price discovery, inference usage/reset headers and
+accounting/balances after restart. The shipping Dockerfile remains unchanged.
+
+Public Zen wallet and Standard Compute budget amounts require an explicit private
+endpoint because no supported public balance read was verified; available usage
+and reset metadata are supported. xAI organization billing requires management
+credentials/team ID; Anthropic organization reports require admin credentials,
+and its subscription usage requires OAuth. External harnesses must render the
+additive model fields. Live billing accounts were not exercised. No merge or
+deployment was performed for this extension.
 
 
 The premium console redesign is complete on `feat/premium-console` in

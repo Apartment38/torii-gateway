@@ -101,7 +101,7 @@ Proxy-Connection, Transfer-Encoding, Upgrade, or X-Request-Id.
 | `classifier.noul_thresholds` | Map, each 0.5 | Per yes/no question threshold in 0–1, equality accepted |
 | `sessions.inactivity_timeout` | Positive duration, `30m` | In-memory affinity expiry |
 | `sessions.on_model_failure` | String, `reroute` | `fail` or `reroute`; no replay after downstream bytes/tool-pin loss |
-| `quota.cache_ttl` | Positive duration, `60s` | Provider quota snapshot lifetime |
+| `quota.cache_ttl` | Positive duration, `60s` | Provider quota snapshot/failure lifetime; account models share snapshots, and known reset times shorten cache life |
 | `quota.allowances` | Model → number map, empty | Finite nonnegative estimated-cost allowances in USD, compared with accumulated usage cost |
 | `selection.context_utilization_limit` | Number, 0.85 | 0–1; zero/omitted uses default; output reserve included |
 | `selection.default_expected_output_tokens` | Integer, 1024 | Positive values override estimate; zero/nonpositive uses default |

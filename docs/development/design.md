@@ -58,7 +58,11 @@ Cost estimates reserve expected output and use known pricing; missing costs are
 unknown. Aggregate usage replaces estimates where actual usage is available.
 Local allowances compare accumulated estimated cost, not token totals or provider
 billing. Provider quota snapshots distinguish known/unknown/exhausted state and
-are cached independently; OpenRouter management credit keys are separate.
+are cached independently, retain all request/token/subscription windows and reset
+times, and share provider account reads across models. OpenRouter inference-key
+spend/free-request caps and separate management-credit reads keep credentials
+isolated. Additive discovery metadata passes pricing, scoped gateway usage and
+provider snapshots to harnesses; selectors render these fields when supported.
 
 ## Sessions and retries
 

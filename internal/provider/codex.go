@@ -220,7 +220,7 @@ func (c *Codex) authenticate(request *http.Request, credential CodexCredential) 
 func (c *Codex) staticModels() []Model {
 	result := make([]Model, 0, len(c.models))
 	for _, id := range c.models {
-		result = append(result, Model{ID: c.id + "/" + id, Object: "model", OwnedBy: c.id})
+		result = append(result, Model{ID: c.id + "/" + id, Object: "model", OwnedBy: c.id, Subscription: true})
 	}
 	return result
 }

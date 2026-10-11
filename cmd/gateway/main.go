@@ -1598,6 +1598,17 @@ func writeConfigError(w http.ResponseWriter, status int, err error) {
 
 type providerQuotaFetcher struct{ providers map[string]quota.Fetcher }
 
+func (f providerQuotaFetcher) QuotaKey(model string) string {
+	id, _, err := provider.ParseModelID(model)
+	if err != nil {
+		return model
+	}
+	if keyer, ok := f.providers[id].(quota.Keyer); ok {
+		return keyer.QuotaKey(model)
+	}
+	return model
+}
+
 func (f providerQuotaFetcher) Quota(ctx context.Context, model string) (quota.Status, error) {
 	providerID, _, err := provider.ParseModelID(model)
 	if err != nil {
@@ -1834,6 +1845,10 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		return provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout}, cfg.Type == "jev_compatible")
 	}
 	quotaHeaders := make(http.Header)
+	var keyQuotaURL string
+	if cfg.Type == "openrouter" {
+		keyQuotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/key"
+	}
 	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
 		managementToken := "database-managed"
 		var err error
@@ -1849,5 +1864,5 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
 		quotaHeaders.Set("Authorization", "Bearer "+managementToken)
 	}
-	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, KeyQuotaURL: keyQuotaURL, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
 }

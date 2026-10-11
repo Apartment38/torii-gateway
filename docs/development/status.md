@@ -1,6 +1,6 @@
 # Project status
 
-Updated 2026-10-08. This is the sole project progress and backlog tracker.
+Updated 2026-10-10. This is the sole project progress and backlog tracker.
 
 ## v1 implementation and rollout
 
@@ -43,6 +43,20 @@ Current user-visible support is in [Features](../reference/features.md), with
 contracts in [Design](design.md). Old Version 1/2 labels no longer define support.
 
 ## Active work
+
+Provider cost/usage/quota tracking is implemented on `feat/provider-cost-usage`
+in `/workspace/work/provider-cost-usage`. Live Portal/OpenRouter prices feed
+accounting and routing; OpenRouter key spend, optional management credits and
+free-request caps, Codex subscription windows, and provider response-header
+resets reach model discovery and management metadata. Client usage is scoped to
+its key; administrator usage remains gateway-wide. Quota polling coalesces
+account reads and failures, preserves independent windows and local allowances,
+and expires by reset time. Synthetic provider/cache/API checks pass. Console
+presentation and final contributor checks are being completed. Portal dollar
+balance and public direct-scope Codex quota polling remain unknown where no
+verified bearer endpoint is available; no live billing check or deployment is
+claimed.
+
 
 The premium console redesign is complete on `feat/premium-console` in
 `/tmp/torii-premium-console`, retained for review. Separate builders and independent

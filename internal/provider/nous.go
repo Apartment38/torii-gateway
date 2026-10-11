@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Apartment38/torii-gateway/internal/quota"
+
 	"github.com/Apartment38/torii-gateway/internal/transport"
 )
 
@@ -174,6 +176,14 @@ func NewNous(id, inferenceBase, portalBase, clientID string, models []string, di
 
 func (p *Nous) ID() string { return p.id }
 
+func (p *Nous) QuotaKey(string) string { return p.id + "/@account" }
+
+// Portal has no verified bearer-accessible balance endpoint. Account-scoped
+// windows are populated by response headers rather than browser cookies.
+func (p *Nous) Quota(context.Context, string) (quota.Status, error) {
+	return quota.Status{Source: "nous_response_headers"}, nil
+}
+
 func (p *Nous) Models(ctx context.Context) ([]Model, error) {
 	models := make([]Model, 0, len(p.models))
 	seen := make(map[string]struct{})
@@ -215,17 +225,7 @@ func (p *Nous) Models(ctx context.Context) ([]Model, error) {
 	}
 	limited := &io.LimitedReader{R: resp.Body, N: maxNousCatalogSize + 1}
 	var envelope struct {
-		Data []struct {
-			ID            string `json:"id"`
-			Created       int64  `json:"created"`
-			OwnedBy       string `json:"owned_by"`
-			ContextLength *int64 `json:"context_length"`
-			BillingMode   string `json:"billing_mode"`
-			Pricing       struct {
-				Prompt     string `json:"prompt"`
-				Completion string `json:"completion"`
-			} `json:"pricing"`
-		} `json:"data"`
+		Data []json.RawMessage `json:"data"`
 	}
 	if err := json.NewDecoder(limited).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("decode Nous models: %w", err)
@@ -233,29 +233,28 @@ func (p *Nous) Models(ctx context.Context) ([]Model, error) {
 	if limited.N == 0 {
 		return nil, fmt.Errorf("decode Nous models: response exceeds %d bytes", maxNousCatalogSize)
 	}
-	for _, model := range envelope.Data {
-		if model.ID == "" {
+	for _, raw := range envelope.Data {
+		var model Model
+		if json.Unmarshal(raw, &model) != nil || model.ID == "" {
+			return nil, errors.New("decode Nous models: invalid model")
+		}
+		applyCatalogMetadata(raw, &model)
+		upstreamID := model.ID
+		model.ID, model.Object = p.id+"/"+model.ID, "model"
+		if model.OwnedBy == "" {
+			model.OwnedBy = p.id
+		}
+		if _, ok := seen[upstreamID]; ok {
+			for i := range models {
+				if models[i].ID == model.ID {
+					models[i] = model
+					break
+				}
+			}
 			continue
 		}
-		var input, output *float64
-		if value, parseErr := strconv.ParseFloat(model.Pricing.Prompt, 64); parseErr == nil && value >= 0 {
-			value *= 1_000_000
-			input = &value
-		}
-		if value, parseErr := strconv.ParseFloat(model.Pricing.Completion, 64); parseErr == nil && value >= 0 {
-			value *= 1_000_000
-			output = &value
-		}
-		if model.BillingMode == "subscription" {
-			zero := float64(0)
-			input, output = &zero, &zero
-		}
-		public := p.id + "/" + model.ID
-		if _, ok := seen[model.ID]; ok {
-			continue
-		}
-		seen[model.ID] = struct{}{}
-		models = append(models, Model{ID: public, Object: "model", Created: model.Created, OwnedBy: model.OwnedBy, ContextWindow: model.ContextLength, InputPerMillion: input, OutputPerMillion: output, Subscription: model.BillingMode == "subscription"})
+		seen[upstreamID] = struct{}{}
+		models = append(models, model)
 	}
 	return models, nil
 }

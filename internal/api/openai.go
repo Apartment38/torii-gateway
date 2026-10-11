@@ -174,19 +174,20 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	descriptors := h.CatalogModels()
-	models := make([]provider.Model, 0, len(descriptors)+1)
+	models := make([]clientModel, 0, len(descriptors)+1)
+	modelUsage, usageAvailable := h.modelUsage(r, false)
 	// Clients may show only the first page of a provider's catalog. Keep the
 	// gateway routing choice visible before the sorted physical models.
-	models = append(models, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
+	models = append(models, clientModel{Model: provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"}})
 	for _, descriptor := range descriptors {
 		if !h.enabled(descriptor.PublicID) {
 			continue
 		}
-		models = append(models, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
+		models = append(models, h.clientMetadata(r.Context(), descriptor, modelUsage[descriptor.PublicID], usageAvailable))
 	}
 	writeJSON(w, http.StatusOK, struct {
-		Object string           `json:"object"`
-		Data   []provider.Model `json:"data"`
+		Object string        `json:"object"`
+		Data   []clientModel `json:"data"`
 	}{Object: "list", Data: models})
 }
 
@@ -204,10 +205,12 @@ func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicI
 		writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
 		return
 	}
-	descriptor, ok := h.catalog.Model(publicID)
-	if ok && h.enabled(publicID) {
-		writeJSON(w, http.StatusOK, provider.Model{ID: descriptor.PublicID, Object: "model", Created: descriptor.Created, OwnedBy: descriptor.OwnedBy})
-		return
+	for _, descriptor := range h.CatalogModels() {
+		if descriptor.PublicID == publicID && h.enabled(publicID) {
+			modelUsage, usageAvailable := h.modelUsage(r, false)
+			writeJSON(w, http.StatusOK, h.clientMetadata(r.Context(), descriptor, modelUsage[publicID], usageAvailable))
+			return
+		}
 	}
 	writeError(w, fault.New(fault.ModelNotFound, "model"))
 }
@@ -397,15 +400,9 @@ func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
 	if h.quota == nil {
 		return
 	}
-	limit := firstHeaderNumber(headers, "X-RateLimit-Limit-Requests", "X-RateLimit-Limit-Tokens")
-	remaining := firstHeaderNumber(headers, "X-RateLimit-Remaining-Requests", "X-RateLimit-Remaining-Tokens")
-	if limit == nil || remaining == nil || *limit < 0 || *remaining < 0 {
-		return
+	if status, ok := quota.FromHeaders(headers, time.Now().UTC()); ok {
+		_ = h.quota.Observe(model, status)
 	}
-	if *remaining > *limit {
-		*remaining = *limit
-	}
-	_ = h.quota.SetLocal(model, *limit, *limit-*remaining)
 }
 
 func firstHeaderNumber(headers http.Header, names ...string) *float64 {

@@ -2,14 +2,18 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/quota"
 	"github.com/Apartment38/torii-gateway/internal/router"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type controlledProvider struct{ calls int }
@@ -90,5 +94,87 @@ func TestFreePricingOverridesPreservePaidMetadataWhenOff(t *testing.T) {
 		if m.PublicID == "p/model" && *m.Pricing.InputPerMillion != 2 {
 			t.Fatal("free flag destroyed override")
 		}
+	}
+}
+
+func TestModelDiscoveryTrackingIsScopedAndConsistent(t *testing.T) {
+	p := &accountingFixtureProvider{}
+	h, store := accountingHandler(t, p, accounting.Settings{})
+	for key, tokens := range map[string]int64{"client": 7, "other": 99} {
+		r, err := store.Reserve(key, "Private "+key, "p", "p/model", accounting.Settings{}, accounting.Amount{Input: tokens, Cost: float64(tokens) / 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Settle(r, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := quota.NewCache(time.Minute, nil)
+	reset := time.Now().UTC().Add(time.Hour)
+	if err := c.Set("p/model", quota.Status{Windows: []quota.Window{{Name: "weekly", Unit: "percent", Limit: 100, Used: 25, ResetAt: &reset}}, Source: "fixture"}); err != nil {
+		t.Fatal(err)
+	}
+	h.SetQuotaCache(c)
+	for _, path := range []string{"/v1/models", "/v1/models/p/model"} {
+		req := httptest.NewRequest("GET", path, nil)
+		req = req.WithContext(context.WithValue(req.Context(), clientIdentityContextKey{}, &ClientIdentity{ID: "client"}))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var model clientModel
+		if path == "/v1/models" {
+			var list struct {
+				Data []clientModel `json:"data"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+				t.Fatal(err)
+			}
+			for _, m := range list.Data {
+				if m.ID == "p/model" {
+					model = m
+				}
+			}
+		} else {
+			json.Unmarshal(w.Body.Bytes(), &model)
+		}
+		if model.Pricing == nil || *model.Pricing.InputPerMillion != 0 || model.Quota == nil || model.Quota.Remaining != 75 || model.Quota.ResetAt == nil || !model.UsageAvailable || len(model.Usage) != 2 {
+			t.Fatalf("model=%+v", model)
+		}
+		for _, row := range model.Usage {
+			if row.Input != 7 {
+				t.Fatal("usage scope leak", row)
+			}
+		}
+		if strings.Contains(w.Body.String(), "Private") || strings.Contains(w.Body.String(), "other") {
+			t.Fatal("private metadata leaked")
+		}
+	}
+	w := httptest.NewRecorder()
+	h.ManagementModels(w, httptest.NewRequest("GET", "/gateway/v1/models", nil))
+	var models struct {
+		Models []ManagedModel `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &models); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range models.Models {
+		if m.PublicID == "p/model" {
+			if len(m.Usage) != 2 || m.Usage[0].Input != 106 || m.Quota.Remaining != 75 {
+				t.Fatal("management totals", m)
+			}
+		}
+	}
+}
+
+func TestModelDiscoveryUnknownTrackingRemainsExplicit(t *testing.T) {
+	h, _ := NewOpenAIHandler([]provider.OpenAIProvider{&controlledProvider{}})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/models/p/model", nil))
+	var m clientModel
+	json.Unmarshal(w.Body.Bytes(), &m)
+	if w.Code != 200 || m.Pricing == nil || m.Pricing.InputPerMillion != nil || m.Quota == nil || m.Quota.Known || m.Quota.Exhausted || m.UsageAvailable {
+		t.Fatalf("unknown model=%+v body=%s", m, w.Body.String())
 	}
 }

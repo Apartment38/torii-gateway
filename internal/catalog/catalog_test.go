@@ -154,3 +154,29 @@ func TestCatalogSnapshotsAreImmutable(t *testing.T) {
 		t.Fatalf("catalog snapshot was mutated: %#v, %v", model, ok)
 	}
 }
+
+func TestLivePricingPrecedesBundledButOperatorCanOverride(t *testing.T) {
+	p := &stubProvider{id: "p", models: []provider.Model{{ID: "p/paid", ContextWindow: intPointer(2000), InputPerMillion: floatPointer(2), OutputPerMillion: floatPointer(4)}, {ID: "p/included", Subscription: true}}}
+	bundled := []catalog.Descriptor{{PublicID: "p/paid", ContextWindow: intPointer(1000), Pricing: catalog.Pricing{InputPerMillion: floatPointer(9), OutputPerMillion: floatPointer(9)}}, {PublicID: "p/included", Pricing: catalog.Pricing{InputPerMillion: floatPointer(9), OutputPerMillion: floatPointer(9)}}}
+	c, err := catalog.New([]provider.Provider{p}, bundled, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	paid, _ := c.Model("p/paid")
+	included, _ := c.Model("p/included")
+	if *paid.Pricing.InputPerMillion != 2 || *paid.Pricing.OutputPerMillion != 4 || *paid.ContextWindow != 2000 || !included.Subscription || *included.Pricing.InputPerMillion != 0 {
+		t.Fatal("live metadata lost", paid, included)
+	}
+	c, err = catalog.New([]provider.Provider{p}, bundled, []catalog.Descriptor{{PublicID: "p/paid", Pricing: catalog.Pricing{InputPerMillion: floatPointer(3)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Refresh(context.Background())
+	paid, _ = c.Model("p/paid")
+	if *paid.Pricing.InputPerMillion != 3 || *paid.Pricing.OutputPerMillion != 4 {
+		t.Fatal("operator precedence", paid)
+	}
+}

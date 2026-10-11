@@ -224,6 +224,10 @@ func (c *Cache) SetLocal(model string, limit, used float64) error {
 // Set records an observed model-scoped snapshot; configured local allowances
 // remain independent of shared provider-account snapshots.
 func (c *Cache) Set(model string, value Status) error {
+	return c.set(model, value, time.Time{})
+}
+
+func (c *Cache) set(model string, value Status, expiresBefore time.Time) error {
 	if err := normalize(&value); err != nil {
 		return err
 	}
@@ -243,6 +247,9 @@ func (c *Cache) Set(model string, value Status) error {
 			value.ExpiresAt = *b.ResetAt
 		}
 	}
+	if !expiresBefore.IsZero() && expiresBefore.Before(value.ExpiresAt) {
+		value.ExpiresAt = expiresBefore
+	}
 	c.mu.Lock()
 	c.entries[model] = clone(value)
 	delete(c.errors, model)
@@ -259,7 +266,13 @@ func (c *Cache) Observe(model string, observed Status) error {
 	c.mu.Lock()
 	previous, ok := c.entries[model]
 	c.mu.Unlock()
-	if ok && c.now().Before(previous.ExpiresAt) && previous.Source != "local_allowance" {
+	var expiresBefore time.Time
+	if ok && previous.Source != "local_allowance" {
+		// Header freshness must not extend independently collected billing data.
+		// Keep expired data only in an expired entry, so the next Get refetches it.
+		if len(previous.Balances) > 0 || previous.Usage != nil || len(previous.ReportedUsage) > 0 || previous.Plan != "" || previous.ResetCredits != nil || previous.UnavailableReason != "" || (previous.Source != "" && previous.Source != "response_headers") {
+			expiresBefore = previous.ExpiresAt
+		}
 		if previous.Known && len(previous.Windows) == 0 {
 			previous.Windows = []Window{{Name: previous.Source, Unit: previous.Unit, Limit: previous.Limit, Used: previous.Used, ResetAt: previous.ResetAt}}
 		}
@@ -273,6 +286,7 @@ func (c *Cache) Observe(model string, observed Status) error {
 			}
 			if !replaced {
 				observed.Windows = append(observed.Windows, old)
+				expiresBefore = previous.ExpiresAt
 			}
 		}
 		observed.Usage = previous.Usage
@@ -285,7 +299,7 @@ func (c *Cache) Observe(model string, observed Status) error {
 		observed.Partial = previous.Partial
 		observed.UnavailableReason = previous.UnavailableReason
 	}
-	return c.Set(model, observed)
+	return c.set(model, observed, expiresBefore)
 }
 func (c *Cache) Invalidate(model string) {
 	c.mu.Lock()

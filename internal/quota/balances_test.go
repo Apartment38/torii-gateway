@@ -50,3 +50,38 @@ func TestScopedQuotaDoesNotMatchProviderName(t *testing.T) {
 		t.Fatalf("unrelated model inherited a provider-name match: %+v %v", got, err)
 	}
 }
+
+type changingBalanceFetcher struct{ calls int }
+
+func (f *changingBalanceFetcher) Quota(context.Context, string) (Status, error) {
+	f.calls++
+	left := float64(12 - f.calls)
+	return Status{Source: "billing", Balances: []Balance{{Name: "account", Unit: "USD", Remaining: &left}}}, nil
+}
+func TestHeaderTrafficCannotKeepBalancesFreshIndefinitely(t *testing.T) {
+	f := &changingBalanceFetcher{}
+	c := NewCache(time.Minute, f)
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	original, _ := c.Get(context.Background(), "p/m")
+	headers, _ := FromHeaders(http.Header{"X-Ratelimit-Limit-Requests": {"100"}, "X-Ratelimit-Remaining-Requests": {"42"}}, now)
+	now = now.Add(30 * time.Second)
+	if err := c.Observe("p/m", headers); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := c.Get(context.Background(), "p/m")
+	if got.ExpiresAt != original.ExpiresAt {
+		t.Fatal("header traffic extended billing TTL")
+	}
+	now = now.Add(31 * time.Second)
+	// Multiple responses may arrive after expiry before the next picker read.
+	for i := 0; i < 2; i++ {
+		if err := c.Observe("p/m", headers); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := c.Get(context.Background(), "p/m")
+	if err != nil || f.calls != 2 || len(got.Balances) != 1 || *got.Balances[0].Remaining != 10 {
+		t.Fatalf("stale balance survived expiry: %+v calls=%d err=%v", got, f.calls, err)
+	}
+}

@@ -63,7 +63,8 @@ and its existing capabilities/benchmark metadata. Quota failures keep discovery
 available and return an unknown snapshot. Account snapshots are shared across
 models, with a separate OpenRouter free-model bucket. Refreshes are bounded by
 a shared ten-second picker deadline and quota TTL; known reset times shorten cache
-life. Smart uses the same pricing and quota cache for eligibility/ranking.
+life. Observed response headers preserve billing data without extending its
+original expiration. Smart uses the same pricing and quota cache for eligibility/ranking.
 External harnesses must consume these additive fields to render them; clients
 that ignore extended model metadata retain their existing selectors.
 

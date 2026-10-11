@@ -66,7 +66,7 @@ func ParseReset(raw string, now time.Time) *time.Time {
 		switch {
 		case n >= 1e12:
 			t = time.UnixMilli(int64(n))
-		case n >= 1e9:
+		case n >= 1e9 && n <= 253402300799:
 			t = time.Unix(int64(n), 0)
 		case n <= 31536000:
 			t = now.Add(time.Duration(n) * time.Second)

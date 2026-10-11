@@ -153,6 +153,9 @@ func NewNous(id, inferenceBase, portalBase, clientID string, models []string, di
 	if client == nil {
 		client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
+	clonedClient := *client
+	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &clonedClient
 	if load == nil || save == nil {
 		return nil, errors.New("Nous credential store is required")
 	}

@@ -72,7 +72,7 @@ func (c *Codex) Quota(ctx context.Context, _ string) (quota.Status, error) {
 		if w == nil || w.UsedPercent == nil {
 			continue
 		}
-		if *w.UsedPercent < 0 || *w.UsedPercent > 100 || w.Seconds < 0 {
+		if *w.UsedPercent < 0 || *w.UsedPercent > 100 || w.Seconds < 0 || w.ResetAt > 253402300799 {
 			return quota.Status{}, errors.New("invalid Codex quota window")
 		}
 		var reset *time.Time

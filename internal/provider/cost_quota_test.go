@@ -150,3 +150,21 @@ func TestFreeRequestQuotaDoesNotExhaustPaidModels(t *testing.T) {
 		t.Fatal("free cap applied to paid model", paid, err)
 	}
 }
+
+func TestQuotaReadNeverFollowsCredentialRedirect(t *testing.T) {
+	targetCalls := 0
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetCalls++
+		io.WriteString(w, `{"data":{"limit":10,"limit_remaining":10}}`)
+	}))
+	defer target.Close()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer upstream.Close()
+	p, _ := NewOpenAICompatibleProvider(OpenAICompatibleConfig{ID: "or", BaseURL: upstream.URL, StaticModels: []string{"m"}, KeyQuotaURL: upstream.URL + "/key", Headers: http.Header{"Authorization": {"Bearer synthetic"}}, Client: upstream.Client()})
+	_, err := p.Quota(context.Background(), "or/m")
+	if err == nil || targetCalls != 0 {
+		t.Fatal("quota redirect followed", targetCalls, err)
+	}
+}

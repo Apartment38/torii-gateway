@@ -118,3 +118,16 @@ func TestCodexHeaderWindowsAndUnknownReset(t *testing.T) {
 		t.Fatal("invented reset")
 	}
 }
+
+func TestOutOfRangeResetCannotBreakModelJSON(t *testing.T) {
+	if ParseReset("999999999999", time.Now()) != nil {
+		t.Fatal("accepted reset beyond RFC3339 year range")
+	}
+	h := http.Header{}
+	h.Set("X-Codex-Primary-Used-Percent", "10")
+	h.Set("X-Codex-Primary-Reset-At", "1893456000")
+	s, ok := FromHeaders(h, time.Now())
+	if !ok || s.Windows[0].ResetAt == nil || s.Windows[0].ResetAt.Unix() != 1893456000 {
+		t.Fatal("official reset-at header", s)
+	}
+}

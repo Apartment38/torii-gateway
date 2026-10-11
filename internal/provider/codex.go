@@ -69,6 +69,9 @@ func NewCodex(id, baseURL string, models []string, load func(string) (CodexCrede
 	if client == nil {
 		client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
+	clonedClient := *client
+	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &clonedClient
 	return &Codex{id: id, base: u, models: append([]string(nil), models...), client: client, load: load}, nil
 }
 

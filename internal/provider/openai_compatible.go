@@ -60,6 +60,9 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	if cfg.Client == nil {
 		cfg.Client = &http.Client{}
 	}
+	clonedClient := *cfg.Client
+	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	cfg.Client = &clonedClient
 	if cfg.RequestTimeout > 0 {
 		cloned := *cfg.Client
 		cloned.Timeout = cfg.RequestTimeout

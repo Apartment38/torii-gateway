@@ -550,6 +550,8 @@ func (r *handlerRuntime) swap(handler http.Handler) {
 type catalogHandler struct {
 	http.Handler
 	refresh         func(context.Context) error
+	pollQuotas      func(context.Context)
+	quotaInterval   time.Duration
 	intelligence    *intelligence.Manager
 	ownedUsage      *usage.Store
 	ownedAccounting *accounting.Store
@@ -696,6 +698,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	quotaCache := quota.NewCache(quotaTTL, quotaFetcher)
 	openAI.SetQuotaCache(quotaCache)
+	quotaCaches := []*quota.Cache{quotaCache}
 	var usageStore *usage.Store
 	var usageErr error
 	if runtime != nil {
@@ -754,6 +757,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			_ = cache.SetLocal(model, limit, used)
 		}
 		child.SetQuotaCache(cache)
+		quotaCaches = append(quotaCaches, cache)
 		openAI.AddRouter(profile.ModelName, child)
 	}
 	mux := http.NewServeMux()
@@ -781,6 +785,21 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		protect("GET /gateway/v1/usage", openAI.UsageAPI)
 		protect("GET /gateway/v1/quotas", openAI.UsageAPI)
 		protect("PUT /gateway/v1/quotas", runtime.setBudgets)
+		protect("POST /gateway/v1/quotas/refresh", func(w http.ResponseWriter, req *http.Request) {
+			accepted := false
+			for _, d := range openAI.CatalogModels() {
+				if p := quotaFetchers[d.ProviderID]; p != nil && p.RequestRefresh(d.PublicID) {
+					quotaCache.RequestRefresh(d.PublicID)
+					accepted = true
+				}
+			}
+			if !accepted {
+				w.Header().Set("Retry-After", "10")
+				writeConfigError(w, http.StatusTooManyRequests, errors.New("quota refresh is cooling down; wait for the next poll"))
+				return
+			}
+			openAI.ManagementModels(w, req)
+		})
 		protect("GET /gateway/v1/models", openAI.ManagementModels)
 		protect("PUT /gateway/v1/models", runtime.setModel)
 		protect("GET /gateway/v1/config", runtime.getConfig)
@@ -804,7 +823,36 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 	}
 	mux.Handle("/gateway/v1/", managementBoundary(benchmarkAuth, openAI))
 	mux.Handle("/", web.Handler())
-	handler := &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager}
+	pollInterval := time.Minute
+	if cfg.Router.Quota.PollInterval != "" {
+		pollInterval, _ = time.ParseDuration(cfg.Router.Quota.PollInterval)
+	}
+	handler := &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager, quotaInterval: pollInterval}
+	handler.pollQuotas = func(ctx context.Context) {
+		seen := map[string]bool{}
+		for _, d := range openAI.CatalogModels() {
+			if seen[d.ProviderID] {
+				continue
+			}
+			seen[d.ProviderID] = true
+			p := quotaFetchers[d.ProviderID]
+			if p == nil {
+				continue
+			}
+			for _, pc := range cfg.Providers {
+				if pc.ID == d.ProviderID && pc.Type == "openai-codex" {
+					p.RequestRefresh(d.PublicID)
+					_, _ = p.Get(ctx, d.PublicID)
+					for _, cache := range quotaCaches {
+						cache.RequestRefresh(d.PublicID)
+						_, _ = cache.Get(ctx, d.PublicID)
+					}
+					break
+				}
+			}
+		}
+	}
+
 	if runtime != nil && runtime.activityStore != nil {
 		handler.onActivate = func() { runtime.activityStore.Configure(cfg.Activity) }
 	}
@@ -1702,6 +1750,12 @@ func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*st
 			return credentialStore.Save(id, &state.Credential{AccessToken: value.AccessToken, RefreshToken: value.RefreshToken, ExpiresAt: value.ExpiresAt, Endpoint: value.Endpoint, AccountID: value.AccountID, ClientID: value.ClientID, IDToken: value.IDToken, Issuer: value.Issuer, Subject: value.Subject, Email: value.Email, HostID: value.HostID, Scopes: value.Scopes, TokenType: "Bearer"})
 		}
 		codex.ConfigureRefresh("https://auth.openai.com", saver)
+		codex.ConfigureCredentialLifecycle(db.CredentialRefreshLock(cfg.ID), func(id string, previous, next provider.CodexCredential) error {
+			old := &state.Credential{AccessToken: previous.AccessToken, RefreshToken: previous.RefreshToken, AccountID: previous.AccountID, Endpoint: previous.Endpoint}
+			updated := &state.Credential{AccessToken: next.AccessToken, RefreshToken: next.RefreshToken, ExpiresAt: next.ExpiresAt, Endpoint: next.Endpoint, AccountID: next.AccountID, ClientID: next.ClientID, IDToken: next.IDToken, Issuer: next.Issuer, Subject: next.Subject, Email: next.Email, HostID: next.HostID, Scopes: next.Scopes, TokenType: "Bearer"}
+			return db.SaveRotated(id, old, updated)
+		})
+		codex.ConfigureAppServer(provider.CodexAppServerConfig{Path: cfg.CodexAppServerPath, Home: cfg.CodexHome})
 		return codex, nil
 	}
 	httpTransport, err := compatibleHTTPTransport(cfg)

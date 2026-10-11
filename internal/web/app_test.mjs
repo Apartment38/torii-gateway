@@ -1652,3 +1652,13 @@ test("named router settings persist independently across selector changes",()=>{
 test("overview counts classifier models outside the chat catalog",()=>{
  const app=consoleFixture(()=>response({}));app.setProviders([draft("jev")]);app.run('overviewModels=[];classifierCatalogs.set(providers[0],["jev/a","jev/b"]);renderOverview()');assert.match(app.run('document.querySelector("#overview-workspace").innerHTML'),/2 models/);
 });
+
+test("Codex quota groups retain independent windows and unavailable values",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('codexTestQuota={provider:"openai-codex",status:"stale",account_id:"workspace",account_identity:"user@example.test",plan:"plus",source:"codex_app_server",collected_at:"2026-10-11T20:00:00Z",unavailable_reason:"rate_limited",limits:[{limit_id:"codex",scope:"account",status:"available",windows:[{window_type:"weekly",used:62,remaining:38,status:"available",reset_at:"2026-10-15T22:00:00Z"}]},{limit_id:"extra",limit_name:"<script>",scope:"unknown",status:"unavailable",windows:[{window_type:"5h",status:"unavailable"}]}]}');
+ const label=app.run('modelQuotaText({quota:codexTestQuota})');
+ assert.match(label,/Stale.*Weekly: 62.0% used.*38.0% remaining.*5-hour: unavailable/);
+ assert.match(label,/5-hour: usage unavailable/);assert.ok(!label.includes("0.0%"));
+ const html=app.run('modelTrackingMarkup({quota:codexTestQuota})');
+ assert.match(html,/user@example.test.*plus/);assert.match(html,/codex_app_server/);assert.match(html,/Last successful update/);assert.match(html,/quota-group/);assert.match(html,/Scope: unknown/);assert.ok(!html.includes('<script>'));
+});

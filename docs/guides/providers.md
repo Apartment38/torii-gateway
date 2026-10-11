@@ -272,3 +272,20 @@ listed in [Provider support](../reference/providers.md).
 For a local Ollama service, enter its port or click **Detect Ollama**. Detection checks localhost and container host addresses, using existing Ollama ports, `OLLAMA_HOST`, and 11434. Enter a remote API URL under advanced options for a different machine.
 
 Nous API-key discovery supplies model prices from its live catalog. Account balances and provider quotas remain unknown when the service exposes no verified API-key telemetry endpoint.
+
+## Inspect Codex subscription quotas
+
+On **Models**, inspect a Codex model's metadata to see the account, plan, source,
+last successful update and expandable quota pools. Five-hour and weekly usage
+and remaining values are percentages of the reported allowance; other durations
+stay separate. Missing windows display unavailable. The Usage page also exposes
+these account snapshots alongside provider balances.
+
+Use **Refresh quotas** for a manual read. Background polling runs every minute by
+default; see [quota configuration](../reference/configuration.md#router).
+Rate limits and failures may delay the next attempt. Stale values retain their
+original successful timestamp, and a past reset waits for fresh provider data.
+For an OAuth error, reconnect the provider and verify the selected workspace.
+Successful inference alone does not prove that the token can read account usage.
+Optional CLI collection is described in the
+[profile restrictions](../reference/configuration.md#profile-restrictions).

@@ -104,6 +104,14 @@ tracking:
   discovers, and disallows static models, custom headers/TLS/rewrites/transport.
 - `openai-codex` requires HTTPS; OAuth is managed in SQLite, not bearer/custom
   headers/TLS. `models` is an optional discovery fallback, not an allowlist.
+  `codex_app_server_path` is an optional executable path/name (default absent,
+  integration disabled); it is invoked directly with `app-server`, without a shell.
+  `codex_home` optionally selects that CLI's existing authentication directory and
+  requires `codex_app_server_path`. CLI reads have a three-second budget within
+  the ten-second collection deadline. CLI identity must match the configured
+  OAuth workspace; missing/mismatched identities fall back to HTTP. The container
+  does not need a Codex executable. These settings are available through the
+  configuration API/import, and console saves preserve them.
 - `nous` requires HTTPS and a `bearer_token` API key; it disallows
   custom headers/TLS/rewrites/organization/project options.
 - `anthropic` locks to `https://api.anthropic.com`, requires its key, and disallows
@@ -138,7 +146,8 @@ tracking:
 | `classifier.noul_thresholds` | Map, each 0.5 | Per yes/no question threshold in 0–1, equality accepted |
 | `sessions.inactivity_timeout` | Positive duration, `30m` | In-memory affinity expiry |
 | `sessions.on_model_failure` | String, `reroute` | `fail` or `reroute`; no replay after downstream bytes/tool-pin loss |
-| `quota.cache_ttl` | Positive duration, `60s` | Provider quota snapshot/failure lifetime; account models share snapshots, and known reset times shorten cache life |
+| `quota.cache_ttl` | Positive duration, `60s` | Successful snapshot lifetime; account models share snapshots, and known reset times shorten cache life. Collection failures back off exponentially (up to 30 minutes), honoring Retry-After. |
+| `quota.poll_interval` | Duration >= `10s`, `60s` | Background Codex account polling interval, independent of inference. Configure on the main router; profiles share the provider collector. |
 | `quota.allowances` | Model → number map, empty | Finite nonnegative estimated-cost allowances in USD, compared with accumulated usage cost |
 | `selection.context_utilization_limit` | Number, 0.85 | 0–1; zero/omitted uses default; output reserve included |
 | `selection.default_expected_output_tokens` | Integer, 1024 | Positive values override estimate; zero/nonpositive uses default |

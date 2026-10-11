@@ -12,6 +12,13 @@ import (
 )
 
 type Status struct {
+	Provider          string          `json:"provider,omitempty"`
+	AccountID         string          `json:"account_id,omitempty"`
+	AccountIdentity   string          `json:"account_identity,omitempty"`
+	State             string          `json:"status,omitempty"`
+	CollectedAt       time.Time       `json:"collected_at,omitempty"`
+	RetryAt           *time.Time      `json:"retry_at,omitempty"`
+	Limits            []LimitGroup    `json:"limits,omitempty"`
 	Known             bool            `json:"known"`
 	Limit             float64         `json:"limit"`
 	Used              float64         `json:"used"`
@@ -32,6 +39,31 @@ type Status struct {
 	ResetCredits      *float64        `json:"reset_credits,omitempty"`
 	UnavailableReason string          `json:"unavailable_reason,omitempty"`
 	Partial           bool            `json:"partial,omitempty"`
+}
+
+// LimitGroup keeps provider quota pools independent of their time windows.
+// Scope stays unknown unless the source establishes an account/model association.
+type LimitGroup struct {
+	LimitID   string         `json:"limit_id,omitempty"`
+	MapKey    string         `json:"map_key,omitempty"`
+	LimitName string         `json:"limit_name,omitempty"`
+	Scope     string         `json:"scope"`
+	Model     string         `json:"model,omitempty"`
+	State     string         `json:"status"`
+	Windows   []Window       `json:"windows"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+}
+
+func WindowType(seconds int64) string {
+	switch seconds {
+	case 18000:
+		return "5h"
+	case 604800:
+		return "weekly"
+	case 0:
+		return "unknown"
+	}
+	return fmt.Sprintf("custom:%d", seconds)
 }
 
 // Balance preserves the provider's native denomination. A remaining balance
@@ -65,6 +97,11 @@ type Spend struct {
 // Window preserves independent constraints (for example five-hour and weekly
 // subscription usage). Percentages are not token or dollar balances.
 type Window struct {
+	WindowType        string     `json:"window_type,omitempty"`
+	Slot              string     `json:"slot,omitempty"`
+	State             string     `json:"status,omitempty"`
+	Source            string     `json:"source,omitempty"`
+	LastUpdated       time.Time  `json:"last_updated,omitempty"`
 	Name              string     `json:"name"`
 	Unit              string     `json:"unit"`
 	Limit             float64    `json:"limit"`
@@ -84,14 +121,16 @@ type Fetcher interface {
 	Quota(context.Context, string) (Status, error)
 }
 type Cache struct {
-	mu      sync.Mutex
-	ttl     time.Duration
-	now     func() time.Time
-	fetcher Fetcher
-	entries map[string]Status
-	locals  map[string]Status
-	errors  map[string]error
-	calls   map[string]*call
+	mu       sync.Mutex
+	ttl      time.Duration
+	now      func() time.Time
+	fetcher  Fetcher
+	entries  map[string]Status
+	locals   map[string]Status
+	errors   map[string]error
+	calls    map[string]*call
+	failures map[string]int
+	attempts map[string]time.Time
 }
 type call struct {
 	done   chan struct{}
@@ -103,7 +142,7 @@ func NewCache(ttl time.Duration, fetcher Fetcher) *Cache {
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
-	return &Cache{ttl: ttl, now: time.Now, fetcher: fetcher, entries: map[string]Status{}, locals: map[string]Status{}, errors: map[string]error{}, calls: map[string]*call{}}
+	return &Cache{ttl: ttl, now: time.Now, fetcher: fetcher, entries: map[string]Status{}, locals: map[string]Status{}, errors: map[string]error{}, calls: map[string]*call{}, failures: map[string]int{}, attempts: map[string]time.Time{}}
 }
 
 func (c *Cache) QuotaKey(model string) string {
@@ -175,6 +214,8 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 			return clone(pending.status), pending.err
 		}
 	}
+	previous := clone(c.entries[model])
+	c.attempts[model] = now
 	pending := &call{done: make(chan struct{})}
 	c.calls[model] = pending
 	c.mu.Unlock()
@@ -187,7 +228,9 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 	}
 	if err == nil {
 		err = normalize(&value)
-		value.CheckedAt = now
+		if value.State != "stale" {
+			value.CheckedAt = now
+		}
 		value.ExpiresAt = now.Add(c.ttl)
 		// Recheck at a reset rather than serving exhausted state for a whole TTL.
 		for _, window := range value.Windows {
@@ -204,10 +247,34 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 			}
 		}
 	}
-	if err != nil {
-		value = Status{Source: "unavailable", CheckedAt: now, ExpiresAt: now.Add(min(c.ttl, 15*time.Second))}
-	}
+	failed := err != nil || value.UnavailableReason != "" && value.State != "available"
 	c.mu.Lock()
+	if failed {
+		c.failures[model]++
+		baseDelay := min(c.ttl, 15*time.Second)
+		if value.Provider == "openai-codex" {
+			baseDelay = c.ttl
+		}
+		delay := min(baseDelay*time.Duration(1<<min(c.failures[model]-1, 5)), 30*time.Minute)
+		retry := now.Add(delay)
+		if value.State == "stale" && value.RetryAt != nil {
+			retry = *value.RetryAt
+		}
+		if value.RetryAt != nil && value.RetryAt.After(retry) {
+			retry = *value.RetryAt
+		}
+		if previous.Provider == "openai-codex" && previous.AccountID == value.AccountID && !previous.CollectedAt.IsZero() {
+			previous.State = "stale"
+			previous.UnavailableReason = value.UnavailableReason
+			previous.RetryAt = &retry
+			value = previous
+		} else if err != nil {
+			value = Status{Source: "unavailable", State: "unavailable", CheckedAt: now}
+		}
+		value.ExpiresAt = retry
+	} else {
+		delete(c.failures, model)
+	}
 	c.entries[model] = clone(value)
 	c.errors[model] = err
 	pending.status, pending.err = value, err
@@ -279,6 +346,9 @@ func (c *Cache) Observe(model string, observed Status) error {
 	previous, ok := c.entries[model]
 	c.mu.Unlock()
 	var expiresBefore time.Time
+	if ok && previous.Provider == "openai-codex" && len(previous.Limits) > 0 {
+		return nil
+	}
 	if ok && previous.Source != "local_allowance" {
 		// Header freshness must not extend independently collected billing data.
 		// Keep expired data only in an expired entry, so the next Get refetches it.
@@ -319,14 +389,81 @@ func (c *Cache) Invalidate(model string) {
 	delete(c.entries, model)
 	delete(c.locals, model)
 	delete(c.errors, model)
+	delete(c.failures, model)
+	delete(c.attempts, model)
 	if keyer, ok := c.fetcher.(Keyer); ok {
 		key := keyer.QuotaKey(model)
 		delete(c.entries, key)
 		delete(c.errors, key)
+		delete(c.failures, key)
+		delete(c.attempts, key)
 	}
 }
 
+// RequestRefresh permits a user refresh after ten seconds, while honoring provider
+// backoff. It preserves the last successful data and concurrent request deduplication.
+func (c *Cache) RequestRefresh(model string) bool {
+	if k, ok := c.fetcher.(Keyer); ok {
+		model = k.QuotaKey(model)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now().UTC()
+	v, ok := c.entries[model]
+	if !ok {
+		return true
+	}
+	if now.Sub(c.attempts[model]) < 10*time.Second || v.RetryAt != nil && now.Before(*v.RetryAt) {
+		return false
+	}
+	v.ExpiresAt = now
+	c.entries[model] = v
+	return true
+}
+
+// Peek returns cached evidence immediately; inference must not wait for usage HTTP.
+func (c *Cache) Peek(model string) (Status, bool) {
+	requested := model
+	if k, ok := c.fetcher.(Keyer); ok {
+		model = k.QuotaKey(model)
+	}
+	c.mu.Lock()
+	v, ok := c.entries[model]
+	local, hasLocal := c.locals[requested]
+	now := c.now()
+	c.mu.Unlock()
+	v = clone(v)
+	if ok && now.After(v.ExpiresAt) {
+		v.State = "stale"
+	}
+	if hasLocal && now.Before(local.ExpiresAt) {
+		if v.Known && len(v.Windows) == 0 {
+			v.Windows = []Window{{Name: v.Source, Unit: v.Unit, Limit: v.Limit, Used: v.Used, ResetAt: v.ResetAt}}
+		}
+		v.Windows = append(v.Windows, Window{Name: "local_allowance", Unit: "USD", Limit: local.Limit, Used: local.Used})
+		_ = normalize(&v)
+		ok = true
+	}
+	return v, ok
+}
+
 func clone(s Status) Status {
+	s.Limits = append([]LimitGroup(nil), s.Limits...)
+	for i := range s.Limits {
+		g := &s.Limits[i]
+		g.Windows = clone(Status{Windows: g.Windows}).Windows
+		if g.Metadata != nil {
+			m := make(map[string]any, len(g.Metadata))
+			for k, v := range g.Metadata {
+				m[k] = v
+			}
+			g.Metadata = m
+		}
+	}
+	if s.RetryAt != nil {
+		t := *s.RetryAt
+		s.RetryAt = &t
+	}
 	s.Balances = append([]Balance(nil), s.Balances...)
 	for i := range s.Balances {
 		b := &s.Balances[i]
@@ -370,6 +507,20 @@ func clone(s Status) Status {
 	return s
 }
 func normalize(s *Status) error {
+	for i := range s.Limits {
+		group := &s.Limits[i]
+		for j := range group.Windows {
+			w := &group.Windows[j]
+			if w.State == "unavailable" {
+				continue
+			}
+			v := Status{Known: true, Limit: w.Limit, Used: w.Used}
+			if err := normalize(&v); err != nil {
+				return err
+			}
+			w.Remaining, w.FractionRemaining, w.Exhausted = v.Remaining, v.FractionRemaining, v.Exhausted
+		}
+	}
 	if s.ResetCredits != nil && (math.IsNaN(*s.ResetCredits) || math.IsInf(*s.ResetCredits, 0) || *s.ResetCredits < 0) {
 		return errors.New("invalid reset credits")
 	}

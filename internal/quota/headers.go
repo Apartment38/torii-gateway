@@ -44,6 +44,11 @@ func FromHeaders(headers http.Header, now time.Time) (Status, bool) {
 		if minutes, ok := number(headers.Get(prefix + "Window-Minutes")); ok && minutes >= 0 && minutes <= 525600 {
 			window.WindowSeconds = int64(minutes * 60)
 		}
+		window.WindowType = WindowType(window.WindowSeconds)
+		window.Slot = name
+		window.State = "available"
+		window.Source = s.Source
+		window.LastUpdated = now
 		s.Windows = append(s.Windows, window)
 	}
 	if reset := ParseReset(headers.Get("X-Sc-Budget-Renews-At"), now); reset != nil {

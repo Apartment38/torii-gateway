@@ -253,32 +253,66 @@ Sources:
 - https://github.com/openai/codex/blob/main/codex-rs/cli/src/doctor.rs
 
 The authenticated model catalog is requested from the Codex backend's
-`/models` endpoint. Torii exposes entries whose visibility is `list` and whose
-`supported_in_api` flag is true. If the account is not logged in or discovery
+`/models` endpoint. Torii exposes visible entries; hidden entries are omitted. The backend
+`supported_in_api` flag does not filter subscription models. If the account is not logged in or discovery
 is temporarily unavailable, the configured fallback model list remains
 available; a successful login refreshes the live catalog without restarting
 the gateway.
 
-Verified 2026-10-10 from the upstream Codex client: legacy ChatGPT-bound
-credentials read `/backend-api/wham/usage` on the same configured origin.
-Primary/secondary windows report `used_percent`, `limit_window_seconds`, and
-Unix-second `reset_at`; these percentages must not be labeled tokens or USD.
-Torii also observes `x-codex-{primary,secondary}-{used-percent,window-minutes,
-reset-at}` response headers (and legacy relative reset headers). The most
-constrained window controls routing, and each reset remains available to clients.
-Updated 2026-10-11: the maintained Hermes account-usage client follows the Codex
-PathStyle split: public endpoints use `/api/codex/usage`; ChatGPT backends use
-`/backend-api/wham/usage`. Torii now polls both paths and retains `credits.balance`,
-`credits.unlimited`, `rate_limit_reset_credits.available_count`, `plan_type` and
-`additional_rate_limits`. These are read-only account fields, not reset redemption.
-A rejected or missing endpoint produces an explicit reason, with headers still
-available as a supplement.
-Quota polling uses refreshed endpoint-bound credentials and a ten-second deadline.
+Quota source verification, 2026-10-11 (source inspection and mocked integration,
+not authenticated live validation): official `backend-client` selects
+`/backend-api/wham/usage` for ChatGPT bases and `/api/codex/usage` for Codex API
+bases. Torii follows that split using the same endpoint-bound authentication
+manager as inference. Its dynamic plan-usage OAuth scope selects the public API
+origin; whether the affected saved token is authorized for that usage endpoint
+remains unverified. A working inference call does not establish usage permission.
+
+Before this change, polling already loaded the inference credential and refreshed
+known expirations, but did not retry a 401. Missing expiry could also hide an
+expired JWT. Source inspection found no independent quota credential copy. No
+credential or request trace for the original 401 is available, so expiry, account
+selection, audience/permission mismatch and upstream changes remain possible.
+
+Refresh uses the existing OAuth grant/client-specific path, re-reads under a
+per-account lock shared across handler replacement, and securely persists rotated
+credentials only if the login still matches. A 401 permits one refresh and one
+retry; failures never include response bodies or token values. JWT expiry/account
+claims are routing hints, not verified identity evidence.
+
+Official app-server `rateLimitsByLimitId` and legacy `rateLimits` are separate
+schemas from direct `rate_limit`/`additional_rate_limits`. Torii preserves map
+keys, provider IDs, names and independent windows. Direct ordinary limits have
+account scope; additional names never imply model routing authority. Durations
+classify 5h/weekly/custom/unknown windows. Missing data remains unavailable.
+Credits and banked reset counts are read-only; no reset is redeemed.
+
+An optional configured `codex app-server` performs initialize/initialized,
+account/read and account/rateLimits/read over bounded JSON lines. Quota accountId
+must match Torii, and email must match when stored. Older snapshots without
+accountId, notifications without account proof, mismatched/unauthenticated CLI
+logins and unavailable executables fall back to HTTP. Torii neither copies nor
+refreshes CLI credential files itself. Inference headers are separate supplementary
+snapshots and cannot overwrite polled pools or a different account.
+
+Reference implementations inspected: codex-session's quota service refreshes
+and retries a 401; provider-usage prefers Hermes account helpers but its fallback
+omits the account header; ai-usage-tracker delegates to Hermes account usage;
+resetwatch separates read-only catalog probes from refresh-capable vendor probes;
+rarf's Codex reader groups credential contexts and normalizes extra pools.
+These are source observations, not evidence that Torii's affected login works.
 
 Sources:
 
+- https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client.rs
 - https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client/rate_limit_resets.rs
-- https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/rate_limits.rs
+- https://github.com/openai/codex/blob/main/codex-rs/app-server/tests/suite/v2/rate_limits.rs
+- https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/typescript/v2/GetAccountRateLimitsResponse.ts
+- https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/typescript/v2/RateLimitSnapshot.ts
+- https://github.com/gubasso/codex-session/blob/develop/src/services/account/quota.rs
+- https://github.com/PhoeniXAbhisheK/hermes-plugin-provider-usage/blob/main/dashboard/plugin_api.py
+- https://github.com/Adolanium/hermes-resetwatch/blob/main/probe.py
+- https://github.com/rarf/hermes-quota-plugin/blob/main/quota_providers/codex.py
+- https://github.com/lvabarajithan/hermes-ai-usage-tracker/blob/main/dashboard/plugin_api.py
 
 ## Nous Portal
 

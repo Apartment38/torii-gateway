@@ -23,9 +23,26 @@ function quotaWindowText(window:any):string{
 function balanceText(q:any):string {
  return (q?.balances||[]).map((b:any)=>`${b.name.replace(/_/g," ")}: ${b.unlimited?"Unlimited":typeof b.remaining==="number"?(b.unit==="USD"?modelPrice(b.remaining):`${consoleNumber(b.remaining)} ${b.unit}`):"Unknown"}${b.reset_at?` · renews ${new Date(b.reset_at).toLocaleString()}`:""}`).join("; ");
 }
-function trackingReasonText(reason:string):string{return ({management_credentials_required:"Billing management credentials required",admin_credentials_required:"Billing admin credential required",oauth_credentials_required:"Subscription OAuth credential required",wallet_balance_not_exposed:"Provider does not expose wallet balance",response_headers_only:"Quota available from response headers",credential_rejected:"Tracking credential rejected",endpoint_unavailable:"Tracking endpoint unavailable",rate_limited:"Tracking rate limited",tracking_unavailable:"Tracking unavailable",no_reported_data:"No reported provider data",spend_unavailable:"Provider spend unavailable",report_incomplete:"Provider report incomplete",no_subscription:"No subscription reported"} as Record<string,string>)[reason]||"Provider data unavailable";}
+function trackingReasonText(reason:string):string{return ({management_credentials_required:"Billing management credentials required",admin_credentials_required:"Billing admin credential required",oauth_credentials_required:"Subscription OAuth credential required",wallet_balance_not_exposed:"Provider does not expose wallet balance",response_headers_only:"Quota available from response headers",credential_rejected:"Tracking credential rejected",endpoint_unavailable:"Tracking endpoint unavailable",rate_limited:"Tracking rate limited",tracking_unavailable:"Tracking unavailable",no_reported_data:"No reported provider data",spend_unavailable:"Provider spend unavailable",report_incomplete:"Provider report incomplete",no_subscription:"No subscription reported",oauth_login_or_refresh_required:"OAuth login expired or refresh unavailable; reconnect the account",oauth_required_api_key_supplied:"ChatGPT OAuth required; an API key was supplied",account_context_mismatch:"Quota account does not match the configured OAuth account",usage_auth_rejected_after_refresh_check_account_and_oauth_context:"Usage endpoint rejected OAuth authentication; verify account and token permissions",usage_permission_denied:"OAuth account lacks usage permission",oauth_refresh_failed:"OAuth refresh failed; reconnect the account",usage_request_failed:"Quota request failed; cached values may be stale",usage_endpoint_failed:"Usage endpoint failed",invalid_usage_response:"Usage response could not be parsed",account_changed_during_collection:"Account changed during quota collection"} as Record<string,string>)[reason]||"Provider data unavailable";}
+function codexWindowText(w:any):string {
+ const name=w.window_type==="5h"?"5-hour":w.window_type==="weekly"?"Weekly":w.window_seconds?`${w.window_seconds/60} minute window`:"Unknown duration";
+ if(w.status==="unavailable")return `${name}: usage unavailable · ${quotaResetLabel(w.reset_at)}`;
+ return `${name}: ${Number(w.used).toFixed(1)}% used · ${Number(w.remaining).toFixed(1)}% remaining · ${quotaResetLabel(w.reset_at)}`;
+}
+function codexGroupText(g:any):string {
+ const windows=g.windows||[];
+ return [g.limit_name||g.limit_id||g.map_key||"Unidentified quota pool",...windows.map(codexWindowText),...['5h','weekly'].filter(type=>!windows.some((w:any)=>w.window_type===type)).map(type=>`${type==="5h"?"5-hour":"Weekly"}: unavailable`)].join(" · ");
+}
+function codexQuotaMarkup(q:any):string {
+ if(q.provider!=="openai-codex")return "";
+ return `<p>Account: ${escapeHTML(q.account_identity||q.account_id||"Unknown identity")} · ${escapeHTML(q.plan||"Unknown plan")}<br>Status: ${escapeHTML(q.status||"unavailable")}${q.unavailable_reason?` · ${escapeHTML(trackingReasonText(q.unavailable_reason))}`:""}<br>Last successful update: ${q.collected_at&&q.collected_at!=="0001-01-01T00:00:00Z"?escapeHTML(new Date(q.collected_at).toLocaleString()):"Unavailable"} · ${escapeHTML(q.source||"Unknown source")}</p>${(q.limits||[]).map((g:any)=>`<details class="quota-group"><summary>${escapeHTML(g.limit_name||g.limit_id||g.map_key||"Unidentified quota pool")} · ${escapeHTML(g.status||"unavailable")}</summary><p>${escapeHTML(codexGroupText(g))}</p><small>Scope: ${escapeHTML(g.scope||"unknown")}${g.limit_id?` · ID: ${escapeHTML(g.limit_id)}`:""}</small></details>`).join("")}`;
+}
 function modelQuotaText(model:any):string{
  const q=model.quota;
+ if(q?.provider==="openai-codex") {
+  const groups=q.limits||[];
+  return `${q.status==="stale"?"Stale · ":""}${groups.length?groups.map(codexGroupText).join("; "):"5-hour: unavailable · Weekly: unavailable"}${q.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
+ }
  const extras=[balanceText(q),typeof q?.reset_credits==="number"?`${q.reset_credits} banked resets`:""].filter(Boolean).join(" · ");
  if(extras&&!q?.known&&!q?.windows?.length&&!q?.reset_at)return `${q.blocked?"Quota exhausted · ":""}${extras}${q?.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
  if(!q?.known&&q?.windows?.length)return q.windows.map(quotaWindowText).join("; ")+`${extras?` · ${extras}`:""}`;
@@ -51,7 +68,7 @@ function modelSelectorLabel(model:any):string{return [model.id,modelPricingText(
 function modelTrackingMarkup(model:any):string{
  const q=model.quota||{};const reported=q.usage_usd;
  const usage=(q.reported_usage||[]).map((u:any)=>`${u.period}: ${u.unit==="USD"?modelPrice(u.used):`${consoleNumber(u.used)} ${u.unit}`} (${u.scope||"account"})`).join(" · ");
- return `<p><strong>Provider quota</strong><br>${escapeHTML(modelQuotaText(model))}</p>${model.pricing?.source?`<p>Price source: ${escapeHTML(model.pricing.source)}</p>`:""}${q.plan?`<p>Plan: ${escapeHTML(q.plan)}</p>`:""}${q.partial?`<p>${escapeHTML(trackingReasonText(q.unavailable_reason||"tracking_unavailable"))} · Partial provider data</p>`:""}${usage?`<p><strong>Provider-reported usage</strong><br>${escapeHTML(usage)}</p>`:""}${q.checked_at&&q.checked_at!=="0001-01-01T00:00:00Z"?`<p>Checked ${escapeHTML(new Date(q.checked_at).toLocaleString())} · ${escapeHTML(q.source||"unknown source")}</p>`:""}${reported?`<p><strong>Provider-reported spend</strong><br>${["total","daily","weekly","monthly"].filter(period=>typeof reported[period]==="number").map(period=>`${period}: ${modelPrice(reported[period])}`).map(escapeHTML).join(" · ")}</p>`:""}${model.usage_available!==undefined?`<p><strong>Gateway usage</strong><br>${escapeHTML(modelUsageText(model))}</p>`:""}`;
+ return `${codexQuotaMarkup(q)}<p><strong>Provider quota</strong><br>${escapeHTML(modelQuotaText(model))}</p>${model.pricing?.source?`<p>Price source: ${escapeHTML(model.pricing.source)}</p>`:""}${q.plan?`<p>Plan: ${escapeHTML(q.plan)}</p>`:""}${q.partial?`<p>${escapeHTML(trackingReasonText(q.unavailable_reason||"tracking_unavailable"))} · Partial provider data</p>`:""}${usage?`<p><strong>Provider-reported usage</strong><br>${escapeHTML(usage)}</p>`:""}${q.checked_at&&q.checked_at!=="0001-01-01T00:00:00Z"?`<p>Checked ${escapeHTML(new Date(q.checked_at).toLocaleString())} · ${escapeHTML(q.source||"unknown source")}</p>`:""}${reported?`<p><strong>Provider-reported spend</strong><br>${["total","daily","weekly","monthly"].filter(period=>typeof reported[period]==="number").map(period=>`${period}: ${modelPrice(reported[period])}`).map(escapeHTML).join(" · ")}</p>`:""}${model.usage_available!==undefined?`<p><strong>Gateway usage</strong><br>${escapeHTML(modelUsageText(model))}</p>`:""}`;
 }
 function filteredPhysicalModels():any[]{const query=modelSearch.toLowerCase();return physicalModels.filter(model=>(!query||`${model.id} ${model.provider_id}`.toLowerCase().includes(query))&&(!modelProviderFilter||model.provider_id===modelProviderFilter)&&(!modelStatusFilter||Boolean(model.enabled)===(modelStatusFilter==="enabled"))).sort((a,b)=>modelSort==="provider"?String(a.provider_id).localeCompare(String(b.provider_id))||String(a.id).localeCompare(String(b.id)):modelSort==="enabled"?Number(Boolean(b.enabled))-Number(Boolean(a.enabled))||String(a.id).localeCompare(String(b.id)):String(a.id).localeCompare(String(b.id)));}
 function renderModelRows():void{
@@ -86,3 +103,12 @@ async function loadModelsPage():Promise<void>{
  }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load models</strong><p>${escapeHTML(error instanceof Error?error.message:"Models unavailable")}</p></div>`;}finally{button.disabled=false;}
 }
 document.querySelector("#refresh-models")!.addEventListener("click",()=>{void loadModelsPage();});
+
+document.querySelector("#refresh-quotas")?.addEventListener("click",async()=>{
+ const button=document.querySelector<HTMLButtonElement>("#refresh-quotas")!;button.disabled=true;
+ try {
+  const response=await gatewayFetch("/gateway/v1/quotas/refresh",{method:"POST",headers:await authProvider.headers()});
+  if(response.ok) { const data=await response.json();physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview(); }
+  else document.querySelector<HTMLElement>("#models-list")!.insertAdjacentHTML("afterbegin",`<p role="status">${response.status===429?"Quota refresh is cooling down. Try again after the next poll.":"Quota refresh unavailable."}</p>`);
+ }finally {button.disabled=false;}
+});

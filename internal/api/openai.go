@@ -434,6 +434,9 @@ func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
 		// replacing their cached billing snapshots or model-scoped limits.
 		if h.observedQuotas != nil && (headers.Get("X-Codex-Primary-Used-Percent") != "" || headers.Get("X-Codex-Secondary-Used-Percent") != "") {
 			if id, _, err := provider.ParseModelID(model); err == nil {
+				if codex, ok := h.byID[id].(*provider.Codex); ok {
+					id = codex.QuotaKey(model)
+				}
 				_ = h.observedQuotas.Observe(id, status)
 			}
 		}

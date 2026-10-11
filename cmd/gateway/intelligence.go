@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/catalog"
@@ -27,13 +28,38 @@ func (s unavailableBenchmarkSource) Fetch(context.Context) (intelligence.Result,
 func (h *catalogHandler) startIntelligence(ctx context.Context) {
 	h.workerMu.Lock()
 	defer h.workerMu.Unlock()
-	if h.intelligence == nil || h.workerCancel != nil {
+	if h.intelligence == nil && h.pollQuotas == nil || h.workerCancel != nil {
 		return
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	h.workerCancel = cancel
 	h.workerDone = make(chan struct{})
-	go func() { defer close(h.workerDone); h.intelligence.Run(ctx) }()
+	go func() {
+		defer close(h.workerDone)
+		var wg sync.WaitGroup
+		if h.intelligence != nil {
+			wg.Add(1)
+			go func() { defer wg.Done(); h.intelligence.Run(ctx) }()
+		}
+		if h.pollQuotas != nil {
+			interval := h.quotaInterval
+			if interval <= 0 {
+				interval = time.Minute
+			}
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				h.pollQuotas(ctx)
+				select {
+				case <-ctx.Done():
+					wg.Wait()
+					return
+				case <-ticker.C:
+				}
+			}
+		}
+		wg.Wait()
+	}()
 }
 func (h *catalogHandler) stopIntelligence() {
 	h.workerMu.Lock()

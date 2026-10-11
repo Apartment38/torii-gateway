@@ -74,6 +74,11 @@ and its subscription usage requires OAuth. External harnesses must render the
 additive model fields. Live billing accounts were not exercised. No merge or
 deployment was performed for this extension.
 
+The six extension commits are also applied to the requested
+`feat/provider-cost-usage` branch in `/workspace/work/provider-cost-usage`,
+retained for review. Its implementation matches the validated tracking branch;
+existing routing documentation remains on that branch's original history.
+
 
 The premium console redesign is complete on `feat/premium-console` in
 `/tmp/torii-premium-console`, retained for review. Separate builders and independent

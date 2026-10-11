@@ -19,6 +19,7 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
 	"github.com/Apartment38/torii-gateway/internal/provider"
+	"github.com/Apartment38/torii-gateway/internal/router"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,14 +39,16 @@ type Config struct {
 }
 
 type RouterConfig struct {
-	ModelName        string               `yaml:"model_name,omitempty"`
-	CatalogOverrides []catalog.Descriptor `yaml:"catalog_overrides,omitempty"`
-	CatalogFile      string               `yaml:"catalog_file,omitempty"`
-	AllowPaidModels  *bool                `yaml:"allow_paid_models,omitempty"`
-	Classifier       ClassifierConfig     `yaml:"classifier,omitempty"`
-	Sessions         SessionConfig        `yaml:"sessions,omitempty"`
-	Quota            QuotaConfig          `yaml:"quota,omitempty"`
-	Selection        SelectionConfig      `yaml:"selection,omitempty"`
+	CustomRouters    []router.CustomRouter `yaml:"custom_routers,omitempty"`
+	AllowFreeModels  *bool                 `yaml:"allow_free_models,omitempty"`
+	ModelName        string                `yaml:"model_name,omitempty"`
+	CatalogOverrides []catalog.Descriptor  `yaml:"catalog_overrides,omitempty"`
+	CatalogFile      string                `yaml:"catalog_file,omitempty"`
+	AllowPaidModels  *bool                 `yaml:"allow_paid_models,omitempty"`
+	Classifier       ClassifierConfig      `yaml:"classifier,omitempty"`
+	Sessions         SessionConfig         `yaml:"sessions,omitempty"`
+	Quota            QuotaConfig           `yaml:"quota,omitempty"`
+	Selection        SelectionConfig       `yaml:"selection,omitempty"`
 }
 
 type ClassifierConfig struct {
@@ -334,6 +337,16 @@ func validateNousProvider(p ProviderConfig) error {
 }
 
 func (r RouterConfig) Validate() error {
+	names := make(map[string]bool)
+	for _, custom := range r.CustomRouters {
+		if err := custom.Validate(); err != nil {
+			return fmt.Errorf("custom_routers %q: %w", custom.Name, err)
+		}
+		if names[custom.Name] {
+			return fmt.Errorf("duplicate custom router %q", custom.Name)
+		}
+		names[custom.Name] = true
+	}
 	if r.ModelName != "" && r.ModelName != "smart" {
 		return errors.New("model_name must be smart")
 	}

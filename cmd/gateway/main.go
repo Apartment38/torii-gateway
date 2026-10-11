@@ -141,6 +141,11 @@ func runWithIO(ctx context.Context, args []string, output io.Writer) error {
 		if _, err := fmt.Fprintln(output, "smart"); err != nil {
 			return err
 		}
+		for _, custom := range cfg.Router.CustomRouters {
+			if _, err := fmt.Fprintln(output, custom.Name); err != nil {
+				return err
+			}
+		}
 		for _, providerConfig := range cfg.Providers {
 			if providerConfig.Enabled != nil && !*providerConfig.Enabled {
 				continue
@@ -768,7 +773,11 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		}
 		openAI.SetClassifier(classifier.Runner{Classifier: configuredClassifier, Timeout: timeout, MinimumConfidence: cfg.Router.Classifier.MinimumConfidence, OnFailure: failure})
 	}
+	openAI.SetCustomRouters(cfg.Router.CustomRouters)
 	selection := router.DefaultSelectionPolicy()
+	if cfg.Router.AllowFreeModels != nil {
+		selection.AllowFreeModels = *cfg.Router.AllowFreeModels
+	}
 	if cfg.Router.AllowPaidModels != nil {
 		selection.AllowPaidModels = *cfg.Router.AllowPaidModels
 	}

@@ -45,6 +45,7 @@ type OpenAIHandler struct {
 	sessions            *session.Manager
 	classifier          classifier.Runner
 	policy              router.SelectionPolicy
+	customRouters       []router.CustomRouter
 	usage               *usage.Store
 	quota               *quota.Cache
 	intelligence        *intelligence.Manager
@@ -87,6 +88,25 @@ func NewOpenAIHandlerWithOverrides(providers []provider.OpenAIProvider, override
 // Leaving it unset selects using objective requirements and deterministic
 // selection within the configured safety constraints.
 func (h *OpenAIHandler) SetClassifier(runner classifier.Runner) { h.classifier = runner }
+
+// SetCustomRouters configures virtual models before publishing the handler.
+func (h *OpenAIHandler) SetCustomRouters(routers []router.CustomRouter) {
+	h.customRouters = append([]router.CustomRouter(nil), routers...)
+}
+
+func (h *OpenAIHandler) customRouter(name string) (router.CustomRouter, bool) {
+	for _, custom := range h.customRouters {
+		if custom.Name == name {
+			return custom, true
+		}
+	}
+	return router.CustomRouter{}, false
+}
+
+func (h *OpenAIHandler) isSmartModel(name string) bool {
+	_, found := h.customRouter(name)
+	return name == "smart" || found
+}
 
 func (h *OpenAIHandler) SetSelectionPolicy(policy router.SelectionPolicy) { h.policy = policy }
 
@@ -179,6 +199,9 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 	// Clients may show only the first page of a provider's catalog. Keep the
 	// gateway routing choice visible before the sorted physical models.
 	models = append(models, clientModel{Model: provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"}})
+	for _, custom := range h.customRouters {
+		models = append(models, clientModel{Model: provider.Model{ID: custom.Name, Object: "model", OwnedBy: "torii"}})
+	}
 	for _, descriptor := range descriptors {
 		if !h.enabled(descriptor.PublicID) {
 			continue
@@ -192,8 +215,8 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
-	if publicID == "smart" {
-		writeJSON(w, http.StatusOK, provider.Model{ID: "smart", Object: "model", OwnedBy: "torii"})
+	if h.isSmartModel(publicID) {
+		writeJSON(w, http.StatusOK, provider.Model{ID: publicID, Object: "model", OwnedBy: "torii"})
 		return
 	}
 	providerID, _, err := provider.ParseModelID(publicID)
@@ -267,8 +290,8 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	requestedModel := fields.Model
 	var routing *smartRouting
-	if requestedModel == "smart" {
-		routing, err = h.prepareSmartRouting(r, body)
+	if h.isSmartModel(requestedModel) {
+		routing, err = h.prepareSmartRouting(r, body, requestedModel)
 		defer routing.logEvidence(r.Context())
 		if subject := accounting.SubjectFrom(r.Context()); subject != nil && subject.BudgetFailure() != nil {
 			err = subject.BudgetFailure()

@@ -21,6 +21,7 @@ const (
 
 type SelectionPolicy struct {
 	AllowPaidModels             bool
+	AllowFreeModels             bool
 	MaxContextFraction          float64
 	MinimumQuality              map[string]float64
 	MinimumToolQuality          float64
@@ -31,7 +32,7 @@ type SelectionPolicy struct {
 }
 
 func DefaultSelectionPolicy() SelectionPolicy {
-	return SelectionPolicy{AllowPaidModels: true, MaxContextFraction: .85, MinimumQuality: map[string]float64{"low": .55, "medium": .70, "high": .82}, MinimumToolQuality: .55, MinimumReasoningQuality: .55, DefaultExpectedOutputTokens: 1024, LocationPreference: LocationNeutral}
+	return SelectionPolicy{AllowPaidModels: true, AllowFreeModels: true, MaxContextFraction: .85, MinimumQuality: map[string]float64{"low": .55, "medium": .70, "high": .82}, MinimumToolQuality: .55, MinimumReasoningQuality: .55, DefaultExpectedOutputTokens: 1024, LocationPreference: LocationNeutral}
 }
 
 type Candidate struct {
@@ -146,6 +147,9 @@ func evaluate(candidate Candidate, req RequestRequirements, complexity string, p
 		}
 		needed := req.EstimatedInputTokens + output
 		headroom = *m.ContextWindow - needed
+	}
+	if !policy.AllowFreeModels && knownFree(m) {
+		return ranked{}, "free models are disallowed", false
 	}
 	if !policy.AllowPaidModels && !knownFree(m) {
 		return ranked{}, "model is not positively known to be free", false

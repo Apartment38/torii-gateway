@@ -27,6 +27,7 @@ type smartRouting struct {
 	endpoint          string
 	requirements      router.RequestRequirements
 	policy            router.SelectionPolicy
+	custom            *router.CustomRouter
 	pinnedModel       string
 	toolContinuation  bool
 	elapsed           time.Duration
@@ -38,9 +39,14 @@ type smartRouting struct {
 	errorKind         fault.Kind
 }
 
-func (h *OpenAIHandler) prepareSmartRouting(r *http.Request, body []byte) (*smartRouting, error) {
+func (h *OpenAIHandler) prepareSmartRouting(r *http.Request, body []byte, modelName string) (*smartRouting, error) {
 	started := time.Now()
 	routing := &smartRouting{body: body, endpoint: r.URL.Path, identity: smartIdentityInfo(r, body, r.URL.Path), policy: h.policy, toolContinuation: smartToolContinuation(body), classifierSource: "not_configured"}
+	if custom, found := h.customRouter(modelName); found {
+		routing.custom = &custom
+		routing.policy.AllowPaidModels = custom.AllowPaidModels == nil || *custom.AllowPaidModels
+		routing.policy.AllowFreeModels = custom.AllowFreeModels == nil || *custom.AllowFreeModels
+	}
 	defer func() { routing.elapsed += time.Since(started) }()
 	if err := h.ensureCatalog(r.Context()); err != nil {
 		return routing, fault.Wrap(fault.ProviderUnavailable, "discover smart models", err)
@@ -105,7 +111,7 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 	candidates := make([]router.Candidate, 0)
 	var budgetErr error
 	for _, model := range h.CatalogModels() {
-		if model.PublicID == excluded || !h.enabled(model.PublicID) {
+		if model.PublicID == excluded || !h.enabled(model.PublicID) || (routing.custom != nil && !routing.custom.Includes(model.PublicID)) {
 			continue
 		}
 		providerID, _, err := provider.ParseModelID(model.PublicID)

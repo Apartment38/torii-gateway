@@ -1586,3 +1586,38 @@ test("usage page includes provider limits separately from operator budgets",()=>
  const html=app.run('document.querySelector("#usage-list").innerHTML');
  assert.match(html,/Provider balances &amp; subscription limits/);assert.equal((html.match(/<strong>nous<\/strong>/g)||[]).length,1);assert.match(html,/Quota unknown/);
 });
+
+
+test("balance-only snapshots and banked resets appear in harness selector labels",()=>{
+ const app=consoleFixture(()=>response({}));
+ const label=app.run('modelSelectorLabel({id:"codex/m",pricing:{},quota:{known:false,balances:[{name:"credits",unit:"USD",remaining:8.75}],reset_credits:2}})');
+ assert.match(label,/credits: \$8\.75/);assert.match(label,/2 banked resets/);assert.ok(!label.includes("0.0%"));
+ assert.match(app.run('modelQuotaText({quota:{known:false,balances:[{name:"account",unit:"CNY",remaining:42}]}})'),/42 CNY/);
+ assert.match(app.run('modelQuotaText({quota:{known:false,reset_at:"2026-11-01T00:00:00Z"}})'),/resets/);
+ const html=app.run('modelTrackingMarkup({quota:{plan:"<script>",partial:true,unavailable_reason:"spend_unavailable",balances:[{name:"account",unit:"USD",remaining:5}],reported_usage:[{period:"monthly",unit:"tokens",used:50,scope:"organization"}]}})');
+ assert.match(html,/Partial provider data/);assert.match(html,/50 tokens \(organization\)/);assert.ok(!html.includes('<script>'));
+});
+
+test("new tracked provider integrations are selectable and retain billing configuration",()=>{
+ const app=consoleFixture(()=>response({}));
+ const options=app.run('providerTypeOptions({type:"openai_compatible"},false)');
+ for(const kind of ["opencode-go","opencode-zen","standard-compute","zai","kimi-coding","minimax","deepseek"])assert.ok(options.includes(`value="${kind}"`));
+ app.run('providers=[{id:"xai",type:"xai",api_url:"https://api.x.ai/v1",bearer_token:{credential:"inference"},tracking:{token:{credential:"billing"},team_id:"team"},tracking_team_id:"new-team",tracking_mode:"api"}];renderProviders()');
+ const cfg=app.run('readProviderConfig(providers[0])');
+ assert.equal(cfg.tracking.team_id,"new-team");assert.equal(cfg.tracking.token.credential,"billing");assert.equal(cfg.bearer_token.credential,"inference");
+ assert.ok(!Object.keys(cfg).some(k=>k.startsWith("tracking_")));
+ app.run('providers[0].tracking_token="replacement-synthetic"');
+ assert.equal(app.run('readProviderConfig(providers[0]).tracking.token.value'),"replacement-synthetic");
+});
+
+ test("informational windows retain resets alongside balances",()=>{
+ const app=consoleFixture(()=>response({}));
+ const label=app.run('modelQuotaText({quota:{known:false,windows:[{name:"weekly",unit:"percent",remaining:12,informational:true,reset_at:"2030-01-01T00:00:00Z"}],balances:[{name:"credits",unit:"USD",remaining:4}],reset_credits:2}})');
+ assert.match(label,/12.0% remaining \(informational\)/);assert.match(label,/resets/);assert.match(label,/credits: \$4.00/);assert.match(label,/2 banked resets/);
+ });
+
+test("selectors label provider usage separately from gateway estimates",()=>{
+ const app=consoleFixture(()=>response({}));
+ const label=app.run('modelSelectorLabel({id:"anthropic/m",quota:{usage_usd:{monthly:1.5},reported_usage:[{period:"monthly",unit:"USD",used:1.5,scope:"organization"},{period:"monthly",unit:"tokens",used:500,scope:"organization"}]},usage_available:true,usage:[]})');
+ assert.match(label,/Provider this month: \$1.50 \(organization\); 500 tokens \(organization\)/);assert.match(label,/No gateway usage/);assert.equal((label.match(/\$1.50/g)||[]).length,1);
+});

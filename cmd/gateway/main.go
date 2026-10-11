@@ -1661,7 +1661,7 @@ func buildProvider(cfg config.ProviderConfig) (provider.OpenAIProvider, error) {
 	return buildProviderWithState(cfg)
 }
 
-func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Database) (provider.OpenAIProvider, error) {
+func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*state.Database) (provider.OpenAIProvider, error) {
 	var db *state.Database
 	if len(databases) > 0 {
 		db = databases[0]
@@ -1799,6 +1799,67 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		codex.ConfigureRefresh("https://auth.openai.com", saver)
 		return codex, nil
 	}
+	httpTransport, err := compatibleHTTPTransport(cfg)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{Transport: httpTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if db != nil {
+		client.Transport = &secretTransport{base: httpTransport, headers: secretHeaders, bearer: bearerAuth, management: cfg.ManagementToken}
+	}
+	discover := true
+	if cfg.DiscoverModels != nil {
+		discover = *cfg.DiscoverModels
+	}
+	discoveryTimeout, _ := time.ParseDuration(cfg.DiscoveryTimeout)
+	requestTimeout, _ := time.ParseDuration(cfg.RequestTimeout)
+	apiPath := cfg.APIPath
+	if apiPath == "" {
+		switch cfg.Type {
+		case "gemini":
+			apiPath = "/v1beta/openai"
+		case "opencode-go":
+			apiPath = "/zen/go/v1"
+		case "opencode-zen":
+			apiPath = "/zen/v1"
+		case "zai":
+			apiPath = "/api/coding/paas/v4"
+		case "kimi-coding":
+			apiPath = "/coding/v1"
+		default:
+			apiPath = "/v1"
+		}
+	}
+	var quotaURL string
+	if cfg.Type == "jev" || cfg.Type == "jev_compatible" {
+		return provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout}, cfg.Type == "jev_compatible")
+	}
+	quotaHeaders := make(http.Header)
+	var keyQuotaURL string
+	if cfg.Type == "openrouter" {
+		keyQuotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/key"
+		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
+		quotaHeaders = headers.Clone()
+	}
+	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
+		managementToken := "database-managed"
+		var err error
+		if db == nil {
+			managementToken, err = cfg.ManagementToken.Resolve()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolve OpenRouter management token: %w", err)
+		}
+		if managementToken == "" || strings.ContainsAny(managementToken, "\r\n") {
+			return nil, errors.New("resolved OpenRouter management token is empty or contains a newline")
+		}
+		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
+		quotaHeaders.Set("Authorization", "Bearer "+managementToken)
+	}
+	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, KeyQuotaURL: keyQuotaURL, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+}
+
+func compatibleHTTPTransport(cfg config.ProviderConfig) (*http.Transport, error) {
 	connectTimeout, _ := time.ParseDuration(cfg.ConnectTimeout)
 	dialer := &net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}
 	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
@@ -1821,48 +1882,5 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		}
 		httpTransport.TLSClientConfig = tlsConfig
 	}
-	client := &http.Client{Transport: httpTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	if db != nil {
-		client.Transport = &secretTransport{base: httpTransport, headers: secretHeaders, bearer: bearerAuth, management: cfg.ManagementToken}
-	}
-	discover := true
-	if cfg.DiscoverModels != nil {
-		discover = *cfg.DiscoverModels
-	}
-	discoveryTimeout, _ := time.ParseDuration(cfg.DiscoveryTimeout)
-	requestTimeout, _ := time.ParseDuration(cfg.RequestTimeout)
-	apiPath := cfg.APIPath
-	if apiPath == "" {
-		switch cfg.Type {
-		case "gemini":
-			apiPath = "/v1beta/openai"
-		default:
-			apiPath = "/v1"
-		}
-	}
-	var quotaURL string
-	if cfg.Type == "jev" || cfg.Type == "jev_compatible" {
-		return provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout}, cfg.Type == "jev_compatible")
-	}
-	quotaHeaders := make(http.Header)
-	var keyQuotaURL string
-	if cfg.Type == "openrouter" {
-		keyQuotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/key"
-	}
-	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
-		managementToken := "database-managed"
-		var err error
-		if db == nil {
-			managementToken, err = cfg.ManagementToken.Resolve()
-		}
-		if err != nil {
-			return nil, fmt.Errorf("resolve OpenRouter management token: %w", err)
-		}
-		if managementToken == "" || strings.ContainsAny(managementToken, "\r\n") {
-			return nil, errors.New("resolved OpenRouter management token is empty or contains a newline")
-		}
-		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
-		quotaHeaders.Set("Authorization", "Bearer "+managementToken)
-	}
-	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, KeyQuotaURL: keyQuotaURL, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+	return httpTransport, nil
 }

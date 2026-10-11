@@ -23,12 +23,17 @@ func (p *Compatible) QuotaKey(model string) string {
 	return model
 }
 
-// Quota combines key caps with optional account credits. Inference credentials
-// are used only for /key; management credentials remain isolated to /credits.
+// Quota combines key caps with account credits. A separate management
+// credential, when supplied, is used only for /credits.
 func (p *Compatible) Quota(ctx context.Context, model string) (quota.Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.discoveryTO)
 	defer cancel()
 	account, accountErr := p.accountQuota(ctx)
+	free := strings.HasSuffix(model, ":free")
+	if free && account.Known {
+		account.Windows = []quota.Window{{Name: "account_credits", Unit: "USD", Limit: account.Limit, Used: account.Used, Informational: true}}
+		account.Known = false
+	}
 	if p.keyQuotaURL == "" {
 		return account, accountErr
 	}
@@ -39,14 +44,14 @@ func (p *Compatible) Quota(ctx context.Context, model string) (quota.Status, err
 	req.Header = p.headers.Clone()
 	resp, err := p.client.Do(req)
 	if err != nil {
-		if account.Known {
+		if account.Known || len(account.Balances) > 0 {
 			return account, nil
 		}
 		return quota.Status{}, errors.New("OpenRouter key usage unavailable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		if account.Known {
+		if account.Known || len(account.Balances) > 0 {
 			return account, nil
 		}
 		return quota.Status{}, fmt.Errorf("OpenRouter key usage returned HTTP %d", resp.StatusCode)
@@ -87,6 +92,19 @@ func (p *Compatible) Quota(ctx context.Context, model string) (quota.Status, err
 	}
 	if account.Known {
 		status.Windows = append(status.Windows, quota.Window{Name: "account_credits", Unit: "USD", Limit: account.Limit, Used: account.Used})
+	}
+	status.Windows = append(status.Windows, account.Windows...)
+	status.Balances = account.Balances
+	if free {
+		for i := range status.Windows {
+			if status.Windows[i].Unit == "USD" {
+				status.Windows[i].Informational = true
+			}
+		}
+	}
+	if accountErr != nil {
+		status.Partial = true
+		status.UnavailableReason = "balance_unavailable"
 	}
 	return status, nil
 }

@@ -16,7 +16,7 @@ function renderUsagePage():void{
  const cost=rows.reduce((sum:number,r:any)=>sum+Number(r.estimated_cost||0),0);const unknown=rows.reduce((sum:number,r:any)=>sum+Number(r.unknown_cost_attempts||0),0);
  const providerSnapshots=new Map<string,any>();
  for(const [id,q] of Object.entries(usageData.provider_quotas||{})){
-  const provider=id.split("/")[0];const status=q as any;const signature=JSON.stringify([provider,status.source,status.windows,status.usage_usd,status.known,status.exhausted]);
+  const provider=id.split("/")[0];const status=q as any;const signature=JSON.stringify([provider,status.source,status.windows,status.balances,status.reported_usage,status.reset_credits,status.usage_usd,status.known,status.exhausted]);
   if(!providerSnapshots.has(signature))providerSnapshots.set(signature,{id:provider,quota:status});
  }
  const providerMarkup=providerSnapshots.size?`<details class="advanced-fields"><summary>Provider balances &amp; subscription limits</summary><div class="budget-summary-list">${[...providerSnapshots.values()].map(model=>`<div class="budget-summary"><strong>${escapeHTML(model.id)}</strong>${modelTrackingMarkup(model)}</div>`).join("")}</div></details>`:"";

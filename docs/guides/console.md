@@ -51,3 +51,14 @@ Listener changes require restart. Database paths and master-key inputs are boots
 Session expiry preserves drafts for reauthentication. Browser reload/sign-out loses unsaved drafts. Administrator login uses an HttpOnly, SameSite=Lax cookie with a seven-day default expiry. It survives browser reloads and gateway restarts. Sign out revokes the session. Saved
 classifier tuning and advanced source settings survive configuration saves.
 For first-time setup, follow [Getting Started](../getting-started.md).
+
+
+Provider editors include optional tracking credentials, billing team ID, mode
+and endpoint overrides. Stored token values remain hidden. Model selectors show
+native-currency balances, subscription/reset windows and banked Codex resets,
+alongside model prices and gateway usage. Available monthly provider spend/token
+usage is labeled with its account or organization scope. Inspect metadata for price source,
+provider-reported organization usage and partial-read reasons. Public Zen wallet
+balance and Standard Compute budget amounts remain unknown unless their service
+returns them through an explicitly configured tracking endpoint; available reset
+headers still appear. See [provider tracking](../reference/configuration.md#provider-tracking).

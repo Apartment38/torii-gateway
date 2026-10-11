@@ -5,7 +5,6 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/provider"
-	"github.com/Apartment38/torii-gateway/internal/quota"
 	"github.com/Apartment38/torii-gateway/internal/requestid"
 	"net/http"
 	"strconv"
@@ -99,9 +98,6 @@ func (h *OpenAIHandler) UsageAPI(w http.ResponseWriter, r *http.Request) {
 		writeBudgetError(w, err)
 		return
 	}
-	providerQuotas := map[string]quota.Status{}
-	for _, d := range h.CatalogModels() {
-		providerQuotas[d.PublicID] = h.modelQuota(r.Context(), d.PublicID)
-	}
+	providerQuotas := h.prefetchQuotas(r.Context(), h.CatalogModels())
 	writeJSON(w, 200, map[string]any{"usage": summaries, "budgets": budgets, "provider_quotas": providerQuotas, "qualification": "Operator accounting; monetary values are estimates, not provider billing. Unknown costs remain unknown; estimated tokens include unresolved reservations. Provider quotas and usage_usd are upstream snapshots, independent of operator budgets.", "row_limit": 10000})
 }

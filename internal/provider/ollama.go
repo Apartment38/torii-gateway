@@ -117,6 +117,7 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 		return nil, errors.New("decode Ollama models: data must be an array")
 	}
 	models := make([]Model, 0, len(entries))
+	seen := make(map[string]bool, len(entries))
 	for _, entry := range entries {
 		trimmed := bytes.TrimSpace(entry)
 		if len(trimmed) < 2 || trimmed[0] != '{' {
@@ -130,6 +131,12 @@ func (o *Ollama) Models(ctx context.Context) ([]Model, error) {
 			return nil, errors.New("decode Ollama models: model has empty ID")
 		}
 		model.ID = o.id + "/" + model.ID
+		// Ollama can list a loaded model and its installed tag separately.
+		// They share the same inference ID and must occupy one catalog entry.
+		if seen[model.ID] {
+			continue
+		}
+		seen[model.ID] = true
 		if model.Object == "" {
 			model.Object = "model"
 		}

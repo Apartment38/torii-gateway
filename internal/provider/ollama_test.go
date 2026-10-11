@@ -23,7 +23,7 @@ func TestOllamaDiscoversNamespacedModels(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"qwen3","object":"model","created":123,"owned_by":"library"},{"id":"gemma3:4b"}]}`))
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"qwen3","object":"model","created":123,"owned_by":"library"},{"id":"gemma3:4b"},{"id":"qwen3"}]}`))
 	}))
 	defer server.Close()
 

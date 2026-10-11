@@ -39,3 +39,14 @@ func TestProviderNativeHeaders(t *testing.T) {
 		t.Fatalf("reset-only header %+v", s)
 	}
 }
+
+func TestScopedQuotaDoesNotMatchProviderName(t *testing.T) {
+	c := NewCache(time.Minute, nil)
+	if err := c.Set("sonnet-provider/claude-opus", Status{Windows: []Window{{Name: "weekly_sonnet", Model: "sonnet", Unit: "percent", Limit: 100, Used: 100, Informational: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Get(context.Background(), "sonnet-provider/claude-opus")
+	if err != nil || got.Known || got.Exhausted || !got.Windows[0].Informational {
+		t.Fatalf("unrelated model inherited a provider-name match: %+v %v", got, err)
+	}
+}

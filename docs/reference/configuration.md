@@ -82,8 +82,9 @@ provider secrets. Configure credentials for the same account as inference.
 | `mode` | String, provider default | `api` or `subscription`; Anthropic selects admin reports or OAuth usage; subscription marks included marginal pricing for compatible plans; Anthropic tracking does not change API inference pricing |
 
 Tracking URLs require HTTPS, except loopback HTTP test endpoints. They never
-receive a credential via a followed redirect. Token reads use a separate client
-so billing credentials cannot reach inference. The console provider editor exposes
+receive a credential via a followed redirect. Token reads use a separate client with the configured compatible-provider CA trust
+so billing credentials cannot reach inference. A server-name override applies only
+when the billing host matches inference. The console provider editor exposes
 these fields and accepts a new tracking token without revealing stored values.
 
 ```yaml

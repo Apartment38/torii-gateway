@@ -1799,27 +1799,9 @@ func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*st
 		codex.ConfigureRefresh("https://auth.openai.com", saver)
 		return codex, nil
 	}
-	connectTimeout, _ := time.ParseDuration(cfg.ConnectTimeout)
-	dialer := &net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}
-	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
-	httpTransport.DialContext = dialer.DialContext
-	if cfg.TLS != nil {
-		tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: cfg.TLS.ServerName}
-		if cfg.TLS.CAFile != "" {
-			pem, err := os.ReadFile(cfg.TLS.CAFile)
-			if err != nil {
-				return nil, fmt.Errorf("read TLS CA file: %w", err)
-			}
-			roots, err := x509.SystemCertPool()
-			if err != nil {
-				roots = x509.NewCertPool()
-			}
-			if !roots.AppendCertsFromPEM(pem) {
-				return nil, errors.New("TLS CA file contains no certificates")
-			}
-			tlsConfig.RootCAs = roots
-		}
-		httpTransport.TLSClientConfig = tlsConfig
+	httpTransport, err := compatibleHTTPTransport(cfg)
+	if err != nil {
+		return nil, err
 	}
 	client := &http.Client{Transport: httpTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	if db != nil {
@@ -1875,4 +1857,30 @@ func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*st
 		quotaHeaders.Set("Authorization", "Bearer "+managementToken)
 	}
 	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, KeyQuotaURL: keyQuotaURL, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+}
+
+func compatibleHTTPTransport(cfg config.ProviderConfig) (*http.Transport, error) {
+	connectTimeout, _ := time.ParseDuration(cfg.ConnectTimeout)
+	dialer := &net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}
+	httpTransport := http.DefaultTransport.(*http.Transport).Clone()
+	httpTransport.DialContext = dialer.DialContext
+	if cfg.TLS != nil {
+		tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: cfg.TLS.ServerName}
+		if cfg.TLS.CAFile != "" {
+			pem, err := os.ReadFile(cfg.TLS.CAFile)
+			if err != nil {
+				return nil, fmt.Errorf("read TLS CA file: %w", err)
+			}
+			roots, err := x509.SystemCertPool()
+			if err != nil {
+				roots = x509.NewCertPool()
+			}
+			if !roots.AppendCertsFromPEM(pem) {
+				return nil, errors.New("TLS CA file contains no certificates")
+			}
+			tlsConfig.RootCAs = roots
+		}
+		httpTransport.TLSClientConfig = tlsConfig
+	}
+	return httpTransport, nil
 }

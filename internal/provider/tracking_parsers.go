@@ -102,10 +102,14 @@ func parseZAI(s *quota.Status, payload map[string]any, now time.Time) {
 		}
 		reset := resetTime(w["nextResetTime"], now)
 		limit, used := numeric(w["usage"]), numeric(w["currentValue"])
+		before := len(s.Windows)
 		if limit != nil && used != nil {
 			appendWindow(s, name, unit, limit, used, reset, seconds)
 		} else {
 			appendPercent(s, name, numeric(w["percentage"]), reset, seconds)
+		}
+		if kind == "TIME_LIMIT" && len(s.Windows) > before {
+			s.Windows[len(s.Windows)-1].Informational = true
 		}
 	}
 }

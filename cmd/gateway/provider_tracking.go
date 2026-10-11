@@ -83,13 +83,26 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 			bearer = false
 		}
 	}
-	client := &http.Client{Transport: http.DefaultTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	trackingTransport, err := compatibleHTTPTransport(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// An inference server-name override must not replace a different billing host.
+	trackingURL := tc.BaseURL
+	if tc.UsageURL != "" {
+		trackingURL = tc.UsageURL
+	}
+	target, _ := url.Parse(trackingURL)
+	if cfg.TLS != nil && target.Host != u.Host && trackingTransport.TLSClientConfig != nil {
+		trackingTransport.TLSClientConfig.ServerName = ""
+	}
+	client := &http.Client{Transport: trackingTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	if ref != nil {
 		copyRef := *ref
 		if len(databases) > 0 && databases[0] != nil {
 			copyRef.BindDefault(databases[0])
 			tc.Headers.Set(header, "database-managed")
-			client.Transport = &secretTransport{base: http.DefaultTransport, headers: map[string]config.SecretRef{header: copyRef}, bearer: bearer}
+			client.Transport = &secretTransport{base: trackingTransport, headers: map[string]config.SecretRef{header: copyRef}, bearer: bearer}
 		} else {
 			value, err := copyRef.Resolve()
 			if err != nil || value == "" || strings.ContainsAny(value, "\r\n") {

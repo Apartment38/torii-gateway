@@ -113,6 +113,9 @@ func (p *trackedProvider) Quota(ctx context.Context, _ string) (quota.Status, er
 	payload, err := trackingJSON(ctx, cfg, http.MethodGet, endpoint, nil)
 	if err != nil {
 		status.UnavailableReason = trackingReason(err)
+		if cfg.Provider == "opencode-zen" && cfg.UsageURL == "" {
+			status.UnavailableReason = "wallet_balance_not_exposed"
+		}
 		return status, nil
 	}
 	status = parseTrackingPayload(cfg.Provider, payload, time.Now().UTC())

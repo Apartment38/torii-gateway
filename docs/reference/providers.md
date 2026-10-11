@@ -68,7 +68,7 @@ plans; Anthropic OAuth tracking is informational alongside API inference pricing
 | OpenCode Go | Rolling, weekly and monthly `/zen/go/v1/usage` windows and resets |
 | OpenCode Zen | Usage/explicitly denominated wallet fields when returned; public wallet balance is not exposed reliably; optional `tracking.usage_url` supports an authenticated private credits endpoint |
 | Standard Compute | `x-sc-budget-renews-at` reset header; optional private usage endpoint for reported `budget_usd`, `used_usd`, `remaining_usd` and renewal time |
-| Z AI | Session, weekly and web-tool limits from `/api/monitor/usage/quota/limit` |
+| Z AI | Session/weekly limits and informational web-tool allowance from `/api/monitor/usage/quota/limit` |
 | Kimi Coding | `/coding/v1/usages` ratios, absolute allowances and independent resets |
 | MiniMax | `/v1/token_plan/remains` session/weekly token-plan limits, including model-specific buckets; ordinary API accounts may report no subscription |
 | DeepSeek | `/user/balance` currencies and granted/purchased components kept separate; availability flag is authoritative |

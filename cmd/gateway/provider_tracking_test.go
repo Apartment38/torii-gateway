@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -112,5 +115,30 @@ func TestNewProviderTypesValidateAndBuild(t *testing.T) {
 				t.Fatal("provider lacks quota fetcher")
 			}
 		})
+	}
+}
+
+func TestTrackingUsesConfiguredTLSRoots(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/balance" || r.Header.Get("Authorization") != "Bearer synthetic" {
+			t.Error("incorrect tracking request")
+		}
+		io.WriteString(w, `{"is_available":true,"balance_infos":[{"currency":"USD","total_balance":"9.25"}]}`)
+	}))
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	no := false
+	cfg := config.ProviderConfig{ID: "ds", Type: "deepseek", BaseURL: server.URL, BearerToken: &config.SecretRef{Value: "synthetic"}, Models: []string{"m"}, DiscoverModels: &no}
+	cfg.TLS = &config.TLSConfig{CAFile: path}
+	p, err := buildProviderWithState(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := p.(quota.Fetcher).Quota(context.Background(), "ds/m")
+	if err != nil || len(s.Balances) != 1 || *s.Balances[0].Remaining != 9.25 {
+		t.Fatalf("TLS tracking: %+v, %v", s, err)
 	}
 }

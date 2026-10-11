@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -88,43 +89,32 @@ func (p *trackedProvider) anthropicReports(ctx context.Context, s quota.Status) 
 				s.UnavailableReason = "invalid_response"
 				break
 			}
+			valid := true
 			for _, row := range rows {
 				bucket := object(row)
 				stamp := resetTime(bucket["starting_at"], now)
-				if stamp == nil {
-					continue
+				results, ok := bucket["results"].([]any)
+				if stamp == nil || stamp.After(now) || !ok {
+					valid = false
+					break
 				}
-				for _, v := range array(bucket["results"]) {
-					m := object(v)
-					amount := 0.0
-					if report.cost {
-						n := numeric(m["amount"])
-						if n == nil || *n < 0 {
-							continue
-						}
-						currency := textValue(m["currency"])
-						if currency != "" && !strings.EqualFold(currency, "USD") {
-							continue
-						}
-						amount = *n / 100
-					} else {
-						for _, field := range []string{"input_tokens", "uncached_input_tokens", "cache_read_input_tokens", "output_tokens"} {
-							if n := numeric(m[field]); n != nil && *n >= 0 {
-								amount += *n
-							}
-						}
-						for _, v := range object(m["cache_creation"]) {
-							if n := numeric(v); n != nil && *n >= 0 {
-								amount += *n
-							}
-						}
+				for _, v := range results {
+					amount, err := anthropicReportAmount(object(v), report.cost)
+					if err != nil {
+						valid = false
+						break
 					}
 					for period, start := range starts {
-						if !stamp.Before(start) && !stamp.After(now) {
+						if !stamp.Before(start) {
 							totals[period] += amount
 						}
 					}
 				}
+			}
+			if !valid {
+				s.Partial = true
+				s.UnavailableReason = "invalid_response"
+				break
 			}
 			if payload["has_more"] != true {
 				complete = true
@@ -151,4 +141,47 @@ func (p *trackedProvider) anthropicReports(ctx context.Context, s quota.Status) 
 		}
 	}
 	return s, nil
+}
+
+// Reports use uncached input plus cache categories. Older reports expose total
+// input_tokens instead; do not add both representations of the same input.
+func anthropicReportAmount(m map[string]any, cost bool) (float64, error) {
+	invalid := errors.New("invalid report amount")
+	if cost {
+		n := numeric(m["amount"])
+		currency := textValue(m["currency"])
+		if n == nil || *n < 0 || (currency != "" && !strings.EqualFold(currency, "USD")) {
+			return 0, invalid
+		}
+		return *n / 100, nil
+	}
+	amount := 0.0
+	seen := false
+	fields := []string{"output_tokens"}
+	if _, ok := m["uncached_input_tokens"]; ok {
+		fields = append(fields, "uncached_input_tokens", "cache_read_input_tokens")
+		for _, value := range object(m["cache_creation"]) {
+			n := numeric(value)
+			if n == nil || *n < 0 {
+				return 0, invalid
+			}
+			amount += *n
+		}
+	} else {
+		fields = append(fields, "input_tokens")
+	}
+	for _, field := range fields {
+		if v, ok := m[field]; ok {
+			n := numeric(v)
+			if n == nil || *n < 0 {
+				return 0, invalid
+			}
+			amount += *n
+			seen = true
+		}
+	}
+	if !seen {
+		return 0, invalid
+	}
+	return amount, nil
 }

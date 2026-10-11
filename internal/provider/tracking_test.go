@@ -233,3 +233,36 @@ func TestTrackingPricesUseProviderRatesAndCustomAliases(t *testing.T) {
 		t.Fatal("OAuth tracking changed API inference pricing")
 	}
 }
+
+func TestAnthropicReportAmountsAvoidDuplicateAndInventedUsage(t *testing.T) {
+	for _, tc := range []struct {
+		raw     string
+		cost    bool
+		want    float64
+		invalid bool
+	}{
+		{`{"input_tokens":12,"uncached_input_tokens":7,"cache_read_input_tokens":2,"cache_creation":{"ephemeral_5m_input_tokens":3},"output_tokens":4}`, false, 16, false},
+		{`{"input_tokens":12,"output_tokens":4}`, false, 16, false},
+		{`{"amount":"NaN","currency":"USD"}`, true, 0, true},
+		{`{"unrelated_field":10}`, false, 0, true},
+		{`{"input_tokens":false}`, false, 0, true},
+		{`{"input_tokens":0,"output_tokens":0}`, false, 0, false},
+	} {
+		got, err := anthropicReportAmount(fixturePayload(t, tc.raw), tc.cost)
+		if (err != nil) != tc.invalid || got != tc.want {
+			t.Fatalf("%s: got %v, %v", tc.raw, got, err)
+		}
+	}
+}
+
+func TestZAIWebToolAllowanceDoesNotBlockChat(t *testing.T) {
+	s := parseTrackingPayload("zai", fixturePayload(t, `{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"usage":100,"currentValue":25},{"type":"TIME_LIMIT","usage":100,"currentValue":100}]}}`), time.Now())
+	c := quota.NewCache(time.Minute, nil)
+	if err := c.Set("zai/glm", s); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Get(context.Background(), "zai/glm")
+	if err != nil || !got.Known || got.Remaining != 75 || got.Exhausted || len(got.Windows) != 2 || !got.Windows[1].Informational {
+		t.Fatalf("web tools gated chat: %+v %v", got, err)
+	}
+}

@@ -1609,3 +1609,9 @@ test("new tracked provider integrations are selectable and retain billing config
  app.run('providers[0].tracking_token="replacement-synthetic"');
  assert.equal(app.run('readProviderConfig(providers[0]).tracking.token.value'),"replacement-synthetic");
 });
+
+ test("informational windows retain resets alongside balances",()=>{
+ const app=consoleFixture(()=>response({}));
+ const label=app.run('modelQuotaText({quota:{known:false,windows:[{name:"weekly",unit:"percent",remaining:12,informational:true,reset_at:"2030-01-01T00:00:00Z"}],balances:[{name:"credits",unit:"USD",remaining:4}],reset_credits:2}})');
+ assert.match(label,/12.0% remaining \(informational\)/);assert.match(label,/resets/);assert.match(label,/credits: \$4.00/);assert.match(label,/2 banked resets/);
+ });

@@ -174,7 +174,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	descriptors := h.CatalogModels()
-	h.prefetchQuotas(r.Context(), descriptors)
+	snapshots := h.prefetchQuotas(r.Context(), descriptors)
 	models := make([]clientModel, 0, len(descriptors)+1)
 	modelUsage, usageAvailable := h.modelUsage(r, false)
 	// Clients may show only the first page of a provider's catalog. Keep the
@@ -184,7 +184,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 		if !h.enabled(descriptor.PublicID) {
 			continue
 		}
-		models = append(models, h.clientMetadata(r.Context(), descriptor, modelUsage[descriptor.PublicID], usageAvailable))
+		models = append(models, clientMetadataWithQuota(descriptor, modelUsage[descriptor.PublicID], usageAvailable, snapshots[descriptor.PublicID]))
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Object string        `json:"object"`

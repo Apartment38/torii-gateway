@@ -17,7 +17,7 @@ function quotaWindowText(window:any):string{
  const remaining=Number(window.remaining);
  const value=window.unit==="USD"?modelPrice(remaining):window.unit==="percent"?`${remaining.toFixed(1)}%`:`${consoleNumber(remaining)} ${window.unit||"units"}`;
  const reset=window.reset_at?new Date(window.reset_at):null;
- return `${window.name?`${window.name.replace(/_/g," ")}: `:""}${value} remaining${reset&&!Number.isNaN(reset.getTime())?` · resets ${reset.toLocaleString()}`:" · reset unknown"}`;
+ return `${window.name?`${window.name.replace(/_/g," ")}: `:""}${value} remaining${window.informational?" (informational)":""}${reset&&!Number.isNaN(reset.getTime())?` · resets ${reset.toLocaleString()}`:" · reset unknown"}`;
 }
 function balanceText(q:any):string {
  return (q?.balances||[]).map((b:any)=>`${b.name.replace(/_/g," ")}: ${b.unlimited?"Unlimited":typeof b.remaining==="number"?(b.unit==="USD"?modelPrice(b.remaining):`${consoleNumber(b.remaining)} ${b.unit}`):"Unknown"}${b.reset_at?` · renews ${new Date(b.reset_at).toLocaleString()}`:""}`).join("; ");
@@ -26,7 +26,7 @@ function trackingReasonText(reason:string):string{return ({management_credential
 function modelQuotaText(model:any):string{
  const q=model.quota;
  const extras=[balanceText(q),typeof q?.reset_credits==="number"?`${q.reset_credits} banked resets`:""].filter(Boolean).join(" · ");
- if(extras&&!q?.known)return `${q.blocked?"Quota exhausted · ":""}${extras}${q?.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
+ if(extras&&!q?.known&&!q?.windows?.length&&!q?.reset_at)return `${q.blocked?"Quota exhausted · ":""}${extras}${q?.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
  if(!q?.known&&q?.windows?.length)return q.windows.map(quotaWindowText).join("; ")+`${extras?` · ${extras}`:""}`;
  if(!q?.known&&q?.reset_at)return `Quota unknown · resets ${new Date(q.reset_at).toLocaleString()}${extras?` · ${extras}`:""}`;
  if(!q?.known&&q?.unavailable_reason)return trackingReasonText(q.unavailable_reason);

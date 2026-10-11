@@ -106,10 +106,14 @@ func NewCache(ttl time.Duration, fetcher Fetcher) *Cache {
 }
 func (c *Cache) Get(ctx context.Context, model string) (Status, error) {
 	status, err := c.get(ctx, model)
+	upstream := model
+	if _, suffix, ok := strings.Cut(model, "/"); ok {
+		upstream = suffix
+	}
 	for i := range status.Windows {
 		w := &status.Windows[i]
 		if w.Model != "" {
-			w.Informational = !strings.Contains(strings.ToLower(model), strings.ToLower(w.Model))
+			w.Informational = !strings.Contains(strings.ToLower(upstream), strings.ToLower(w.Model))
 		}
 	}
 	if err == nil {

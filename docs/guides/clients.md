@@ -30,6 +30,12 @@ use Hermes's **Refresh Models** to replace its cached catalog. Hermes formats
 model labels itself and removes provider prefixes before `/`; the API IDs remain
 provider-qualified. Its built-in Fast control excludes custom proxy endpoints.
 
+Torii also exposes prices, remaining provider allowance/reset windows, and
+key-scoped gateway usage as additive [model metadata](../reference/api.md#model-cost-usage-and-provider-quota-metadata).
+A harness can read these fields for its model selector without changing model
+IDs. The Torii console renders them directly; external clients must support the
+fields to show them. Refresh their model catalog to obtain updated metadata.
+
 A cold local model may take longer to load than the client's inference timeout.
 Torii allows Ollama requests 5 minutes by default; the provider's **Request
 timeout** can extend this (see [Providers](providers.md)). Client and proxy

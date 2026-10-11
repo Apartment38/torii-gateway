@@ -10,7 +10,7 @@ User-facing procedures are in the [documentation home](../README.md).
 | Durable contracts and extension rules | [Design](design.md) |
 | Dated design rationale and superseded decisions | [Decisions](decisions.md) |
 | Upstream protocol research | [Provider notes](provider-notes.md) |
-| Classifier, session, and routing internals | [Routing](routing.md) |
+| Jev decisions, model selection, sessions, and dispatch end to end | [Smart routing](routing.md) |
 | Benchmark identities, normalization, pacing, publication | [Intelligence](intelligence.md) |
 | Encryption, schemas, authentication, usage persistence | [State and security](state-and-security.md) |
 | Reproducible performance measurement | [Performance](performance.md) |

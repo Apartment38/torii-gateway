@@ -159,6 +159,28 @@ func (h *OpenAIHandler) ModelQuota(ctx context.Context, id string) (quota.Status
 	if !status.Known && h.observedQuotas != nil {
 		if providerID, _, parseErr := provider.ParseModelID(id); parseErr == nil {
 			if observed, observeErr := h.observedQuotas.Get(ctx, providerID); observeErr == nil && observed.Known {
+				// Account headers supplement polling; retain independently collected
+				// billing information and its original expiration deadline.
+				for _, balance := range observed.Balances {
+					found := false
+					for _, polled := range status.Balances {
+						found = found || (polled.Name == balance.Name && polled.Unit == balance.Unit)
+					}
+					if !found {
+						status.Balances = append(status.Balances, balance)
+					}
+				}
+				observed.Balances = status.Balances
+				observed.ReportedUsage = status.ReportedUsage
+				observed.Usage = status.Usage
+				observed.Plan = status.Plan
+				observed.ResetCredits = status.ResetCredits
+				observed.Partial = status.Partial
+				observed.UnavailableReason = status.UnavailableReason
+				observed.Windows = append(status.Windows, observed.Windows...)
+				if !status.ExpiresAt.IsZero() && status.ExpiresAt.Before(observed.ExpiresAt) {
+					observed.ExpiresAt = status.ExpiresAt
+				}
 				return observed, nil
 			}
 		}

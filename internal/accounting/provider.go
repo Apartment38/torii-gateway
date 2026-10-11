@@ -129,6 +129,12 @@ func (m *Metered) Quota(ctx context.Context, model string) (quota.Status, error)
 	}
 	return quota.Status{}, errors.New("provider quota unknown")
 }
+func (m *Metered) QuotaKey(model string) string {
+	if keyer, ok := m.base.(quota.Keyer); ok {
+		return keyer.QuotaKey(model)
+	}
+	return model
+}
 func (m *Metered) Forward(ctx context.Context, path string, body []byte, model string) (*http.Response, error) {
 	return m.forward(ctx, path, body, model, func() (*http.Response, error) { return m.base.Forward(ctx, path, body, model) })
 }

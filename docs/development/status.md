@@ -1,6 +1,6 @@
 # Project status
 
-Updated 2026-10-08. This is the sole project progress and backlog tracker.
+Updated 2026-10-10. This is the sole project progress and backlog tracker.
 
 ## v1 implementation and rollout
 
@@ -43,6 +43,37 @@ Current user-visible support is in [Features](../reference/features.md), with
 contracts in [Design](design.md). Old Version 1/2 labels no longer define support.
 
 ## Active work
+
+Provider cost/usage/quota tracking is implemented on `feat/provider-cost-usage`
+in `/workspace/work/provider-cost-usage`. Live Portal/OpenRouter prices feed
+accounting and routing; OpenRouter key spend, optional management credits and
+free-request caps, Codex subscription windows, and provider response-header
+resets reach model discovery and management metadata. Client usage is scoped to
+its key; administrator usage remains gateway-wide. Quota polling coalesces
+account reads and failures, preserves independent windows and local allowances,
+and expires by reset time. The console selector/catalog and provider-balance
+section show pricing, usage and remaining/reset windows without changing IDs.
+Full Go tests/race tests, final affected-package checks, vet/build, formatting,
+module consistency, all 102 console tests, generated assets and affected document
+links/anchors pass. Chromium checks pass at 1280px and 390px with controlled API
+fixtures and no page exceptions or mobile viewport overflow.
+
+The final non-root Docker image (`75eae5d20738`) builds the gateway and all five
+helper targets, and passes authenticated pricing/usage/header-quota discovery,
+reset metadata, and cost/token persistence after restart against a synthetic
+upstream. The build used a temporary CA-mounted Dockerfile for this environment's
+proxy; the shipped Dockerfile is unchanged. The Podman-specific full acceptance
+script was unavailable because Podman is not installed. Local Go checks used a
+workspace Go 1.25.1 toolchain, writable cache, and disabled VCS stamping to avoid
+environment-only baseline failures. No application baseline failure remains.
+
+Portal dollar balance and public direct-scope Codex quota polling remain unknown
+where no verified bearer endpoint is available. Gateway monetary usage remains
+estimated; upstream OpenRouter spend is separately labeled. External harnesses
+must consume the added model metadata to render it. No live billing check,
+push, merge, publication or deployment was performed. The worktree is retained
+for review.
+
 
 The premium console redesign is complete on `feat/premium-console` in
 `/tmp/torii-premium-console`, retained for review. Separate builders and independent

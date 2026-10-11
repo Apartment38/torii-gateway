@@ -85,6 +85,7 @@ type Descriptor struct {
 	MaxOutputTokens *int64               `json:"max_output_tokens,omitempty" yaml:"max_output_tokens,omitempty"`
 	ContextWindow   *int64               `json:"context_window,omitempty" yaml:"context_window,omitempty"`
 	Pricing         Pricing              `json:"pricing" yaml:"pricing"`
+	Subscription    bool                 `json:"subscription,omitempty" yaml:"subscription,omitempty"`
 	Quality         Quality              `json:"quality" yaml:"quality"`
 	Local           *bool                `json:"local,omitempty" yaml:"local,omitempty"`
 	Availability    Availability         `json:"availability" yaml:"availability"`
@@ -174,17 +175,24 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 				return fmt.Errorf("catalog: provider %q returned invalid model ID %q", p.ID(), model.ID)
 			}
 			d := unknownDescriptor(model.ID, p.ID(), upstream)
+			d = mergeMatching(d, c.bundled, "bundled")
 			d.Created, d.OwnedBy = model.Created, model.OwnedBy
-			d.ContextWindow = copyInt(model.ContextWindow)
-			d.Pricing.InputPerMillion = copyFloat(model.InputPerMillion)
-			d.Pricing.OutputPerMillion = copyFloat(model.OutputPerMillion)
+			if model.ContextWindow != nil {
+				d.ContextWindow = copyInt(model.ContextWindow)
+			}
+			if model.InputPerMillion != nil {
+				d.Pricing.InputPerMillion = copyFloat(model.InputPerMillion)
+			}
+			if model.OutputPerMillion != nil {
+				d.Pricing.OutputPerMillion = copyFloat(model.OutputPerMillion)
+			}
+			d.Subscription = model.Subscription
 			if model.Subscription {
 				zero := float64(0)
 				d.Pricing.InputPerMillion, d.Pricing.OutputPerMillion = &zero, &zero
 			}
 			d.Availability = Availability{Available: true, CheckedAt: now}
 			d.Metadata.CatalogSource = "live"
-			d = mergeMatching(d, c.bundled, "bundled")
 			if model.Discovery != nil {
 				d.Endpoints = mergeEndpoints(d.Endpoints, EndpointCapabilities{
 					ChatCompletions: discoveredState(model.Discovery.Endpoints, "chat_completions"),

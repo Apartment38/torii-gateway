@@ -69,6 +69,9 @@ func NewCodex(id, baseURL string, models []string, load func(string) (CodexCrede
 	if client == nil {
 		client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
+	clonedClient := *client
+	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &clonedClient
 	return &Codex{id: id, base: u, models: append([]string(nil), models...), client: client, load: load}, nil
 }
 
@@ -220,7 +223,7 @@ func (c *Codex) authenticate(request *http.Request, credential CodexCredential) 
 func (c *Codex) staticModels() []Model {
 	result := make([]Model, 0, len(c.models))
 	for _, id := range c.models {
-		result = append(result, Model{ID: c.id + "/" + id, Object: "model", OwnedBy: c.id})
+		result = append(result, Model{ID: c.id + "/" + id, Object: "model", OwnedBy: c.id, Subscription: true})
 	}
 	return result
 }

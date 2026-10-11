@@ -1559,3 +1559,30 @@ test("mobile navigation exposes the current section without scrolling the worksp
  app.run('window.matchMedia=()=>({matches:false});benchmarkLink.getBoundingClientRect=()=>({left:420,right:520,width:100});syncConsoleNavigation("intelligence")');
  assert.equal(app.run('document.querySelector("#nav").scrollLeft'),275);
 });
+
+test("model selectors and catalog show pricing, scoped usage and quota resets",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run(`loadedConfiguration={router:{}};overviewModels=[{id:"or/vendor/model",provider_id:"or",enabled:true,pricing:{input_per_million:2,output_per_million:4},quota:{known:true,source:"openrouter_key",windows:[{name:"key_spend",unit:"USD",remaining:3,reset_at:"2030-01-01T00:00:00Z"}],usage_usd:{monthly:7}},usage_available:true,usage:[{period:"2030-01",input_tokens:100,output_tokens:50,estimated_cost:0.01,unknown_cost_attempts:1}]}];physicalModels=overviewModels;renderModelsPage();renderModelRows();`);
+ const selector=app.run('renderClientConnection()');
+ assert.match(selector,/value="or\/vendor\/model"/);
+ assert.match(selector,/\$2\.00 in \/ \$4\.00 out per 1M/);
+ assert.match(selector,/\$3\.00 remaining.*resets/);
+ assert.match(selector,/150 tokens.*unknown costs/);
+ const rows=app.run('document.querySelector("#model-table-body").innerHTML');
+ assert.match(rows,/Provider-reported spend/);assert.match(rows,/monthly: \$7\.00/);assert.match(rows,/Gateway usage/);
+});
+
+test("tracking distinguishes unknown pricing, unavailable quota and subscription usage",()=>{
+ const app=consoleFixture(()=>response({}));
+ assert.match(app.run('modelSelectorLabel({id:"p/unknown",pricing:{},quota:{known:false,source:"unavailable"}})'),/Unknown in \/ Unknown out.*Quota unavailable.*Usage unavailable/);
+ assert.match(app.run('modelSelectorLabel({id:"codex/m",subscription:true,usage_available:true,usage:[],quota:{known:true,exhausted:true,windows:[{name:"weekly",unit:"percent",remaining:0}]}})'),/Subscription included.*Exhausted.*0\.0% remaining.*reset unknown.*No gateway usage/);
+ const escaped=app.run('modelTrackingMarkup({quota:{known:true,windows:[{name:"<script>",unit:"requests",remaining:1}]},usage_available:false})');
+ assert.ok(!escaped.includes('<script>'));assert.match(escaped,/&lt;script&gt;/);
+});
+
+test("usage page includes provider limits separately from operator budgets",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('usageData={usage:[],budgets:[],provider_quotas:{"nous/a":{known:false,source:"nous_response_headers"},"nous/b":{known:false,source:"nous_response_headers"}}};renderUsagePage()');
+ const html=app.run('document.querySelector("#usage-list").innerHTML');
+ assert.match(html,/Provider balances &amp; subscription limits/);assert.equal((html.match(/<strong>nous<\/strong>/g)||[]).length,1);assert.match(html,/Quota unknown/);
+});

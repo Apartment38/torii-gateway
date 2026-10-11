@@ -38,6 +38,30 @@ only the top-level model value, preserving other fields/bytes. The model may be
 on Responses are rejected with `unsupported_parameter`. Context must be supplied
 in each request. Provider-specific endpoint, tool, vision, and format limits apply.
 
+### Model cost, usage and provider quota metadata
+
+Physical models in both discovery routes include additive metadata for harnesses
+and selectors. IDs remain unchanged; `smart` stays first in the list.
+
+| Field | Meaning |
+| --- | --- |
+| `pricing.input_per_million`, `pricing.output_per_million` | Known USD rates per million tokens; missing rates are unknown. Top-level rate fields are also returned for compatible consumers. |
+| `context_window`, `subscription` | Known token capacity and explicit subscription billing; subscription prices represent zero marginal inference cost. |
+| `quota.known`, `quota.exhausted`, `quota.blocked` | Current provider allowance state; unknown does not imply zero balance or unlimited usage. |
+| `quota.windows[]` | Independent constraints with `name`, `unit` (`USD`, `percent`, `requests`, `tokens`), `limit`, `used`, `remaining`, `fraction_remaining`, optional `reset_at` (UTC RFC3339), and optional `window_seconds`. |
+| `quota.source`, `checked_at`, `expires_at` | Snapshot provenance/freshness. The summary uses the window with the smallest remaining fraction; inspect all windows for their reset times. |
+| `quota.usage_usd` | OpenRouter-reported key spend when available, with optional total/daily/weekly/monthly fields; separate from gateway estimates. |
+| `usage_available`, `usage[]` | Current UTC day/month gateway usage for the authenticated client key, including reported/estimated tokens, estimated cost and unknown-cost attempts. Empty usage with availability true means no recorded usage; false means unavailable. Key IDs/names are omitted. |
+
+`GET /gateway/v1/models` uses the same tracking fields with gateway-wide usage
+and its existing capabilities/benchmark metadata. Quota failures keep discovery
+available and return an unknown snapshot. Account snapshots are shared across
+models, with a separate OpenRouter free-model bucket. Refreshes are bounded by
+the provider discovery deadline and quota TTL; known reset times shorten cache
+life. Smart uses the same pricing and quota cache for eligibility/ranking.
+External harnesses must consume these additive fields to render them; clients
+that ignore extended model metadata retain their existing selectors.
+
 ### Request examples
 
 Set `GATEWAY_API_KEY` to your saved Torii key. Substitute actual discovered models
@@ -189,7 +213,7 @@ Administrator `GET /gateway/v1/models` returns discovered physical models, enabl
 
 ## Usage and quotas
 
-Administrator `GET /gateway/v1/usage` and `/gateway/v1/quotas` return current UTC day/month totals by key/provider/physical model, reported versus estimated tokens, unknown-cost counts, configured budgets, remaining limits and reset times (bounded to 10,000 usage rows). `PUT /gateway/v1/quotas` accepts the `budgets` settings object and requires `If-Match`; full configuration saves can also edit budgets. Named inference keys resolve to their stable credential IDs and names. Quota failures return OpenAI-compatible HTTP 429 (`insufficient_quota`, `quota_exceeded`) with `Retry-After` and `X-Quota-Reset`. Quota storage failures return HTTP 503 before dispatch for requests subject to limits. Smart filters candidates against budgets and may retry a different eligible model before response commitment.
+Administrator `GET /gateway/v1/usage` and `/gateway/v1/quotas` return current UTC day/month totals by key/provider/physical model, reported versus estimated tokens, unknown-cost counts, configured budgets, remaining limits and reset times, plus a `provider_quotas` map keyed by physical model (bounded to 10,000 usage rows). `PUT /gateway/v1/quotas` accepts the `budgets` settings object and requires `If-Match`; full configuration saves can also edit budgets. Named inference keys resolve to their stable credential IDs and names. Quota failures return OpenAI-compatible HTTP 429 (`insufficient_quota`, `quota_exceeded`) with `Retry-After` and `X-Quota-Reset`. Quota storage failures return HTTP 503 before dispatch for requests subject to limits. Smart filters candidates against budgets and may retry a different eligible model before response commitment.
 
 ## Live activity
 

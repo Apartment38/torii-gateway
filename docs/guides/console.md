@@ -11,7 +11,7 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Overview | Inspect the current gateway and model summary |
 | Server | Listener setting and database bootstrap information |
 | Providers | Add/test inference and classifier providers; subscription login |
-| Models | Enable models and inspect capabilities, pricing and benchmark freshness |
+| Models | Enable models and inspect pricing, usage, provider quota resets and benchmark freshness |
 | Smart routing | Smart routing, classifier selection/tuning, session failure policy |
 | Benchmarks | Enable sources, enter source keys, refresh and inspect scores |
 | API keys | Create/revoke client API keys and rotate the default key |
@@ -19,6 +19,16 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Usage & quota | Inspect usage and allowance/quota state |
 
 The overview leads with current UTC requests, processed tokens, and estimated cost, plus success among the bounded recent request sample. Provider, enabled-model, and routing context link to their detailed pages. It shows current UTC token distribution, recent completed request metadata, and copyable client base URL/model settings. The model catalog supports search, provider and enablement filters; **Inspect metadata** expands full capabilities and benchmark provenance. **Activity** defaults to completed requests; choose **All events** to inspect request stages. **Usage & quota** shows the chosen client scope and UTC period without combining daily and monthly totals. View filters change only the display. Budget limits and advanced settings expand below the usage summary.
+
+The Overview client model selector includes token prices, provider allowance/reset
+information, and this month's gateway usage. **Models** shows the same tracking
+and expands provider-reported spend under **Inspect metadata**. **Usage & quota**
+keeps **Provider balances & subscription limits** separate from operator budgets.
+Dollar balances, token/request allowances and subscription percentages retain
+their units; reset times use your browser's local time. “Quota unknown” and
+“Usage unavailable” mean data was not reported or could not be read, not zero.
+Portal dollar balances and some Codex credential types remain unknown; see
+[Provider support](../reference/providers.md#costs-usage-and-remaining-allowances).
 
 Models and Activity support search, filters, and pagination; mobile views start
 with five rows. The overview period selector switches between the current UTC day

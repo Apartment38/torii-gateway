@@ -140,12 +140,20 @@ after the `openrouter/` public namespace.
 Document whether remaining credits/quota can be queried and through which
 endpoint or headers.
 
-`GET /credits` returns total credits purchased and total usage, and requires a
-management key according to the current documentation. Torii accepts this as
-the separate `management_token` secret on the `openrouter` provider. Ordinary
-inference keys are never reused for management operations. If the management
-key is absent or the endpoint is unavailable, quota remains unknown and normal
-inference continues.
+Verified 2026-10-10: `GET /key` accepts the inference bearer and returns key
+spend, `limit_remaining`, `limit_reset`, and optional effective-budget/free-model
+daily-request fields. Torii retains upstream daily/weekly/monthly USD spend,
+key/effective-budget windows, and free-request limits only for `:free` models.
+Daily resets use midnight UTC, weekly resets Monday UTC, and monthly resets the
+first day UTC; explicit effective-budget reset timestamps take precedence for
+that window. Null limits remain unknown, independently of reported spend.
+
+`GET /credits` returns purchased credits and total usage with the separate
+`management_token`. The inference key is used only for `/key`, never for
+management credit reads. Missing or failed quota reads keep inference available
+with unknown quota; successful account credits remain usable if key lookup fails.
+Live `/models` prompt/completion prices are USD per token and are converted to
+USD per million tokens. Contract tests use synthetic upstreams, not live billing.
 
 ### OpenAI Compatibility
 
@@ -172,6 +180,8 @@ Document support for:
 
 ### Sources
 
+- https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key
+- https://openrouter.ai/docs/api/reference/limits
 - https://openrouter.ai/docs/quickstart
 - https://openrouter.ai/docs/api/api-reference/models/get-models
 - https://openrouter.ai/docs/api/api-reference/credits/get-credits
@@ -248,6 +258,22 @@ is temporarily unavailable, the configured fallback model list remains
 available; a successful login refreshes the live catalog without restarting
 the gateway.
 
+Verified 2026-10-10 from the upstream Codex client: legacy ChatGPT-bound
+credentials read `/backend-api/wham/usage` on the same configured origin.
+Primary/secondary windows report `used_percent`, `limit_window_seconds`, and
+Unix-second `reset_at`; these percentages must not be labeled tokens or USD.
+Torii also observes `x-codex-{primary,secondary}-{used-percent,window-minutes,
+reset-at}` response headers (and legacy relative reset headers). The most
+constrained window controls routing, and each reset remains available to clients.
+Public `chatgpt.tokens.use.direct` credentials have no verified polling endpoint
+in this adapter; their quotas remain unknown unless inference headers report them.
+Quota polling uses refreshed endpoint-bound credentials and a ten-second deadline.
+
+Sources:
+
+- https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client/rate_limit_resets.rs
+- https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/rate_limits.rs
+
 ## Nous Portal
 
 ### Status
@@ -258,7 +284,7 @@ Implementation status: complete through the Portal device-code login,
 endpoint-bound refresh flow, subscription-aware model metadata, and standard
 OpenAI-compatible inference transport. Quota is learned from gateway response
 rate-limit headers; no stable public balance endpoint was found.
-Last verified: 2026-09-30
+Last verified: 2026-10-10
 
 ### Authentication
 
@@ -304,8 +330,13 @@ as subscription-billed and uses live model pricing for paid/free-tier display.
 No stable Portal quota-balance endpoint was found. Portal tier RPM/TPM limits
 apply across the bearer and are surfaced through inference response headers or
 provider errors; Torii therefore records standard rate-limit headers through
-its existing quota cache and treats absent headers as unknown rather than
-inventing a balance.
+its quota cache as separate request/token windows with reset timestamps.
+Account-scoped header observations are shared across Portal models; missing
+headers remain unknown. No authenticated live balance or pricing response was
+available in this implementation review. Public Portal documentation still did
+not establish an OAuth-bearer balance endpoint, so Torii does not scrape the
+Portal UI or invent dollar balances. Pricing fixtures verify string/numeric
+prices, explicit subscription billing, and configured-model metadata refresh.
 
 ### Sources
 

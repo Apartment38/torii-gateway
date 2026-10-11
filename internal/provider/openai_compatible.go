@@ -34,6 +34,7 @@ type OpenAICompatibleConfig struct {
 	APIPath      string
 	QuotaURL     string
 	QuotaHeaders http.Header
+	KeyQuotaURL  string
 }
 
 // Compatible is a generic transparent OpenAI-compatible provider.
@@ -49,6 +50,7 @@ type Compatible struct {
 	apiPath      string
 	quotaURL     string
 	quotaHeaders http.Header
+	keyQuotaURL  string
 }
 
 func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error) {
@@ -58,6 +60,9 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	if cfg.Client == nil {
 		cfg.Client = &http.Client{}
 	}
+	clonedClient := *cfg.Client
+	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	cfg.Client = &clonedClient
 	if cfg.RequestTimeout > 0 {
 		cloned := *cfg.Client
 		cloned.Timeout = cfg.RequestTimeout
@@ -82,13 +87,13 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	for k, v := range cfg.ModelRewrites {
 		rewrites[k] = v
 	}
-	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone()}, nil
+	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone(), keyQuotaURL: cfg.KeyQuotaURL}, nil
 }
 
 // Quota retrieves OpenRouter account credits when a separate management
 // credential has been configured. Other compatible providers leave quota
 // unknown because they do not expose this contract.
-func (p *Compatible) Quota(ctx context.Context, _ string) (quota.Status, error) {
+func (p *Compatible) accountQuota(ctx context.Context) (quota.Status, error) {
 	if p.quotaURL == "" {
 		return quota.Status{Known: false}, nil
 	}
@@ -111,14 +116,17 @@ func (p *Compatible) Quota(ctx context.Context, _ string) (quota.Status, error) 
 	}
 	var envelope struct {
 		Data struct {
-			TotalCredits float64 `json:"total_credits"`
-			TotalUsage   float64 `json:"total_usage"`
+			TotalCredits *float64 `json:"total_credits"`
+			TotalUsage   *float64 `json:"total_usage"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
 		return quota.Status{}, err
 	}
-	return quota.Status{Known: true, Limit: envelope.Data.TotalCredits, Used: envelope.Data.TotalUsage}, nil
+	if envelope.Data.TotalCredits == nil || envelope.Data.TotalUsage == nil {
+		return quota.Status{}, errors.New("credit response missing totals")
+	}
+	return quota.Status{Known: true, Limit: *envelope.Data.TotalCredits, Used: *envelope.Data.TotalUsage, Unit: "USD", Source: "openrouter_credits"}, nil
 }
 
 func (p *Compatible) ID() string { return p.id }
@@ -126,7 +134,8 @@ func (p *Compatible) ID() string { return p.id }
 func (p *Compatible) Models(ctx context.Context) ([]Model, error) {
 	models := make([]Model, 0, len(p.static))
 	seen := make(map[string]struct{})
-	add := func(id string, created int64, owned string) {
+	add := func(model Model) {
+		id, owned := model.ID, model.OwnedBy
 		public := id
 		for alias, upstream := range p.rewrites {
 			if upstream == id {
@@ -134,17 +143,24 @@ func (p *Compatible) Models(ctx context.Context) ([]Model, error) {
 				break
 			}
 		}
-		if _, ok := seen[public]; ok {
-			return
-		}
-		seen[public] = struct{}{}
+		model.ID, model.Object = p.id+"/"+public, "model"
 		if owned == "" {
 			owned = p.id
 		}
-		models = append(models, Model{ID: p.id + "/" + public, Object: "model", Created: created, OwnedBy: owned})
+		model.OwnedBy = owned
+		if _, ok := seen[public]; ok {
+			for i := range models {
+				if models[i].ID == model.ID {
+					models[i] = model
+					return
+				}
+			}
+		}
+		seen[public] = struct{}{}
+		models = append(models, model)
 	}
 	for _, id := range p.static {
-		add(id, 0, p.id)
+		add(Model{ID: id, OwnedBy: p.id})
 	}
 	if !p.discover {
 		return models, nil
@@ -203,7 +219,8 @@ func (p *Compatible) Models(ctx context.Context) ([]Model, error) {
 		if err := json.Unmarshal(raw, &model); err != nil || model.ID == "" {
 			return nil, errors.New("decode models: model has empty or invalid ID")
 		}
-		add(model.ID, model.Created, model.OwnedBy)
+		applyCatalogMetadata(raw, &model)
+		add(model)
 	}
 	return models, nil
 }

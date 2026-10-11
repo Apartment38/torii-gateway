@@ -41,6 +41,25 @@ model supports it. Use an upstream model suited to the requested task.
   and after successful console login. An empty setup can run with only `smart`;
   inference still needs an eligible physical model.
 
+## Costs, usage and remaining allowances
+
+Nous Portal and OpenRouter discovery ingest live model prices. Configured/static
+models receive live metadata when discovery is enabled; explicit subscription
+billing has zero marginal cost. Unknown prices remain unknown.
+
+OpenRouter polls key spend/remaining limits with the inference key and optionally
+account credits with the separate management key. Free daily-request limits
+apply only to `:free` models. Codex polls primary/secondary subscription usage
+and reset times for legacy ChatGPT-bound OAuth accounts. Direct-scope public API
+tokens use header observations when available. Portal tracks account-scoped
+request/token quota headers and reset times; its dollar balance remains unknown
+without a verified bearer-accessible balance endpoint.
+
+These snapshots appear in [model discovery](api.md#model-cost-usage-and-provider-quota-metadata)
+and the console alongside persistent gateway usage estimates. Provider balances
+are separate from administrator-configured operator budgets. Quota snapshots
+are in memory and refresh on demand; gateway accounting survives restarts.
+
 Protocol research and dated upstream sources are in
 [Development provider notes](../development/provider-notes.md). Those dated
 observations are not promises about current account tiers or upstream availability.

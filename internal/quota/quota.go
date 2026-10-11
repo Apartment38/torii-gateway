@@ -10,15 +10,46 @@ import (
 )
 
 type Status struct {
-	Known             bool
-	Limit             float64
-	Used              float64
-	Remaining         float64
-	FractionRemaining float64
-	Exhausted         bool
-	CheckedAt         time.Time
-	ExpiresAt         time.Time
+	Known             bool       `json:"known"`
+	Limit             float64    `json:"limit"`
+	Used              float64    `json:"used"`
+	Remaining         float64    `json:"remaining"`
+	FractionRemaining float64    `json:"fraction_remaining"`
+	Exhausted         bool       `json:"exhausted"`
+	Blocked           bool       `json:"blocked,omitempty"`
+	CheckedAt         time.Time  `json:"checked_at"`
+	ExpiresAt         time.Time  `json:"expires_at"`
+	Unit              string     `json:"unit,omitempty"`
+	Source            string     `json:"source,omitempty"`
+	ResetAt           *time.Time `json:"reset_at,omitempty"`
+	Windows           []Window   `json:"windows,omitempty"`
+	Usage             *Spend     `json:"usage_usd,omitempty"`
 }
+
+// Spend is upstream-reported API-key spend, separate from gateway estimates.
+type Spend struct {
+	Total   *float64 `json:"total,omitempty"`
+	Daily   *float64 `json:"daily,omitempty"`
+	Weekly  *float64 `json:"weekly,omitempty"`
+	Monthly *float64 `json:"monthly,omitempty"`
+}
+
+// Window preserves independent constraints (for example five-hour and weekly
+// subscription usage). Percentages are not token or dollar balances.
+type Window struct {
+	Name              string     `json:"name"`
+	Unit              string     `json:"unit"`
+	Limit             float64    `json:"limit"`
+	Used              float64    `json:"used"`
+	Remaining         float64    `json:"remaining"`
+	FractionRemaining float64    `json:"fraction_remaining"`
+	Exhausted         bool       `json:"exhausted"`
+	ResetAt           *time.Time `json:"reset_at,omitempty"`
+	WindowSeconds     int64      `json:"window_seconds,omitempty"`
+}
+
+// Keyer lets account-scoped fetchers share a snapshot across their models.
+type Keyer interface{ QuotaKey(string) string }
 type Fetcher interface {
 	Quota(context.Context, string) (Status, error)
 }
@@ -28,6 +59,8 @@ type Cache struct {
 	now     func() time.Time
 	fetcher Fetcher
 	entries map[string]Status
+	locals  map[string]Status
+	errors  map[string]error
 	calls   map[string]*call
 }
 type call struct {
@@ -40,14 +73,48 @@ func NewCache(ttl time.Duration, fetcher Fetcher) *Cache {
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
-	return &Cache{ttl: ttl, now: time.Now, fetcher: fetcher, entries: map[string]Status{}, calls: map[string]*call{}}
+	return &Cache{ttl: ttl, now: time.Now, fetcher: fetcher, entries: map[string]Status{}, locals: map[string]Status{}, errors: map[string]error{}, calls: map[string]*call{}}
 }
 func (c *Cache) Get(ctx context.Context, model string) (Status, error) {
+	status, err := c.get(ctx, model)
+	c.mu.Lock()
+	local, exists := c.locals[model]
+	c.mu.Unlock()
+	if exists && c.now().Before(local.ExpiresAt) {
+		if status.Known && len(status.Windows) == 0 {
+			status.Windows = []Window{{Name: status.Source, Unit: status.Unit, Limit: status.Limit, Used: status.Used, ResetAt: status.ResetAt}}
+		}
+		status.Windows = append(status.Windows, Window{Name: "local_allowance", Unit: "USD", Limit: local.Limit, Used: local.Used})
+		if local.ExpiresAt.Before(status.ExpiresAt) {
+			status.ExpiresAt = local.ExpiresAt
+		}
+		if err != nil {
+			status.Source = "local_allowance;provider_unavailable"
+			err = nil
+		}
+		if normalizeErr := normalize(&status); normalizeErr != nil {
+			return Status{}, normalizeErr
+		}
+	}
+	return status, err
+}
+
+func (c *Cache) get(ctx context.Context, model string) (Status, error) {
+	requestedModel := model
 	now := c.now().UTC()
 	c.mu.Lock()
 	if value, ok := c.entries[model]; ok && now.Before(value.ExpiresAt) {
+		err := c.errors[model]
 		c.mu.Unlock()
-		return value, nil
+		return clone(value), err
+	}
+	if keyer, ok := c.fetcher.(Keyer); ok {
+		model = keyer.QuotaKey(model)
+	}
+	if value, ok := c.entries[model]; ok && now.Before(value.ExpiresAt) {
+		err := c.errors[model]
+		c.mu.Unlock()
+		return clone(value), err
 	}
 	if pending, ok := c.calls[model]; ok {
 		c.mu.Unlock()
@@ -55,7 +122,7 @@ func (c *Cache) Get(ctx context.Context, model string) (Status, error) {
 		case <-ctx.Done():
 			return Status{}, ctx.Err()
 		case <-pending.done:
-			return pending.status, pending.err
+			return clone(pending.status), pending.err
 		}
 	}
 	pending := &call{done: make(chan struct{})}
@@ -66,44 +133,160 @@ func (c *Cache) Get(ctx context.Context, model string) (Status, error) {
 	if c.fetcher == nil {
 		value = Status{Known: false}
 	} else {
-		value, err = c.fetcher.Quota(ctx, model)
+		value, err = c.fetcher.Quota(ctx, requestedModel)
 	}
 	if err == nil {
 		err = normalize(&value)
 		value.CheckedAt = now
 		value.ExpiresAt = now.Add(c.ttl)
+		// Recheck at a reset rather than serving exhausted state for a whole TTL.
+		for _, window := range value.Windows {
+			if window.ResetAt != nil && window.ResetAt.After(now) && window.ResetAt.Before(value.ExpiresAt) {
+				value.ExpiresAt = *window.ResetAt
+			}
+		}
+		if value.ResetAt != nil && value.ResetAt.After(now) && value.ResetAt.Before(value.ExpiresAt) {
+			value.ExpiresAt = *value.ResetAt
+		}
+	}
+	if err != nil {
+		value = Status{Source: "unavailable", CheckedAt: now, ExpiresAt: now.Add(c.ttl)}
 	}
 	c.mu.Lock()
-	if err == nil {
-		c.entries[model] = value
-	}
+	c.entries[model] = clone(value)
+	c.errors[model] = err
 	pending.status, pending.err = value, err
 	delete(c.calls, model)
 	close(pending.done)
 	c.mu.Unlock()
-	return value, err
+	return clone(value), err
 }
 func (c *Cache) SetLocal(model string, limit, used float64) error {
-	value := Status{Known: true, Limit: limit, Used: used}
+	value := Status{Known: true, Limit: limit, Used: used, Unit: "USD", Source: "local_allowance"}
+	if err := normalize(&value); err != nil {
+		return err
+	}
+	value.CheckedAt = c.now().UTC()
+	value.ExpiresAt = value.CheckedAt.Add(c.ttl)
+	c.mu.Lock()
+	c.locals[model] = value
+	c.mu.Unlock()
+	return nil
+}
+
+// Set records an observed model-scoped snapshot; configured local allowances
+// remain independent of shared provider-account snapshots.
+func (c *Cache) Set(model string, value Status) error {
 	if err := normalize(&value); err != nil {
 		return err
 	}
 	now := c.now().UTC()
 	value.CheckedAt = now
 	value.ExpiresAt = now.Add(c.ttl)
+	if value.ResetAt != nil && value.ResetAt.After(now) && value.ResetAt.Before(value.ExpiresAt) {
+		value.ExpiresAt = *value.ResetAt
+	}
+	for _, window := range value.Windows {
+		if window.ResetAt != nil && window.ResetAt.After(now) && window.ResetAt.Before(value.ExpiresAt) {
+			value.ExpiresAt = *window.ResetAt
+		}
+	}
 	c.mu.Lock()
-	c.entries[model] = value
+	c.entries[model] = clone(value)
+	delete(c.errors, model)
 	c.mu.Unlock()
 	return nil
 }
-func (c *Cache) Invalidate(model string) { c.mu.Lock(); delete(c.entries, model); c.mu.Unlock() }
+
+// Observe merges fresh header windows with a cached provider balance, so a
+// rate-limit update cannot erase an independently exhausted spending cap.
+func (c *Cache) Observe(model string, observed Status) error {
+	if keyer, ok := c.fetcher.(Keyer); ok {
+		model = keyer.QuotaKey(model)
+	}
+	c.mu.Lock()
+	previous, ok := c.entries[model]
+	c.mu.Unlock()
+	if ok && c.now().Before(previous.ExpiresAt) && previous.Source != "local_allowance" {
+		if previous.Known && len(previous.Windows) == 0 {
+			previous.Windows = []Window{{Name: previous.Source, Unit: previous.Unit, Limit: previous.Limit, Used: previous.Used, ResetAt: previous.ResetAt}}
+		}
+		for _, old := range previous.Windows {
+			replaced := false
+			for _, newWindow := range observed.Windows {
+				if newWindow.Name == old.Name && newWindow.Unit == old.Unit {
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				observed.Windows = append(observed.Windows, old)
+			}
+		}
+		observed.Usage = previous.Usage
+	}
+	return c.Set(model, observed)
+}
+func (c *Cache) Invalidate(model string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, model)
+	delete(c.locals, model)
+	delete(c.errors, model)
+	if keyer, ok := c.fetcher.(Keyer); ok {
+		key := keyer.QuotaKey(model)
+		delete(c.entries, key)
+		delete(c.errors, key)
+	}
+}
+
+func clone(s Status) Status {
+	if s.Usage != nil {
+		v := *s.Usage
+		s.Usage = &v
+		for _, p := range []**float64{&v.Total, &v.Daily, &v.Weekly, &v.Monthly} {
+			if *p != nil {
+				x := **p
+				*p = &x
+			}
+		}
+	}
+	if s.ResetAt != nil {
+		t := *s.ResetAt
+		s.ResetAt = &t
+	}
+	s.Windows = append([]Window(nil), s.Windows...)
+	for i := range s.Windows {
+		if s.Windows[i].ResetAt != nil {
+			t := *s.Windows[i].ResetAt
+			s.Windows[i].ResetAt = &t
+		}
+	}
+	return s
+}
 func normalize(s *Status) error {
+	if len(s.Windows) > 0 {
+		for i := range s.Windows {
+			w := &s.Windows[i]
+			v := Status{Known: true, Limit: w.Limit, Used: w.Used}
+			if err := normalize(&v); err != nil {
+				return err
+			}
+			w.Remaining, w.FractionRemaining, w.Exhausted = v.Remaining, v.FractionRemaining, v.Exhausted
+			if i == 0 || w.FractionRemaining < s.FractionRemaining {
+				s.Known, s.Limit, s.Used, s.Remaining, s.FractionRemaining, s.Exhausted = true, v.Limit, v.Used, v.Remaining, v.FractionRemaining, v.Exhausted
+				s.Unit, s.ResetAt = w.Unit, w.ResetAt
+			}
+		}
+		s.Exhausted = s.Exhausted || s.Blocked
+		return nil
+	}
 	if !s.Known {
 		s.Limit = 0
 		s.Used = 0
 		s.Remaining = 0
 		s.FractionRemaining = 0
-		s.Exhausted = false
+		s.Exhausted = s.Blocked
 		return nil
 	}
 	if math.IsNaN(s.Limit) || math.IsInf(s.Limit, 0) || s.Limit < 0 || math.IsNaN(s.Used) || math.IsInf(s.Used, 0) || s.Used < 0 {
@@ -115,7 +298,7 @@ func normalize(s *Status) error {
 		s.Exhausted = true
 	} else {
 		s.FractionRemaining = s.Remaining / s.Limit
-		s.Exhausted = s.Remaining == 0
+		s.Exhausted = s.Remaining == 0 || s.Blocked
 	}
 	return nil
 }

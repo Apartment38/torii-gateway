@@ -11,7 +11,7 @@ function modelPrice(raw:number):string{return raw>0&&raw<.000001?`$${raw.toPreci
 function modelPricingText(model:any):string{
  const p=model.pricing||{};
  if(model.subscription)return "Subscription included";
- return `${typeof p.input_per_million==="number"?modelPrice(p.input_per_million):"Unknown"} in / ${typeof p.output_per_million==="number"?modelPrice(p.output_per_million):"Unknown"} out per 1M`;
+ return `${typeof p.input_per_million==="number"?modelPrice(p.input_per_million):"Unknown"} in / ${typeof p.output_per_million==="number"?modelPrice(p.output_per_million):"Unknown"} out per 1M${String(p.source||"").startsWith("models.dev")?" (estimate)":""}`;
 }
 function quotaWindowText(window:any):string{
  const remaining=Number(window.remaining);
@@ -19,11 +19,20 @@ function quotaWindowText(window:any):string{
  const reset=window.reset_at?new Date(window.reset_at):null;
  return `${window.name?`${window.name.replace(/_/g," ")}: `:""}${value} remaining${reset&&!Number.isNaN(reset.getTime())?` · resets ${reset.toLocaleString()}`:" · reset unknown"}`;
 }
+function balanceText(q:any):string {
+ return (q?.balances||[]).map((b:any)=>`${b.name.replace(/_/g," ")}: ${b.unlimited?"Unlimited":typeof b.remaining==="number"?(b.unit==="USD"?modelPrice(b.remaining):`${consoleNumber(b.remaining)} ${b.unit}`):"Unknown"}${b.reset_at?` · renews ${new Date(b.reset_at).toLocaleString()}`:""}`).join("; ");
+}
+function trackingReasonText(reason:string):string{return ({management_credentials_required:"Billing management credentials required",admin_credentials_required:"Billing admin credential required",oauth_credentials_required:"Subscription OAuth credential required",wallet_balance_not_exposed:"Provider does not expose wallet balance",response_headers_only:"Quota available from response headers",credential_rejected:"Tracking credential rejected",endpoint_unavailable:"Tracking endpoint unavailable",rate_limited:"Tracking rate limited",tracking_unavailable:"Tracking unavailable",no_reported_data:"No reported provider data",spend_unavailable:"Provider spend unavailable",report_incomplete:"Provider report incomplete",no_subscription:"No subscription reported"} as Record<string,string>)[reason]||"Provider data unavailable";}
 function modelQuotaText(model:any):string{
  const q=model.quota;
+ const extras=[balanceText(q),typeof q?.reset_credits==="number"?`${q.reset_credits} banked resets`:""].filter(Boolean).join(" · ");
+ if(extras&&!q?.known)return `${q.blocked?"Quota exhausted · ":""}${extras}${q?.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
+ if(!q?.known&&q?.windows?.length)return q.windows.map(quotaWindowText).join("; ")+`${extras?` · ${extras}`:""}`;
+ if(!q?.known&&q?.reset_at)return `Quota unknown · resets ${new Date(q.reset_at).toLocaleString()}${extras?` · ${extras}`:""}`;
+ if(!q?.known&&q?.unavailable_reason)return trackingReasonText(q.unavailable_reason);
  if(!q?.known)return q?.blocked?"Quota exhausted":q?.source==="unavailable"?"Quota unavailable":"Quota unknown";
  const windows=q.windows?.length?q.windows:[q];
- return `${q.exhausted?"Exhausted · ":""}${windows.map(quotaWindowText).join("; ")}`;
+ return `${q.exhausted?"Exhausted · ":""}${windows.map(quotaWindowText).join("; ")}${extras?` · ${extras}`:""}`;
 }
 function modelUsageText(model:any):string{
  if(!model.usage_available)return "Usage unavailable";
@@ -34,7 +43,8 @@ function modelUsageText(model:any):string{
 function modelSelectorLabel(model:any):string{return `${model.id} · ${modelPricingText(model)} · ${modelQuotaText(model)} · ${modelUsageText(model)}`;}
 function modelTrackingMarkup(model:any):string{
  const q=model.quota||{};const reported=q.usage_usd;
- return `<p><strong>Provider quota</strong><br>${escapeHTML(modelQuotaText(model))}</p>${q.checked_at&&q.checked_at!=="0001-01-01T00:00:00Z"?`<p>Checked ${escapeHTML(new Date(q.checked_at).toLocaleString())} · ${escapeHTML(q.source||"unknown source")}</p>`:""}${reported?`<p><strong>Provider-reported spend</strong><br>${["total","daily","weekly","monthly"].filter(period=>typeof reported[period]==="number").map(period=>`${period}: ${modelPrice(reported[period])}`).map(escapeHTML).join(" · ")}</p>`:""}${model.usage_available!==undefined?`<p><strong>Gateway usage</strong><br>${escapeHTML(modelUsageText(model))}</p>`:""}`;
+ const usage=(q.reported_usage||[]).map((u:any)=>`${u.period}: ${u.unit==="USD"?modelPrice(u.used):`${consoleNumber(u.used)} ${u.unit}`} (${u.scope||"account"})`).join(" · ");
+ return `<p><strong>Provider quota</strong><br>${escapeHTML(modelQuotaText(model))}</p>${model.pricing?.source?`<p>Price source: ${escapeHTML(model.pricing.source)}</p>`:""}${q.plan?`<p>Plan: ${escapeHTML(q.plan)}</p>`:""}${q.partial?`<p>${escapeHTML(trackingReasonText(q.unavailable_reason||"tracking_unavailable"))} · Partial provider data</p>`:""}${usage?`<p><strong>Provider-reported usage</strong><br>${escapeHTML(usage)}</p>`:""}${q.checked_at&&q.checked_at!=="0001-01-01T00:00:00Z"?`<p>Checked ${escapeHTML(new Date(q.checked_at).toLocaleString())} · ${escapeHTML(q.source||"unknown source")}</p>`:""}${reported?`<p><strong>Provider-reported spend</strong><br>${["total","daily","weekly","monthly"].filter(period=>typeof reported[period]==="number").map(period=>`${period}: ${modelPrice(reported[period])}`).map(escapeHTML).join(" · ")}</p>`:""}${model.usage_available!==undefined?`<p><strong>Gateway usage</strong><br>${escapeHTML(modelUsageText(model))}</p>`:""}`;
 }
 function filteredPhysicalModels():any[]{const query=modelSearch.toLowerCase();return physicalModels.filter(model=>(!query||`${model.id} ${model.provider_id}`.toLowerCase().includes(query))&&(!modelProviderFilter||model.provider_id===modelProviderFilter)&&(!modelStatusFilter||Boolean(model.enabled)===(modelStatusFilter==="enabled"))).sort((a,b)=>modelSort==="provider"?String(a.provider_id).localeCompare(String(b.provider_id))||String(a.id).localeCompare(String(b.id)):modelSort==="enabled"?Number(Boolean(b.enabled))-Number(Boolean(a.enabled))||String(a.id).localeCompare(String(b.id)):String(a.id).localeCompare(String(b.id)));}
 function renderModelRows():void{

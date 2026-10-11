@@ -35,9 +35,11 @@ func applyCatalogMetadata(raw json.RawMessage, model *Model) {
 	}
 	if input := tokenPrice(entry.Pricing.Prompt); input != nil {
 		model.InputPerMillion = input
+		model.PricingSource = "provider_model_catalog"
 	}
 	if output := tokenPrice(entry.Pricing.Completion); output != nil {
 		model.OutputPerMillion = output
+		model.PricingSource = "provider_model_catalog"
 	}
 	model.Subscription = model.Subscription || entry.BillingMode == "subscription"
 	if model.Subscription {

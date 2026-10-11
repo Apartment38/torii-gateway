@@ -15,6 +15,7 @@ type Model struct {
 	InputPerMillion  *float64        `json:"input_per_million,omitempty"`
 	OutputPerMillion *float64        `json:"output_per_million,omitempty"`
 	Subscription     bool            `json:"subscription,omitempty"`
+	PricingSource    string          `json:"-"`
 	Discovery        *ModelDiscovery `json:"-"`
 }
 

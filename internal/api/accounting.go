@@ -100,6 +100,7 @@ func (h *OpenAIHandler) UsageAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	providerQuotas := map[string]quota.Status{}
+	h.prefetchQuotas(r.Context(), h.CatalogModels())
 	for _, d := range h.CatalogModels() {
 		providerQuotas[d.PublicID] = h.modelQuota(r.Context(), d.PublicID)
 	}

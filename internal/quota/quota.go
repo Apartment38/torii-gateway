@@ -5,25 +5,52 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
 
 type Status struct {
-	Known             bool       `json:"known"`
-	Limit             float64    `json:"limit"`
-	Used              float64    `json:"used"`
-	Remaining         float64    `json:"remaining"`
-	FractionRemaining float64    `json:"fraction_remaining"`
-	Exhausted         bool       `json:"exhausted"`
-	Blocked           bool       `json:"blocked,omitempty"`
-	CheckedAt         time.Time  `json:"checked_at"`
-	ExpiresAt         time.Time  `json:"expires_at"`
-	Unit              string     `json:"unit,omitempty"`
-	Source            string     `json:"source,omitempty"`
-	ResetAt           *time.Time `json:"reset_at,omitempty"`
-	Windows           []Window   `json:"windows,omitempty"`
-	Usage             *Spend     `json:"usage_usd,omitempty"`
+	Known             bool            `json:"known"`
+	Limit             float64         `json:"limit"`
+	Used              float64         `json:"used"`
+	Remaining         float64         `json:"remaining"`
+	FractionRemaining float64         `json:"fraction_remaining"`
+	Exhausted         bool            `json:"exhausted"`
+	Blocked           bool            `json:"blocked,omitempty"`
+	CheckedAt         time.Time       `json:"checked_at"`
+	ExpiresAt         time.Time       `json:"expires_at"`
+	Unit              string          `json:"unit,omitempty"`
+	Source            string          `json:"source,omitempty"`
+	ResetAt           *time.Time      `json:"reset_at,omitempty"`
+	Windows           []Window        `json:"windows,omitempty"`
+	Usage             *Spend          `json:"usage_usd,omitempty"`
+	Balances          []Balance       `json:"balances,omitempty"`
+	ReportedUsage     []ReportedUsage `json:"reported_usage,omitempty"`
+	Plan              string          `json:"plan,omitempty"`
+	ResetCredits      *float64        `json:"reset_credits,omitempty"`
+	UnavailableReason string          `json:"unavailable_reason,omitempty"`
+	Partial           bool            `json:"partial,omitempty"`
+}
+
+// Balance preserves the provider's native denomination. A remaining balance
+// without a reported original allowance must never become a percentage quota.
+type Balance struct {
+	Name      string     `json:"name"`
+	Unit      string     `json:"unit"`
+	Remaining *float64   `json:"remaining,omitempty"`
+	Granted   *float64   `json:"granted,omitempty"`
+	Purchased *float64   `json:"purchased,omitempty"`
+	Unlimited bool       `json:"unlimited,omitempty"`
+	ResetAt   *time.Time `json:"reset_at,omitempty"`
+}
+
+// ReportedUsage is authoritative provider usage, separate from gateway estimates.
+type ReportedUsage struct {
+	Period string  `json:"period"`
+	Unit   string  `json:"unit"`
+	Used   float64 `json:"used"`
+	Scope  string  `json:"scope,omitempty"`
 }
 
 // Spend is upstream-reported API-key spend, separate from gateway estimates.
@@ -46,6 +73,8 @@ type Window struct {
 	Exhausted         bool       `json:"exhausted"`
 	ResetAt           *time.Time `json:"reset_at,omitempty"`
 	WindowSeconds     int64      `json:"window_seconds,omitempty"`
+	Model             string     `json:"model,omitempty"`
+	Informational     bool       `json:"informational,omitempty"`
 }
 
 // Keyer lets account-scoped fetchers share a snapshot across their models.
@@ -77,6 +106,15 @@ func NewCache(ttl time.Duration, fetcher Fetcher) *Cache {
 }
 func (c *Cache) Get(ctx context.Context, model string) (Status, error) {
 	status, err := c.get(ctx, model)
+	for i := range status.Windows {
+		w := &status.Windows[i]
+		if w.Model != "" {
+			w.Informational = !strings.Contains(strings.ToLower(model), strings.ToLower(w.Model))
+		}
+	}
+	if err == nil {
+		err = normalize(&status)
+	}
 	c.mu.Lock()
 	local, exists := c.locals[model]
 	c.mu.Unlock()
@@ -148,6 +186,11 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 		if value.ResetAt != nil && value.ResetAt.After(now) && value.ResetAt.Before(value.ExpiresAt) {
 			value.ExpiresAt = *value.ResetAt
 		}
+		for _, b := range value.Balances {
+			if b.ResetAt != nil && b.ResetAt.After(now) && b.ResetAt.Before(value.ExpiresAt) {
+				value.ExpiresAt = *b.ResetAt
+			}
+		}
 	}
 	if err != nil {
 		value = Status{Source: "unavailable", CheckedAt: now, ExpiresAt: now.Add(c.ttl)}
@@ -191,6 +234,11 @@ func (c *Cache) Set(model string, value Status) error {
 			value.ExpiresAt = *window.ResetAt
 		}
 	}
+	for _, b := range value.Balances {
+		if b.ResetAt != nil && b.ResetAt.After(now) && b.ResetAt.Before(value.ExpiresAt) {
+			value.ExpiresAt = *b.ResetAt
+		}
+	}
 	c.mu.Lock()
 	c.entries[model] = clone(value)
 	delete(c.errors, model)
@@ -214,7 +262,7 @@ func (c *Cache) Observe(model string, observed Status) error {
 		for _, old := range previous.Windows {
 			replaced := false
 			for _, newWindow := range observed.Windows {
-				if newWindow.Name == old.Name && newWindow.Unit == old.Unit {
+				if newWindow.Name == old.Name && newWindow.Unit == old.Unit && newWindow.Model == old.Model {
 					replaced = true
 					break
 				}
@@ -224,6 +272,14 @@ func (c *Cache) Observe(model string, observed Status) error {
 			}
 		}
 		observed.Usage = previous.Usage
+		if len(observed.Balances) == 0 {
+			observed.Balances = previous.Balances
+		}
+		observed.ReportedUsage = previous.ReportedUsage
+		observed.Plan = previous.Plan
+		observed.ResetCredits = previous.ResetCredits
+		observed.Partial = previous.Partial
+		observed.UnavailableReason = previous.UnavailableReason
 	}
 	return c.Set(model, observed)
 }
@@ -241,6 +297,25 @@ func (c *Cache) Invalidate(model string) {
 }
 
 func clone(s Status) Status {
+	s.Balances = append([]Balance(nil), s.Balances...)
+	for i := range s.Balances {
+		b := &s.Balances[i]
+		for _, p := range []**float64{&b.Remaining, &b.Granted, &b.Purchased} {
+			if *p != nil {
+				v := **p
+				*p = &v
+			}
+		}
+		if b.ResetAt != nil {
+			t := *b.ResetAt
+			b.ResetAt = &t
+		}
+	}
+	s.ReportedUsage = append([]ReportedUsage(nil), s.ReportedUsage...)
+	if s.ResetCredits != nil {
+		v := *s.ResetCredits
+		s.ResetCredits = &v
+	}
 	if s.Usage != nil {
 		v := *s.Usage
 		s.Usage = &v
@@ -265,7 +340,26 @@ func clone(s Status) Status {
 	return s
 }
 func normalize(s *Status) error {
+	if s.ResetCredits != nil && (math.IsNaN(*s.ResetCredits) || math.IsInf(*s.ResetCredits, 0) || *s.ResetCredits < 0) {
+		return errors.New("invalid reset credits")
+	}
+	for _, b := range s.Balances {
+		for _, n := range []*float64{b.Remaining, b.Granted, b.Purchased} {
+			if n != nil && (math.IsNaN(*n) || math.IsInf(*n, 0)) {
+				return errors.New("invalid balance")
+			}
+		}
+	}
+	for _, u := range s.ReportedUsage {
+		if math.IsNaN(u.Used) || math.IsInf(u.Used, 0) || u.Used < 0 {
+			return errors.New("invalid reported usage")
+		}
+	}
 	if len(s.Windows) > 0 {
+		s.Known = false
+		s.Limit, s.Used, s.Remaining, s.FractionRemaining = 0, 0, 0, 0
+		s.Exhausted = s.Blocked
+		s.Unit = ""
 		for i := range s.Windows {
 			w := &s.Windows[i]
 			v := Status{Known: true, Limit: w.Limit, Used: w.Used}
@@ -273,7 +367,7 @@ func normalize(s *Status) error {
 				return err
 			}
 			w.Remaining, w.FractionRemaining, w.Exhausted = v.Remaining, v.FractionRemaining, v.Exhausted
-			if i == 0 || w.FractionRemaining < s.FractionRemaining {
+			if !w.Informational && (!s.Known || w.FractionRemaining < s.FractionRemaining) {
 				s.Known, s.Limit, s.Used, s.Remaining, s.FractionRemaining, s.Exhausted = true, v.Limit, v.Used, v.Remaining, v.FractionRemaining, v.Exhausted
 				s.Unit, s.ResetAt = w.Unit, w.ResetAt
 			}

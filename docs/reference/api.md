@@ -46,18 +46,23 @@ and selectors. IDs remain unchanged; `smart` stays first in the list.
 | Field | Meaning |
 | --- | --- |
 | `pricing.input_per_million`, `pricing.output_per_million` | Known USD rates per million tokens; missing rates are unknown. Top-level rate fields are also returned for compatible consumers. |
+| `pricing.source` | Price provenance: live provider catalog, dated bundled base-rate snapshot, subscription inclusion or operator override. Cached tokens, variable rates and extra charges can differ. |
 | `context_window`, `subscription` | Known token capacity and explicit subscription billing; subscription prices represent zero marginal inference cost. |
 | `quota.known`, `quota.exhausted`, `quota.blocked` | Current provider allowance state; unknown does not imply zero balance or unlimited usage. |
-| `quota.windows[]` | Independent constraints with `name`, `unit` (`USD`, `percent`, `requests`, `tokens`), `limit`, `used`, `remaining`, `fraction_remaining`, optional `reset_at` (UTC RFC3339), and optional `window_seconds`. |
+| `quota.windows[]` | Independent constraints with `name`, `unit` (`USD`, `percent`, `requests`, `tokens`), `limit`, `used`, `remaining`, `fraction_remaining`, optional `reset_at` (UTC RFC3339), and optional `window_seconds`, `model` scope, and `informational` flag. Informational windows describe another model or a plan gauge that does not constrain this model. |
 | `quota.source`, `checked_at`, `expires_at` | Snapshot provenance/freshness. The summary uses the window with the smallest remaining fraction; inspect all windows for their reset times. |
-| `quota.usage_usd` | OpenRouter-reported key spend when available, with optional total/daily/weekly/monthly fields; separate from gateway estimates. |
+| `quota.usage_usd` | Provider-reported dollar spend when available, with optional total/daily/weekly/monthly fields; separate from gateway estimates. |
+| `quota.balances[]` | Provider balances with `name`, native `unit`, optional numeric `remaining`, `granted`, `purchased`, `unlimited` and UTC `reset_at`. Multiple currencies and plan/top-up components are never added together. A balance alone does not make `quota.known` true. |
+| `quota.reported_usage[]` | Provider-reported `period`, `unit`, `used`, and optional `scope`; organization reports are labeled and separate from client-key gateway usage. |
+| `quota.plan`, `quota.reset_credits` | Reported plan and Codex banked reset count; displaying resets never redeems them. |
+| `quota.partial`, `quota.unavailable_reason` | Partial provider reads and stable reasons such as `management_credentials_required`, `admin_credentials_required`, `credential_rejected`, `endpoint_unavailable`, `wallet_balance_not_exposed`, `response_headers_only`, `no_subscription`, `spend_unavailable`, `report_incomplete` or `no_reported_data`. Missing data stays unknown. |
 | `usage_available`, `usage[]` | Current UTC day/month gateway usage for the authenticated client key, including reported/estimated tokens, estimated cost and unknown-cost attempts. Empty usage with availability true means no recorded usage; false means unavailable. Key IDs/names are omitted. |
 
 `GET /gateway/v1/models` uses the same tracking fields with gateway-wide usage
 and its existing capabilities/benchmark metadata. Quota failures keep discovery
 available and return an unknown snapshot. Account snapshots are shared across
 models, with a separate OpenRouter free-model bucket. Refreshes are bounded by
-the provider discovery deadline and quota TTL; known reset times shorten cache
+a shared ten-second picker deadline and quota TTL; known reset times shorten cache
 life. Smart uses the same pricing and quota cache for eligibility/ranking.
 External harnesses must consume these additive fields to render them; clients
 that ignore extended model metadata retain their existing selectors.

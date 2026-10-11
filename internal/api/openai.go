@@ -174,6 +174,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	descriptors := h.CatalogModels()
+	h.prefetchQuotas(r.Context(), descriptors)
 	models := make([]clientModel, 0, len(descriptors)+1)
 	modelUsage, usageAvailable := h.modelUsage(r, false)
 	// Clients may show only the first page of a provider's catalog. Keep the
@@ -401,6 +402,14 @@ func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
 		return
 	}
 	if status, ok := quota.FromHeaders(headers, time.Now().UTC()); ok {
+		for i := range status.Windows {
+			if strings.HasPrefix(status.Windows[i].Name, "anthropic_") {
+				_, upstream, err := provider.ParseModelID(model)
+				if err == nil {
+					status.Windows[i].Model = upstream
+				}
+			}
+		}
 		_ = h.quota.Observe(model, status)
 	}
 }

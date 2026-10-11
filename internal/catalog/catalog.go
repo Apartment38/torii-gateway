@@ -50,6 +50,7 @@ type Modalities struct {
 }
 
 type Pricing struct {
+	Source           string   `json:"source,omitempty" yaml:"source,omitempty"`
 	InputPerMillion  *float64 `json:"input_per_million,omitempty" yaml:"input_per_million,omitempty"`
 	OutputPerMillion *float64 `json:"output_per_million,omitempty" yaml:"output_per_million,omitempty"`
 }
@@ -186,6 +187,9 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 			if model.OutputPerMillion != nil {
 				d.Pricing.OutputPerMillion = copyFloat(model.OutputPerMillion)
 			}
+			if model.PricingSource != "" {
+				d.Pricing.Source = model.PricingSource
+			}
 			d.Subscription = model.Subscription
 			if model.Subscription {
 				zero := float64(0)
@@ -321,6 +325,9 @@ func mergeMatching(base Descriptor, records []Descriptor, source string) Descrip
 		}
 		if overlay.Pricing.OutputPerMillion != nil {
 			base.Pricing.OutputPerMillion = copyFloat(overlay.Pricing.OutputPerMillion)
+		}
+		if overlay.Pricing.InputPerMillion != nil || overlay.Pricing.OutputPerMillion != nil {
+			base.Pricing.Source = source
 		}
 		if overlay.Quality.General != nil {
 			base.Quality.General = copyFloat(overlay.Quality.General)

@@ -44,35 +44,22 @@ contracts in [Design](design.md). Old Version 1/2 labels no longer define suppor
 
 ## Active work
 
-Provider cost/usage/quota tracking is implemented on `feat/provider-cost-usage`
-in `/workspace/work/provider-cost-usage`. Live Portal/OpenRouter prices feed
-accounting and routing; OpenRouter key spend, optional management credits and
-free-request caps, Codex subscription windows, and provider response-header
-resets reach model discovery and management metadata. Client usage is scoped to
-its key; administrator usage remains gateway-wide. Quota polling coalesces
-account reads and failures, preserves independent windows and local allowances,
-and expires by reset time. The console selector/catalog and provider-balance
-section show pricing, usage and remaining/reset windows without changing IDs.
-Full Go tests/race tests, final affected-package checks, vet/build, formatting,
-module consistency, all 102 console tests, generated assets and affected document
-links/anchors pass. Chromium checks pass at 1280px and 390px with controlled API
-fixtures and no page exceptions or mobile viewport overflow.
-
-The final non-root Docker image (`75eae5d20738`) builds the gateway and all five
-helper targets, and passes authenticated pricing/usage/header-quota discovery,
-reset metadata, and cost/token persistence after restart against a synthetic
-upstream. The build used a temporary CA-mounted Dockerfile for this environment's
-proxy; the shipped Dockerfile is unchanged. The Podman-specific full acceptance
-script was unavailable because Podman is not installed. Local Go checks used a
-workspace Go 1.25.1 toolchain, writable cache, and disabled VCS stamping to avoid
-environment-only baseline failures. No application baseline failure remains.
-
-Portal dollar balance and public direct-scope Codex quota polling remain unknown
-where no verified bearer endpoint is available. Gateway monetary usage remains
-estimated; upstream OpenRouter spend is separately labeled. External harnesses
-must consume the added model metadata to render it. No live billing check,
-push, merge, publication or deployment was performed. The worktree is retained
-for review.
+Expanded provider tracking is in progress on `feat/provider-balance-tracking`
+in `/workspace/work/provider-balance-tracking`, based on merged PR #19.
+Provider fixtures cover OpenRouter, OpenCode Go/Zen, Standard Compute, Z AI,
+Kimi Coding, MiniMax, DeepSeek, xAI, Anthropic, Nous and Codex. Native-currency
+balances, provider usage, reset credits and scoped windows flow through model
+APIs; provider editors and console selectors consume them. Nous OAuth account
+balances and Codex public usage paths replace earlier unavailable placeholders.
+Billing credentials remain isolated from inference and are encrypted through the
+configuration inventory. Base-rate fallback pricing is dated and attributed.
+Baseline provider/quota/API/config/catalog and all 102 console checks passed.
+Focused expanded provider checks and full validation are being completed.
+Public Zen wallet and Standard Compute budget amounts still depend on an explicit
+private endpoint because no supported public balance read was verified. Their
+available usage/reset fields are supported; missing data stays explicit. No live
+billing-account checks, push, merge or deployment have been performed for this
+extension.
 
 
 The premium console redesign is complete on `feat/premium-console` in

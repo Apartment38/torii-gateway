@@ -8,6 +8,8 @@ import (
 	"github.com/Apartment38/torii-gateway/internal/provider"
 	"github.com/Apartment38/torii-gateway/internal/quota"
 	"net/http"
+	"sync"
+	"time"
 )
 
 func (h *OpenAIHandler) SetModelControls(enabled map[string]bool, free map[string]bool) {
@@ -80,12 +82,36 @@ func (h *OpenAIHandler) modelUsage(r *http.Request, management bool) (map[string
 
 func (h *OpenAIHandler) modelQuota(ctx context.Context, id string) quota.Status {
 	if h.quota != nil {
-		if status, err := h.quota.Get(ctx, id); err == nil {
-			return status
-		}
-		return quota.Status{Source: "unavailable"}
+		status, _ := h.quota.Get(ctx, id)
+		return status
 	}
 	return quota.Status{}
+}
+
+// Warm each provider account concurrently within one picker request deadline.
+// A slow billing service cannot multiply the wait by the number of models.
+func (h *OpenAIHandler) prefetchQuotas(ctx context.Context, models []catalog.Descriptor) {
+	if h.quota == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	jobs := make(chan string, len(models))
+	for _, m := range models {
+		jobs <- m.PublicID
+	}
+	close(jobs)
+	var wg sync.WaitGroup
+	for i := 0; i < min(8, len(models)); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for id := range jobs {
+				_, _ = h.quota.Get(ctx, id)
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func (h *OpenAIHandler) clientMetadata(ctx context.Context, d catalog.Descriptor, usage []ModelUsage, available bool) clientModel {
@@ -99,6 +125,7 @@ func (h *OpenAIHandler) ManagementModels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	models := []ManagedModel{}
+	h.prefetchQuotas(r.Context(), h.CatalogModels())
 	usage, usageAvailable := h.modelUsage(r, true)
 	for _, d := range h.CatalogModels() {
 		m := ManagedModel{Descriptor: d, Enabled: h.enabled(d.PublicID), BenchmarkMissing: true, Quota: h.modelQuota(r.Context(), d.PublicID), Usage: usage[d.PublicID], UsageAvailable: usageAvailable}

@@ -22,6 +22,11 @@ func (c *Config) VisitSecrets(fn func(path, service, purpose string, ref *Secret
 				}
 			}
 		}
+		if p.Tracking != nil && p.Tracking.Token != nil {
+			if err := fn(base+"tracking/token", p.ID, "tracking_token", p.Tracking.Token); err != nil {
+				return err
+			}
+		}
 		for name, ref := range p.Headers {
 			if err := fn(base+"headers/"+name, p.ID, "header:"+name, &ref); err != nil {
 				return err

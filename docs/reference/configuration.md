@@ -34,11 +34,11 @@ administrator login, and gateway API keys are never YAML settings.
 | `id` | Required string | Unique `[a-z0-9][a-z0-9._-]*`; becomes public model prefix |
 | `type` | Required string | One of the types in [Provider support](providers.md) |
 | `base_url` | Required HTTP(S) URL | No userinfo/query/fragment; path prefix permitted except origin-locked profiles |
-| `api_path` | String, `/v1` compatible; `/v1beta/openai` Gemini | Absolute path without query/fragment; profile restrictions apply |
+| `api_path` | String, profile API path | Absolute path without query/fragment; profile restrictions apply |
 | `portal_url` | String, `https://portal.nousresearch.com` | Nous HTTPS Portal origin/path |
 | `client_id` | String, `hermes-agent` | Nous device-login client identifier |
-| `bearer_token` | Secret reference, absent | Required for OpenAI/OpenRouter/Gemini/xAI/Anthropic/hosted Jev; optional generic/compatible Jev; not subscription OAuth |
-| `management_token` | Secret reference, absent | OpenRouter-only separate key for credits |
+| `bearer_token` | Secret reference, absent | Required for named API profiles and hosted Jev; optional generic/compatible Jev; not subscription OAuth |
+| `management_token` | Secret reference, absent | Separate OpenRouter credits key, xAI management key, or Anthropic admin key |
 | `headers` | Map of secret references, empty | Compatible custom headers; reserved routing/auth/hop-by-hop headers forbidden |
 | `tls.ca_file` | String, system roots | Compatible provider custom PEM trust file; path readable by gateway |
 | `tls.server_name` | String, URL host | Compatible provider certificate server-name override; TLS section must set at least one field |
@@ -65,6 +65,37 @@ Authenticated transient console values are encrypted before saving. Persisted
 not override Authorization, Host, Content-Type, Accept, Connection,
 Proxy-Connection, Transfer-Encoding, Upgrade, or X-Request-Id.
 
+### Provider tracking
+
+The optional `tracking` object is supported on the named API tracking profiles,
+`xai`, `anthropic`, and `openai_compatible`. Nous/Codex use their existing OAuth
+state. Tracking credentials are inventoried, encrypted and redacted like other
+provider secrets. Configure credentials for the same account as inference.
+
+| Field under `providers[].tracking` | Type/default | Meaning |
+| --- | --- | --- |
+| `provider` | String, inferred from type or known compatible host | `opencode-go`, `opencode-zen`, `standard-compute`, `zai`, `kimi-coding`, `minimax`, `deepseek`, `xai`, `anthropic`; select explicitly for custom compatible origins |
+| `base_url` | URL, provider billing origin | Optional billing origin/path override; xAI defaults to `https://management-api.x.ai`; other profiles use the inference origin |
+| `usage_url` | URL, provider endpoint | Optional exact read-only JSON endpoint; no userinfo/query/fragment; useful for a private Zen/Standard Compute billing API |
+| `token` | Secret reference, absent | Separate billing credential; overrides `management_token`. Ordinary inference keys are used only where accepted; xAI/Anthropic API require management/admin credentials. Subscription Anthropic requires OAuth. A changed billing origin needs a separate token |
+| `team_id` | String, absent | xAI Management API team ID; path separators/query characters forbidden |
+| `mode` | String, provider default | `api` or `subscription`; Anthropic selects admin reports or OAuth usage; subscription marks included marginal pricing for compatible plans; Anthropic tracking does not change API inference pricing |
+
+Tracking URLs require HTTPS, except loopback HTTP test endpoints. They never
+receive a credential via a followed redirect. Token reads use a separate client
+so billing credentials cannot reach inference. The console provider editor exposes
+these fields and accepts a new tracking token without revealing stored values.
+
+```yaml
+# xAI provider excerpt using existing encrypted credential IDs.
+type: xai
+base_url: https://api.x.ai
+bearer_token: {credential: INFERENCE_ID}
+management_token: {credential: BILLING_ID}
+tracking:
+  team_id: YOUR_TEAM_ID
+```
+
 ### Profile restrictions
 
 - Ollama accepts its ID/type/base URL without generic provider tuning.
@@ -76,7 +107,8 @@ Proxy-Connection, Transfer-Encoding, Upgrade, or X-Request-Id.
   disallows bearer/custom headers/TLS/rewrites/organization/project options.
 - `anthropic` locks to `https://api.anthropic.com`, requires its key, and disallows
   custom headers/TLS/api_path/transport/organization/project/rewrites.
-- `openrouter`, `gemini`, and `xai` use compatible options with required keys.
+- Named API profiles use compatible options with required keys; see the provider
+  table for their default API paths.
 - `jev` locks to the HTTPS `api.typesafe.ai` host and requires a key;
   `jev_compatible` supports alternate origins. Both are classifier-only.
 

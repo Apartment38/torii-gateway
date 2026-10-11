@@ -100,6 +100,7 @@ type ProviderConfig struct {
 	ClientID          string               `yaml:"client_id,omitempty"`
 	BearerToken       *SecretRef           `yaml:"bearer_token,omitempty"`
 	ManagementToken   *SecretRef           `yaml:"management_token,omitempty"`
+	Tracking          *TrackingConfig      `yaml:"tracking,omitempty"`
 	Headers           map[string]SecretRef `yaml:"headers,omitempty"`
 	TLS               *TLSConfig           `yaml:"tls,omitempty"`
 	Models            []string             `yaml:"models,omitempty"`
@@ -111,6 +112,24 @@ type ProviderConfig struct {
 	ConnectTimeout    string               `yaml:"connect_timeout,omitempty"`
 	RequestTimeout    string               `yaml:"request_timeout,omitempty"`
 	DiscoveryTimeout  string               `yaml:"discovery_timeout,omitempty"`
+}
+
+// TrackingConfig selects an optional billing endpoint and its own credentials.
+type TrackingConfig struct {
+	Provider string     `yaml:"provider,omitempty"`
+	BaseURL  string     `yaml:"base_url,omitempty"`
+	UsageURL string     `yaml:"usage_url,omitempty"`
+	Token    *SecretRef `yaml:"token,omitempty"`
+	TeamID   string     `yaml:"team_id,omitempty"`
+	Mode     string     `yaml:"mode,omitempty"`
+}
+
+func trackedCompatible(kind string) bool {
+	switch kind {
+	case "opencode-go", "opencode-zen", "standard-compute", "zai", "kimi-coding", "minimax", "deepseek":
+		return true
+	}
+	return false
 }
 
 // TLSConfig controls certificate verification for one provider origin.
@@ -234,7 +253,7 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.Type != "jev" && providerConfig.Type != "jev_compatible" {
+		if !trackedCompatible(providerConfig.Type) && providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.Type != "jev" && providerConfig.Type != "jev_compatible" {
 			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
@@ -262,7 +281,7 @@ func (c Config) Validate() error {
 				}
 			}
 		}
-		if providerConfig.Type == "openrouter" || providerConfig.Type == "gemini" || providerConfig.Type == "xai" {
+		if trackedCompatible(providerConfig.Type) || providerConfig.Type == "openrouter" || providerConfig.Type == "gemini" || providerConfig.Type == "xai" {
 			if err := validateCompatibleProvider(providerConfig); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
 			}
@@ -270,12 +289,42 @@ func (c Config) Validate() error {
 				return fmt.Errorf("%s: bearer_token is required", field)
 			}
 		}
-		if providerConfig.Type != "openrouter" && providerConfig.ManagementToken != nil {
-			return fmt.Errorf("%s: management_token requires type openrouter", field)
+		if providerConfig.Type != "openrouter" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.ManagementToken != nil {
+			return fmt.Errorf("%s: management_token requires type openrouter, xai or anthropic", field)
 		}
-		if providerConfig.Type == "openrouter" && providerConfig.ManagementToken != nil {
+		if providerConfig.ManagementToken != nil {
 			if err := providerConfig.ManagementToken.Validate(); err != nil {
 				return fmt.Errorf("%s: management_token: %w", field, err)
+			}
+		}
+		if t := providerConfig.Tracking; t != nil {
+			if !trackedCompatible(providerConfig.Type) && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.Type != "openai_compatible" {
+				return fmt.Errorf("%s.tracking requires a supported API provider", field)
+			}
+			if !trackedCompatible(t.Provider) && t.Provider != "" && t.Provider != "xai" && t.Provider != "anthropic" {
+				return fmt.Errorf("%s.tracking.provider is unsupported", field)
+			}
+			for name, value := range map[string]string{"base_url": t.BaseURL, "usage_url": t.UsageURL} {
+				if value != "" {
+					if err := validateBaseURL(value); err != nil {
+						return fmt.Errorf("%s.tracking.%s: %w", field, name, err)
+					}
+					parsed, _ := url.Parse(value)
+					if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && (net.ParseIP(parsed.Hostname()) == nil || !net.ParseIP(parsed.Hostname()).IsLoopback()) {
+						return fmt.Errorf("%s.tracking.%s requires HTTPS", field, name)
+					}
+				}
+			}
+			if t.Token != nil {
+				if err := t.Token.Validate(); err != nil {
+					return fmt.Errorf("%s.tracking.token: %w", field, err)
+				}
+			}
+			if strings.ContainsAny(t.TeamID, "/\\?#\r\n") || t.TeamID == "." || t.TeamID == ".." {
+				return fmt.Errorf("%s.tracking.team_id is invalid", field)
+			}
+			if t.Mode != "" && t.Mode != "api" && t.Mode != "subscription" {
+				return fmt.Errorf("%s.tracking.mode must be api or subscription", field)
 			}
 		}
 		if providerConfig.Type == "anthropic" {

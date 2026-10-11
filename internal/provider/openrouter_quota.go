@@ -87,6 +87,11 @@ func (p *Compatible) Quota(ctx context.Context, model string) (quota.Status, err
 	}
 	if account.Known {
 		status.Windows = append(status.Windows, quota.Window{Name: "account_credits", Unit: "USD", Limit: account.Limit, Used: account.Used})
+		status.Balances = account.Balances
+	}
+	if accountErr != nil {
+		status.Partial = true
+		status.UnavailableReason = "balance_unavailable"
 	}
 	return status, nil
 }

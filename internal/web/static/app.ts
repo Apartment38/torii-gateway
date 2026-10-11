@@ -89,9 +89,9 @@ function renderOverview():void{
  workspace.innerHTML=`${providers.length?renderOverviewMonitoring():""}<section class="overview-panel"><div class="section-heading"><h3>Connected providers</h3><a href="#providers">Manage providers →</a></div>${providers.length?providers.slice(0,6).map(p=>{const status=providerStatuses.get(p);const count=overviewModels?.filter(m=>m.provider_id===p.id).length;return `<div class="overview-provider-row"><span class="provider-avatar">${escapeHTML(String(p.id||"P").slice(0,1).toUpperCase())}</span><div><strong>${value(p,"id")}</strong><span class="data-secondary">${escapeHTML(providerTypeLabel(String(p.type)))}</span></div><span class="status-badge ${p.enabled===false?"neutral":status?.state||"neutral"}">${p.enabled===false?"Disabled":status?.state==="success"?"Connected":status?.state==="failure"?"Needs attention":status?.state==="pending"?"Checking…":"Not checked"}</span>${count===undefined?"":`<span class="data-secondary">${count} models</span>`}</div>`;}).join(""):`<div class="empty-state"><strong>${configurationLoaded?"Your gateway starts here":"Welcome to your control plane"}</strong><p>${configurationLoaded?"Connect an upstream to discover models and start routing requests.":"Sign in to manage providers, model access and routing."}</p><a class="button primary" href="${configurationLoaded?"#providers":"/login"}">${configurationLoaded?"Connect a provider":"Sign in"}</a></div>`}</section>${providers.length?renderClientConnection():`<section class="overview-panel"><h3>Your next step</h3><a class="workflow-link" href="#providers"><span class="workflow-number">01</span><span><strong>Connect your providers</strong><span class="data-secondary">API endpoints and subscription accounts</span></span><span>→</span></a><a class="workflow-link" href="#models"><span class="workflow-number">02</span><span><strong>Choose your model catalog</strong><span class="data-secondary">Inspect capabilities and control model access</span></span><span>→</span></a><a class="workflow-link" href="#routing"><span class="workflow-number">03</span><span><strong>Shape your routing policy</strong><span class="data-secondary">Choose intelligent or deterministic selection</span></span><span>→</span></a><a class="workflow-link" href="#credentials"><span class="workflow-number">04</span><span><strong>Create a client API key</strong><span class="data-secondary">Give each application its own gateway access</span></span><span>→</span></a></section>`}${overviewError?`<p class="notice" role="status">${escapeHTML(overviewError)}</p>`:""}`;
  initializeClientConnection();
 }
-function providerTypeLabel(type:string):string{return ({openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"} as Record<string,string>)[type]||type;}
+function providerTypeLabel(type:string):string{return ({"opencode-go":"OpenCode Go","opencode-zen":"OpenCode Zen","standard-compute":"Standard Compute",zai:"Z AI","kimi-coding":"Kimi Coding",minimax:"MiniMax",deepseek:"DeepSeek",openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"} as Record<string,string>)[type]||type;}
 function providerTypeOptions(provider:Record<string,string|boolean>,subscriptionOnly=false):string{
- const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter"]},{label:"Subscriptions",types:["openai-codex","nous"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["jev","jev_compatible"]}];
+ const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter","opencode-go","opencode-zen","standard-compute","zai","kimi-coding","minimax","deepseek"]},{label:"Subscriptions",types:["openai-codex","nous"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["jev","jev_compatible"]}];
  return groups.filter(group=>!subscriptionOnly||group.label==="Subscriptions").map(group=>`<optgroup label="${group.label}">${group.types.map(type=>`<option value="${type}" ${provider.type===type?"selected":""}>${escapeHTML(providerTypeLabel(type))}</option>`).join("")}</optgroup>`).join("");
 }
 function providerTypeDescription(type:string):string{
@@ -251,8 +251,7 @@ function setProviderStatus(provider: Record<string, string | boolean>, status: P
 
 function redactProviderKeys(message: string): string {
   providers.forEach(provider => {
-    const key = String(provider.api_key || "");
-    if (key) message = message.split(key).join("[redacted]");
+    for(const key of [provider.api_key,provider.tracking_token]) if(key) message=message.split(String(key)).join("[redacted]");
   });
   return benchmarkSafeMessage(message);
 }
@@ -261,7 +260,7 @@ function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch 
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider: Record<string, string | boolean>, key: string): string { return provider[key] === false ? "" : "checked"; }
 function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex" || provider.type === "nous"; }
-const knownProviderIDs: Record<string, string> = { openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous", jev: "jev" };
+const knownProviderIDs: Record<string, string> = { "opencode-go":"opencode-go","opencode-zen":"opencode-zen","standard-compute":"standard-compute",zai:"zai","kimi-coding":"kimi-coding",minimax:"minimax",deepseek:"deepseek", openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous", jev: "jev" };
 function knownProviderID(type: string, index: number): string {
   const base = knownProviderIDs[type];
   if (!base) return "";
@@ -313,6 +312,13 @@ function renderProviders(): void {
       <details class="advanced-provider"><summary>Advanced provider options</summary><div class="grid three">
         <label data-tooltip="An existing encrypted provider credential reference. Gateway client API keys cannot be used here.">Stored API credential<input data-provider="${index}" data-key="credential_id" value="${escapeHTML(String((provider.bearer_token as any)?.credential || provider.credential_id || ""))}" placeholder="Credential ID" /></label>
         <label data-tooltip="An existing encrypted management credential used for quota lookup. This is separate from gateway client API keys.">Management credential<input data-provider="${index}" data-key="management_id" value="${escapeHTML(String((provider.management_token as any)?.credential || provider.management_id || ""))}" placeholder="Credential ID" /></label>
+        <label data-tooltip="Optional tracking integration for a custom OpenAI-compatible provider, such as deepseek or opencode-go.">Tracking provider<input data-provider="${index}" data-key="tracking_provider" value="${value(provider,"tracking_provider")}" /></label>
+        <label data-tooltip="Optional separate credential for billing or subscription usage. Saving encrypts it; leave blank to retain it.">Tracking token<input type="password" autocomplete="new-password" data-provider="${index}" data-key="tracking_token" placeholder="${(provider.tracking as any)?.token ? "Configured · leave blank to keep" : "Optional billing token"}" /></label>
+        <label data-tooltip="An existing encrypted billing credential. It is used only by tracking requests.">Tracking credential<input data-provider="${index}" data-key="tracking_credential_id" value="${value(provider,"tracking_credential_id")}" /></label>
+        <label data-tooltip="xAI team identifier for the Management API.">Billing team ID<input data-provider="${index}" data-key="tracking_team_id" value="${value(provider,"tracking_team_id")}" /></label>
+        <label data-tooltip="Choose subscription for Anthropic OAuth usage or an included coding plan; API uses billing admin reports.">Tracking mode<select data-provider="${index}" data-key="tracking_mode"><option value="" ${!provider.tracking_mode?"selected":""}>Provider default</option><option value="api" ${provider.tracking_mode==="api"?"selected":""}>API</option><option value="subscription" ${provider.tracking_mode==="subscription"?"selected":""}>Subscription</option></select></label>
+        <label data-tooltip="Optional billing origin override. A separate tracking token is required when changing the origin.">Tracking base URL<input data-provider="${index}" data-key="tracking_base_url" value="${value(provider,"tracking_base_url")}" /></label>
+        <label data-tooltip="Optional exact usage endpoint for a private billing API. A separate tracking token is required for a different origin.">Tracking usage URL<input data-provider="${index}" data-key="tracking_usage_url" value="${value(provider,"tracking_usage_url")}" /></label>
         <label data-tooltip="The portal URL used for subscription or account management. It is relevant to providers with a separate portal.">Portal URL<input data-provider="${index}" data-key="portal_url" value="${value(provider,"portal_url")}" placeholder="https://portal.example.com" /></label>
         <label data-tooltip="The OAuth client identifier used by a provider portal. Leave empty to use the provider default.">Client ID<input data-provider="${index}" data-key="client_id" value="${value(provider,"client_id")}" /></label>
         <label data-tooltip="A static fallback model list used when discovery is disabled or unavailable. Separate model IDs with commas.">Models (comma separated)<input data-provider="${index}" data-key="models" value="${value(provider,"models")}" placeholder="model-a, model-b" /></label>
@@ -378,6 +384,8 @@ function updateProvider(event: Event): void {
       if (input) input.value = "";
     });
   }
+  if(key==="tracking_token"&&control.value)providers[index].tracking_credential_id="";
+  if(key==="tracking_credential_id"&&control.value)providers[index].tracking_token="";
   if (key === "management_env") delete providers[index].management_token;
   if(key==="credential_id"){providers[index].api_key="";providers[index].api_key_env="";providers[index].api_key_file="";providers[index].bearer_token=control.value.trim()?{credential:control.value.trim()} as any:undefined as any;}
   if(key==="management_id"){providers[index].management_token=control.value.trim()?{credential:control.value.trim()} as any:undefined as any;}
@@ -395,6 +403,9 @@ function updateProvider(event: Event): void {
       providers[index].api_url = "https://chatgpt.com/backend-api/codex";
       providers[index].models = "gpt-5.3-codex";
     }
+    const trackingDefaults:Record<string,string>={"opencode-go":"https://opencode.ai/zen/go/v1","opencode-zen":"https://opencode.ai/zen/v1","standard-compute":"https://api.stdcmpt.com/v1",zai:"https://api.z.ai/api/coding/paas/v4","kimi-coding":"https://api.kimi.com/coding/v1",minimax:"https://api.minimax.io/v1",deepseek:"https://api.deepseek.com/v1"};
+    if(trackingDefaults[control.value])providers[index].api_url=trackingDefaults[control.value];
+    if(previousType!==control.value){delete providers[index].tracking;Object.keys(providers[index]).filter(k=>k.startsWith("tracking_")).forEach(k=>delete providers[index][k]);}
     if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
     if (classifierProvider(providers[index])) {
       providers[index].api_url = control.value === "jev" ? "https://api.typesafe.ai/v1" : "";
@@ -456,6 +467,12 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
     api_key_env: provider.bearer_token?.env || "",
     api_key_file: provider.bearer_token?.file || "",
     management_env: provider.management_token?.env || "",
+    tracking_credential_id: provider.tracking?.token?.credential || "",
+    tracking_provider: provider.tracking?.provider || "",
+    tracking_team_id: provider.tracking?.team_id || "",
+    tracking_base_url: provider.tracking?.base_url || "",
+    tracking_usage_url: provider.tracking?.usage_url || "",
+    tracking_mode: provider.tracking?.mode || "",
     tls_ca: provider.tls?.ca_file || "",
     tls_server: provider.tls?.server_name || "",
     api_url: `${String(provider.base_url || "").replace(/\/$/, "")}${provider.api_path || ""}`,
@@ -597,6 +614,7 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
   Object.entries(provider).forEach(([key, raw]) => {
     // The API URL is the source of truth; do not overwrite it with fields
     // retained from the loaded YAML after converting it for the form.
+    if(key.startsWith("tracking_"))return;
     if (key === "base_url" || key === "api_path" || key === "discover_models") return;
     if (["api_key", "api_key_env", "api_key_file", "bearer_token","credential_id","management_id"].includes(key)) return;
     if (key === "discover") { output.discover_models = Boolean(raw); return; }
@@ -627,6 +645,10 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
     else if (provider.credential_id) output.bearer_token={credential:provider.credential_id};
     else if (provider.bearer_token) output.bearer_token=provider.bearer_token;
   }
+  const tracking:any={...(provider.tracking as any||{})};
+  for(const field of ["provider","base_url","usage_url","team_id","mode"]){const key="tracking_"+field;if(provider[key]!==undefined){if(provider[key])tracking[field]=provider[key];else delete tracking[field];}}
+  if(provider.tracking_token)tracking.token={value:provider.tracking_token};else if(provider.tracking_credential_id)tracking.token={credential:provider.tracking_credential_id};
+  if(Object.keys(tracking).length)output.tracking=tracking;else delete output.tracking;
   if (provider.management_id) output.management_token={credential:provider.management_id};
   return output;
 }

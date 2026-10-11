@@ -126,7 +126,8 @@ func (p *Compatible) accountQuota(ctx context.Context) (quota.Status, error) {
 	if envelope.Data.TotalCredits == nil || envelope.Data.TotalUsage == nil {
 		return quota.Status{}, errors.New("credit response missing totals")
 	}
-	return quota.Status{Known: true, Limit: *envelope.Data.TotalCredits, Used: *envelope.Data.TotalUsage, Unit: "USD", Source: "openrouter_credits"}, nil
+	remaining := *envelope.Data.TotalCredits - *envelope.Data.TotalUsage
+	return quota.Status{Known: true, Limit: *envelope.Data.TotalCredits, Used: *envelope.Data.TotalUsage, Unit: "USD", Source: "openrouter_credits", Balances: []quota.Balance{{Name: "account", Unit: "USD", Remaining: &remaining}}}, nil
 }
 
 func (p *Compatible) ID() string { return p.id }

@@ -1661,7 +1661,7 @@ func buildProvider(cfg config.ProviderConfig) (provider.OpenAIProvider, error) {
 	return buildProviderWithState(cfg)
 }
 
-func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Database) (provider.OpenAIProvider, error) {
+func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*state.Database) (provider.OpenAIProvider, error) {
 	var db *state.Database
 	if len(databases) > 0 {
 		db = databases[0]
@@ -1836,6 +1836,14 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 		switch cfg.Type {
 		case "gemini":
 			apiPath = "/v1beta/openai"
+		case "opencode-go":
+			apiPath = "/zen/go/v1"
+		case "opencode-zen":
+			apiPath = "/zen/v1"
+		case "zai":
+			apiPath = "/api/coding/paas/v4"
+		case "kimi-coding":
+			apiPath = "/coding/v1"
 		default:
 			apiPath = "/v1"
 		}
@@ -1848,6 +1856,8 @@ func buildProviderWithState(cfg config.ProviderConfig, databases ...*state.Datab
 	var keyQuotaURL string
 	if cfg.Type == "openrouter" {
 		keyQuotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/key"
+		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
+		quotaHeaders = headers.Clone()
 	}
 	if cfg.Type == "openrouter" && cfg.ManagementToken != nil {
 		managementToken := "database-managed"

@@ -896,6 +896,25 @@ function value(provider                                  , key        )         
 function checked(provider                                  , key        )         { return provider[key] === false ? "" : "checked"; }
 function subscriptionProvider(provider                                  )          { return provider.type === "openai-codex"; }
 const knownProviderIDs                         = { "opencode-go":"opencode-go","opencode-zen":"opencode-zen","standard-compute":"standard-compute",zai:"zai","kimi-coding":"kimi-coding",minimax:"minimax",deepseek:"deepseek", openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous", jev: "jev" };
+// Complete API URLs shown when selecting a hosted integration. Custom services
+// require an operator URL; Ollama uses the existing local/remote detection flow.
+const knownProviderURLs                         = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com",
+  gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
+  xai: "https://api.x.ai/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  "opencode-go": "https://opencode.ai/zen/go/v1",
+  "opencode-zen": "https://opencode.ai/zen/v1",
+  "standard-compute": "https://api.stdcmpt.com/v1",
+  zai: "https://api.z.ai/api/coding/paas/v4",
+  "kimi-coding": "https://api.kimi.com/coding/v1",
+  minimax: "https://api.minimax.io/v1",
+  deepseek: "https://api.deepseek.com/v1",
+  nous: "https://inference-api.nousresearch.com/v1",
+  "openai-codex": "https://chatgpt.com/backend-api/codex",
+  jev: "https://api.typesafe.ai/v1",
+};
 function knownProviderID(type        , index        )         {
   const base = knownProviderIDs[type];
   if (!base) return "";
@@ -1037,16 +1056,14 @@ function updateProvider(event       )       {
     const previousBase = knownProviderIDs[String(previousType)] || "";
     if (previousBase && (previousID === previousBase || /^.+-\d+$/.test(previousID))) providers[index].id = "";
     if (control.value === "openai-codex" && (!providers[index].api_url || providers[index].models === "setup")) {
-      providers[index].api_url = "https://chatgpt.com/backend-api/codex";
       providers[index].models = "gpt-5.3-codex";
     }
-    const trackingDefaults                      ={"opencode-go":"https://opencode.ai/zen/go/v1","opencode-zen":"https://opencode.ai/zen/v1","standard-compute":"https://api.stdcmpt.com/v1",zai:"https://api.z.ai/api/coding/paas/v4","kimi-coding":"https://api.kimi.com/coding/v1",minimax:"https://api.minimax.io/v1",deepseek:"https://api.deepseek.com/v1"};
-    if(trackingDefaults[control.value])providers[index].api_url=trackingDefaults[control.value];
+    const defaultURL = knownProviderURLs[control.value];
+    if (defaultURL && (previousType !== control.value || !providers[index].api_url)) providers[index].api_url = defaultURL;
     if(previousType!==control.value){delete providers[index].tracking;Object.keys(providers[index]).filter(k=>k.startsWith("tracking_")).forEach(k=>delete providers[index][k]);}
     if(control.value==="ollama") { providers[index].api_url=""; providers[index].ollama_port=""; }
-    if (control.value === "nous" && !providers[index].api_url) providers[index].api_url = "https://inference-api.nousresearch.com/v1";
     if (classifierProvider(providers[index])) {
-      providers[index].api_url = control.value === "jev" ? "https://api.typesafe.ai/v1" : "";
+      if (control.value === "jev_compatible") providers[index].api_url = "";
       providers[index].api_key = "";
       providers[index].api_key_env = "";
       providers[index].api_key_file = "";

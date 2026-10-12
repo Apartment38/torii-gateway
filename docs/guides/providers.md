@@ -8,7 +8,10 @@ key, or the subscription account required by the selected profile.
 
 1. Open **Providers → Add provider** and choose its type from the list.
 2. Give it a unique lowercase ID, such as `local` or `openrouter`.
-3. Set its API URL, using the profile defaults in [Provider support](../reference/providers.md).
+3. Known hosted providers fill in their API URL when selected, including the
+   required API path. Review or customize it using [Provider support](../reference/providers.md).
+   For **OpenAI compatible** and **Jev compatible**, enter your service's URL;
+   for **Ollama**, use detection or enter a remote API URL.
 4. For API-key services, enter the upstream key in the provider's key field.
    For Codex subscriptions, use **Log in** after configuring the provider.
 5. Test the connection, inspect the returned model list, and choose **Save provider**.

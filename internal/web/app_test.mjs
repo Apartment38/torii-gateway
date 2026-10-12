@@ -2231,3 +2231,29 @@ test("renaming a provider never rewrites a judge's upstream author namespace",()
  const app=consoleFixture(()=>response({models:[]}));app.run('config={router:{classifier:{type:"jev",transport:"provider",provider:"typesafe",model:"typesafe/jev-1.13"}}};renameProviderReferences(config,"typesafe","new")');
  assert.equal(app.run('config.router.classifier.provider'),'new');assert.equal(app.run('config.router.classifier.model'),'typesafe/jev-1.13');
 });
+
+test("admin user settings load and save with reauthentication and CSRF outside configuration",async()=>{
+ const app=consoleFixture((url,options)=>response(options?.method==="PUT"?{message:"Updated"}:{username:"admin",email:"admin@example.com"}));
+ app.run('consoleSession="active";csrfToken="csrf"');
+ await app.run('loadAdminAccount()');
+ assert.equal(app.run('document.querySelector("#admin-username").value'),"admin");
+ assert.equal(app.run('document.querySelector("#admin-email").value'),"admin@example.com");
+ app.run('document.querySelector("#admin-current-password").value="old-password-123";document.querySelector("#admin-password").value="new-password-123";document.querySelector("#admin-confirm").value="new-password-123";for(const id of ["#admin-username","#admin-email","#admin-password"])document.querySelector(id).reportValidity=()=>true');
+ await app.run('document.querySelector("#save-admin-user").listeners.click()');
+ const saved=app.calls.find(c=>c.options?.method==="PUT");
+ assert.equal(saved.url,"/gateway/v1/admin/account");
+ assert.equal(saved.options.headers["X-CSRF-Token"],"csrf");
+ assert.deepEqual(JSON.parse(saved.options.body),{username:"admin",email:"admin@example.com",password:"new-password-123",current_password:"old-password-123"});
+ assert.equal(app.context.redirect,"/login?updated=1");
+ for(const id of ["#admin-current-password","#admin-password","#admin-confirm"])assert.equal(app.run(`document.querySelector("${id}").value`),"");
+ assert.equal(app.run('isConsoleViewControl({closest:selector=>selector==="#admin-user"})'),true);
+});
+test("admin user rejects mismatched passwords and preserves failures without exposing secrets",async()=>{
+ const app=consoleFixture(()=>response({error:"Incorrect current password"},false));
+ app.run('consoleSession="active";document.querySelector("#admin-username").value="admin";document.querySelector("#admin-current-password").value="wrong-password";document.querySelector("#admin-password").value="new-password-123";document.querySelector("#admin-confirm").value="different-password";for(const id of ["#admin-username","#admin-email","#admin-password"])document.querySelector(id).reportValidity=()=>true');
+ await app.run('document.querySelector("#save-admin-user").listeners.click()');assert.equal(app.calls.length,0);
+ app.run('document.querySelector("#admin-confirm").value="new-password-123"');
+ await app.run('document.querySelector("#save-admin-user").listeners.click()');
+ assert.equal(app.run('document.querySelector("#admin-account-status").textContent'),"Incorrect current password");assert.equal(app.context.redirect,undefined);
+ assert.equal(app.run('document.querySelector("#admin-current-password").value'),"");
+});

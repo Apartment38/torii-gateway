@@ -1531,6 +1531,7 @@ function navigate()       {
   if(current==="overview"){renderOverview();if(configurationLoaded)void loadOverview();}
   if(current==="activity")void startActivity();else if(activityStream)stopActivity();
   if(current==="provider-balances" && configurationLoaded)void loadProviderBalancesPage();
+  if(current==="server" && configurationLoaded)void loadAdminAccount();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models"){if(configurationLoaded)void loadModelsPage();else document.querySelector("#models-list") .innerHTML=modelLoadingMarkup;}
   if (current === "routing") {updateClassifierOptions();renderSmartRouterScope();if(configurationLoaded)void loadSmartRouterModels();}
@@ -1812,7 +1813,7 @@ document.querySelector("#inspect-benchmarks") .addEventListener("click", () => {
 document.querySelector("#save-button") .addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle") .addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-providers-available","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size","benchmark-fields-available","benchmark-fields-enabled"].includes(target.id)||Boolean(target.dataset?.benchmarkCell);}
+function isConsoleViewControl(target            )        {return !!target.closest?.("#admin-user") || ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-providers-available","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size","benchmark-fields-available","benchmark-fields-enabled"].includes(target.id)||Boolean(target.dataset?.benchmarkCell);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target               ))markDirty();});
 form.addEventListener("change",event=>{const target=event.target               ;if(!(selectedSmartRouter===""&&(target.closest("#routing")||(target                    ).name?.startsWith("router."))) && !isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
@@ -1883,10 +1884,10 @@ function showNewAPIKey(key       ,warning        )     {
 }
 document.querySelector("#setup-form") .addEventListener("submit",async event=>{
   event.preventDefault();const field=(id       )=>document.querySelector                  (id) ;
-  const username=field("#setup-username").value,password=field("#setup-password").value,code=field("#setup-code").value;
+  const email=field("#setup-email").value,username=field("#setup-username").value,password=field("#setup-password").value,code=field("#setup-code").value;
   if(password!==field("#setup-confirm").value){document.querySelector("#setup-error") .textContent="Passwords do not match.";return;}
   field("#setup-password").value="";field("#setup-confirm").value="";field("#setup-code").value="";
-  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");await createBrowserSession(username,password);document.querySelector                   ("#setup-dialog") .close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
+  try{const response=await fetch("/gateway/v1/setup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,email,password,setup_code:code})});const result=await response.json();if(!response.ok)throw new Error(result.error||"Setup failed");await createBrowserSession(username,password);document.querySelector                   ("#setup-dialog") .close();await loadServerConfig();void loadCredentialMetadata();showNewAPIKey(result.api_key,result.warning);}
   catch(error){document.querySelector("#setup-error") .textContent=error instanceof Error?error.message:"Administrator setup failed.";}
 });
 document.querySelector("#generate-api-key") .addEventListener("click",async()=>{
@@ -1995,3 +1996,28 @@ document.querySelector("#smart-router-model-remove")?.addEventListener("click",(
 for(const [id,enable] of [["smart-router-models-available",true],["smart-router-models",false]]                      ){
  document.querySelector(id.startsWith("#")?id:`#${id}`)?.addEventListener("dblclick",event=>{const target=event.target                     ;void transferSmartModels(enable,target.tagName==="OPTION"?target.value:undefined);});
 }
+
+async function loadAdminAccount()              {
+ const login=consoleSession;
+ try{
+  const response=await gatewayFetch("/gateway/v1/admin/account",{headers:await authProvider.headers()});
+  if(!response.ok)throw new Error("Unable to load admin user.");const account=await response.json();if(login!==consoleSession)return;
+  document.querySelector                  ("#admin-username") .value=account.username||"";
+  document.querySelector                  ("#admin-email") .value=account.email||"";
+ }catch{document.querySelector("#admin-account-status") .textContent="Unable to load admin user. Reopen the Server page to retry.";}
+}
+document.querySelector("#save-admin-user") .addEventListener("click",async()=>{
+ const field=(id       )=>document.querySelector                  (id) ;
+ const status=document.querySelector("#admin-account-status") ;
+ const username=field("#admin-username").value.trim(),email=field("#admin-email").value.trim(),password=field("#admin-password").value,current_password=field("#admin-current-password").value;
+ if(!username||!current_password){status.textContent="Enter your username and current password.";return;}
+ for(const id of ["#admin-username","#admin-email","#admin-password"]){if(!field(id).reportValidity())return;}
+ if(password!==field("#admin-confirm").value){status.textContent="New passwords do not match.";return;}
+ const button=document.querySelector                   ("#save-admin-user") ;button.disabled=true;
+ try{
+  const response=await gatewayFetch("/gateway/v1/admin/account",{method:"PUT",headers:{...await authProvider.headers(),"Content-Type":"application/json"},body:JSON.stringify({username,email,password,current_password})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error||"Account update failed.");
+  signOutConsole();location.assign("/login?updated=1");
+ }catch(error){status.textContent=error instanceof Error?error.message:"Account update failed.";}
+ finally{for(const id of ["#admin-password","#admin-confirm","#admin-current-password"])field(id).value="";button.disabled=false;}
+});

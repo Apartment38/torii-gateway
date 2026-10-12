@@ -461,26 +461,31 @@ func buildHandler(cfg *config.Config) (http.Handler, error) {
 }
 
 type handlerRuntime struct {
-	adminBasic      *api.BasicAdminAuthenticator
-	configMu        sync.Mutex
-	configKey       []byte
-	configVersion   uint64
-	usageMu         sync.Mutex
-	usageStore      *usage.Store
-	accountingStore *accounting.Store
-	activityStore   *activity.Store
-	setupDigest     [32]byte
-	setupExpires    time.Time
-	credentials     *state.Database
-	background      context.Context
-	swapMu          sync.Mutex
-	mu              sync.RWMutex
-	handler         http.Handler
-	configPath      string
-	loginMu         sync.Mutex
-	logins          map[string]providerLogin
-	loginFlows      map[string]providerLoginFlow
-	loginSessions   map[string]providerLoginSession
+	adminBasic        *api.BasicAdminAuthenticator
+	resetMu           sync.Mutex
+	resetBusy         bool
+	resetRequestAfter time.Time
+	resetAttemptAfter time.Time
+	resetSender       func(string, string) error
+	configMu          sync.Mutex
+	configKey         []byte
+	configVersion     uint64
+	usageMu           sync.Mutex
+	usageStore        *usage.Store
+	accountingStore   *accounting.Store
+	activityStore     *activity.Store
+	setupDigest       [32]byte
+	setupExpires      time.Time
+	credentials       *state.Database
+	background        context.Context
+	swapMu            sync.Mutex
+	mu                sync.RWMutex
+	handler           http.Handler
+	configPath        string
+	loginMu           sync.Mutex
+	logins            map[string]providerLogin
+	loginFlows        map[string]providerLoginFlow
+	loginSessions     map[string]providerLoginSession
 }
 
 type providerLogin struct {
@@ -782,6 +787,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		}
 		if runtime.credentials != nil {
 			mux.Handle("/gateway/v1/session", runtime.adminSessionAPI(cfg.Server))
+			protect("/gateway/v1/admin/account", runtime.adminAccount)
+			mux.Handle("/gateway/v1/password-reset", runtime.passwordResetAPI(cfg.Server))
+			mux.Handle("/gateway/v1/password-reset/confirm", runtime.passwordResetAPI(cfg.Server))
 			mux.HandleFunc("GET /gateway/v1/setup", runtime.setupStatus)
 			mux.HandleFunc("POST /gateway/v1/setup", runtime.setupAdmin)
 			protect("POST /gateway/v1/admin/api-key", runtime.rotateAPIKey)

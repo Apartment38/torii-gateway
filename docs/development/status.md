@@ -2,6 +2,23 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Administrator account and email password recovery
+
+Implemented on `feat/admin-password-reset` in `/workspace/torii-admin-reset`.
+Setup and CLI creation accept an optional recovery email. Server → Admin User
+supports username/email/password changes with current-password reauthentication.
+Login offers email recovery with a 30-minute, single-use link, transactional reset
+consumption, session revocation, generic asynchronous request responses, bounded
+workers/cooldowns, and verified TLS SMTP. Schema 10 preserves existing accounts
+and adds only hashed reset tokens. Deployment requires public HTTPS/SMTP runtime
+configuration; see the environment reference.
+
+Validation so far: state, gateway, and web tests; 135 console cases and four login/
+reset page cases; STARTTLS/implicit-TLS delivery and plaintext-downgrade rejection;
+generated script freshness and diff whitespace. Provisioned Go 1.25.1/caches are
+used with `-buildvcs=false` because the sandbox Git wrapper cannot provide VCS
+stamping to child builds. Full contributor checks and PR creation are in progress.
+
 ## Decision-model passthrough and provider namespaces
 
 Implemented on `feat/jev-provider-passthrough` in `/workspace/torii-jev`,

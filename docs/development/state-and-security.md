@@ -38,9 +38,22 @@ existing database without an explicit re-encryption procedure.
 
 Administrator Basic login is protected by bounded hashing concurrency and a
 five-failed-attempts/minute/client limit. Passwords use salted PBKDF2-HMAC-SHA256
-with 600,000 iterations; username/hash/salt are inside an encrypted record.
+with 600,000 iterations; username/email/hash/salt are inside an encrypted record.
 The stable internal owner is `default`; multiple administrators are not supported.
 Browser login uses an opaque HttpOnly, SameSite=Lax cookie. Only token hashes and expiry are stored in SQLite; sessions survive restarts. Cookie mutations require a CSRF token and a matching origin. Administrator credential changes invalidate existing sessions. HTTPS sets Secure; forwarded HTTPS is trusted only for explicitly configured proxy networks.
+
+Account changes require current-password reauthentication and a transactional
+password check; all changes refresh the password salt/hash, delete sessions, and
+invalidate reset links. Email is optional for backward compatibility.
+Schema 10 adds one reset record storing a SHA-256 hash of a random 256-bit token,
+account fingerprint, expiry, and issuance cooldown; the plaintext token is sent
+only to the configured mailbox. Confirmation validates and consumes the token
+in the same write transaction as the credential update, preventing replay and
+concurrent reuse. Links expire after 30 minutes and are replaced by newer links.
+Asynchronous requests have identical responses without waiting on email lookup or
+SMTP, with bounded workers and global rate limits. SMTP requires verified TLS;
+links use an explicitly configured HTTPS origin, carry tokens in a URL fragment,
+and the reset page removes the fragment before submission. See [Environment](../reference/environment.md#password-reset-email-delivery).
 
 Named client keys use random 256-bit values, encrypted records, and indexed SHA-256
 digests. Authentication verifies the decrypted record; no plaintext cache.

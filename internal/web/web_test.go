@@ -15,7 +15,7 @@ func TestConsoleProviderStatusBehavior(t *testing.T) {
 	if err != nil {
 		t.Skip("Node.js unavailable; run node --test internal/web/app_test.mjs separately")
 	}
-	if output, err := exec.Command(node, "--test", "app_test.mjs").CombinedOutput(); err != nil {
+	if output, err := exec.Command(node, "--test", "app_test.mjs", "auth_test.mjs").CombinedOutput(); err != nil {
 		t.Fatalf("console behavior tests failed: %v\n%s", err, output)
 	}
 }
@@ -39,5 +39,18 @@ func TestHandlerServesConsoleAndBrandAssets(t *testing.T) {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/web/torii-gateway-icon.png", nil))
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || response.Body.Len() == 0 {
 		t.Fatalf("asset response = %d content-type=%q bytes=%d", response.Code, response.Header().Get("Content-Type"), response.Body.Len())
+	}
+}
+
+func TestResetPageIsPublicAndDoesNotCacheOrLeakTokens(t *testing.T) {
+	for _, path := range []string{"/reset-password", "/reset-password.html", "/web/reset-password.html"} {
+		w := httptest.NewRecorder()
+		web.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "id=\"reset-password\"") {
+			t.Fatal("reset page unavailable", path, w.Code)
+		}
+		if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Referrer-Policy") != "no-referrer" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			t.Fatal("missing reset page protections", path, w.Header())
+		}
 	}
 }

@@ -9,7 +9,7 @@ import (
 // BaselineSchemaVersion is the first database-only release. Older installations
 // must be recreated once; all subsequent upgrades preserve their database.
 const BaselineSchemaVersion = 4
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 type schemaMigration struct {
 	Version int
@@ -35,6 +35,8 @@ CREATE TABLE activity_events(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT
 CREATE INDEX activity_time ON activity_events(at,id);
 CREATE TRIGGER activity_insert AFTER INSERT ON activity_events BEGIN UPDATE activity_storage SET bytes=bytes+NEW.size WHERE id=1; END;
 CREATE TRIGGER activity_delete AFTER DELETE ON activity_events BEGIN UPDATE activity_storage SET bytes=bytes-OLD.size WHERE id=1; END;
+`}, {Version: 10, SQL: `
+CREATE TABLE admin_password_reset(id INTEGER PRIMARY KEY CHECK(id=1), token_hash BLOB NOT NULL CHECK(length(token_hash)=32), admin_fingerprint BLOB NOT NULL, expires_at INTEGER NOT NULL, requested_at INTEGER NOT NULL);
 `}}
 
 const credentialSchema = `

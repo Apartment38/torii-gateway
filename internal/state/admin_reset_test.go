@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -145,5 +146,47 @@ func TestResetReplacementAndAccountChangesInvalidateLinks(t *testing.T) {
 	}
 	if err = d.ResetAdminPassword(next, "new-password-123"); !errors.Is(err, ErrInvalidReset) {
 		t.Fatal("link survived email change")
+	}
+}
+
+func TestAdminRecoveryMigrationPreservesLegacyAccount(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.db")
+	key := bytes.Repeat([]byte{1}, 32)
+	old, err := openDatabase(path, key, 9, schemaMigrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiKey, err := old.CreateAdmin("legacy-admin", "old-password-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, _, err := old.NewAdminSession(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	upgraded, err := OpenDatabase(path, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	a, err := upgraded.Admin()
+	if err != nil || a.Email != "" || !upgraded.VerifyAdmin("legacy-admin", "old-password-123") {
+		t.Fatal("legacy account lost", err)
+	}
+	if actual, _ := upgraded.GatewayAPIKey(); actual != apiKey {
+		t.Fatal("key changed during migration")
+	}
+	if _, err = upgraded.AdminSession(session); err != nil {
+		t.Fatal("session lost during migration")
+	}
+	if _, _, err = upgraded.IssueAdminPasswordReset("admin@example.com"); !errors.Is(err, ErrInvalidReset) {
+		t.Fatal("email-less account recovery enabled")
+	}
+	if err = upgraded.UpdateAdmin("legacy-admin", "admin@example.com", "", "old-password-123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = upgraded.IssueAdminPasswordReset("admin@example.com"); err != nil {
+		t.Fatal("new reset table unavailable", err)
 	}
 }

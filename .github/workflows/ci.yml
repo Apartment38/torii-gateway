@@ -34,6 +34,7 @@ jobs:
         run: |
           node scripts/build-console.mjs --check
           node internal/web/app_test.mjs
+          node internal/web/auth_test.mjs
           node scripts/check-release.test.mjs
 
       - name: Check formatting

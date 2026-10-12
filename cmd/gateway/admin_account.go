@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/config"
@@ -54,7 +55,11 @@ func (r *handlerRuntime) adminAccount(w http.ResponseWriter, req *http.Request) 
 func (r *handlerRuntime) passwordResetAPI(server config.ServerConfig) http.HandlerFunc {
 	sender := r.resetSender
 	if sender == nil {
-		sender, _ = passwordResetSenderFromEnv()
+		var err error
+		sender, err = passwordResetSenderFromEnv()
+		if err != nil && (os.Getenv("TORII_PUBLIC_URL") != "" || os.Getenv("TORII_SMTP_ADDR") != "") {
+			log.Printf("Administrator password reset email delivery disabled: %v", err)
+		}
 	}
 	return func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

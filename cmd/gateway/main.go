@@ -788,8 +788,9 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		if runtime.credentials != nil {
 			mux.Handle("/gateway/v1/session", runtime.adminSessionAPI(cfg.Server))
 			protect("/gateway/v1/admin/account", runtime.adminAccount)
-			mux.Handle("/gateway/v1/password-reset", runtime.passwordResetAPI(cfg.Server))
-			mux.Handle("/gateway/v1/password-reset/confirm", runtime.passwordResetAPI(cfg.Server))
+			resetHandler := runtime.passwordResetAPI(cfg.Server)
+			mux.Handle("/gateway/v1/password-reset", resetHandler)
+			mux.Handle("/gateway/v1/password-reset/confirm", resetHandler)
 			mux.HandleFunc("GET /gateway/v1/setup", runtime.setupStatus)
 			mux.HandleFunc("POST /gateway/v1/setup", runtime.setupAdmin)
 			protect("POST /gateway/v1/admin/api-key", runtime.rotateAPIKey)

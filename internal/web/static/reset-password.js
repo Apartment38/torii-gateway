@@ -1,14 +1,24 @@
-let token = location.hash.slice(1);
-// Remove the secret from the visible URL and current history entry immediately.
-history.replaceState(null, '', location.pathname);
+let token = '';
 const form = document.querySelector('#reset-password');
 const status = document.querySelector('#reset-status');
 const button = form.querySelector('button');
-if (!/^[a-f0-9]{64}$/.test(token)) {
- token = '';
- status.textContent = 'This reset link is invalid. Request a new link from the login page.';
- button.disabled = true;
+const instructions = document.querySelector('#reset-instructions');
+const originalInstructions = instructions.textContent;
+function readResetLink() {
+ token = location.hash.slice(1);
+ // Remove the secret from the visible URL and current history entry immediately.
+ history.replaceState(null, '', location.pathname);
+ form.hidden = false;
+ form.elements.password.value = ''; form.elements.confirm.value = '';
+ status.textContent = ''; instructions.textContent = originalInstructions;
+ if (!/^[a-f0-9]{64}$/.test(token)) {
+  token = '';
+  status.textContent = 'This reset link is invalid. Request a new link from the login page.';
+ }
+ button.disabled = !token;
 }
+readResetLink();
+window.addEventListener('hashchange', readResetLink);
 form.addEventListener('submit', async event => {
  event.preventDefault();
  if (!token) return;

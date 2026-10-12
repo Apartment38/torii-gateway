@@ -2,6 +2,27 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Console monitoring and routing fixes
+
+Implemented on `fix/console-monitoring-routing-balances` in
+`/workspace/torii-console-fixes`, starting from current main `de98767`.
+Activity Monitoring edits MiB while retaining byte-based API storage, including
+fractional sizes. Prompt and Jev inspectors indent JSON and display multiline
+text, with raw fallback for truncated/non-JSON bodies. Smart routing loads the
+catalog on direct entry and refreshes after provider changes, filters disabled
+connections, and retains in-flight discovery across unrelated policy saves.
+Provider Balances renders one card per provider, deduplicating shared credit,
+spend and quota evidence while retaining distinct model-scoped windows.
+The console guide describes the updated units and behavior.
+
+Validation: 144 console tests, generated-script freshness, all-package Go tests,
+vet, build, formatting and unchanged module metadata pass. Desktop (1440×1000)
+and mobile (390×844) Chromium checks pass with a mocked gateway, no page errors
+and no horizontal page overflow. Go tests use inherited `GOFLAGS=-buildvcs=false`
+for the imported main snapshot's shallow history. Browser and Go HTTP-server
+tests run outside the socket-restricted sandbox. All-package race tests pass.
+No live gateway data changed. Review: PR #32.
+
 ## Benchmarks page controls
 
 Implemented on `feat/benchmark-page-controls` in

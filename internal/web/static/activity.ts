@@ -49,14 +49,25 @@ function activityDebugButtons(e:any):string{
  const button=(kind:string,label:string,available:boolean)=>`<td data-label="${label}"><button type="button" class="button quiet" data-inspect-activity="${e.id}" data-inspect-kind="${kind}" ${available?"":"disabled"} title="${available?`Inspect ${label.toLowerCase()}`:"Details were not recorded for this event"}">Inspect ${label.toLowerCase()}</button></td>`;
  return `${loadedConfiguration.activity?.prompt_logging?button("prompt","Prompt",Boolean(e.prompt)):""}${loadedConfiguration.activity?.jev_decision_logging?button("jev","Jev decision",Boolean(e.jev_request)):""}`;
 }
+function readableActivityBody(body:string):string{
+ try{
+  const formatted=JSON.stringify(JSON.parse(body),null,2);
+  // Expand newlines inside prompt text as well as indenting the JSON structure.
+  return formatted.split("\n").map(line=>line.replace(/"(?:\\.|[^"\\])*"/g,token=>{
+   const value=JSON.parse(token);if(!value.includes("\n"))return token;
+   const indent=line.match(/^\s*/)?.[0]||"";
+   return '"'+value.split("\n").map((part:string)=>JSON.stringify(part).slice(1,-1)).join("\n"+indent+"  ")+'"';
+  })).join("\n");
+ }catch{return body;}
+}
 function openActivityInspector(id:number,kind:string):void{
  const e=activityRows.find(row=>row.id===id);if(!e)return;
  if(kind==="prompt"&&!loadedConfiguration.activity?.prompt_logging||kind==="jev"&&!loadedConfiguration.activity?.jev_decision_logging)return;
  const dialog=document.querySelector<HTMLDialogElement>("#activity-inspector-dialog")!;
  const title=document.querySelector<HTMLElement>("#activity-inspector-title")!;
  title.textContent=kind==="prompt"?"API prompt":"Jev decision";
- document.querySelector("#activity-inspector-note")!.textContent=e.debug_truncated?"Debug capture was truncated at 64 KiB per body.":"Original API body as captured. HTTP authorization headers are not recorded.";
- const block=(label:string,body:string)=>`<section><h3>${label}</h3><pre class="activity-debug-body">${escapeHTML(body)}</pre></section>`;
+ document.querySelector("#activity-inspector-note")!.textContent=e.debug_truncated?"Debug capture was truncated at 64 KiB per body.":"Captured API body formatted for reading. HTTP authorization headers are not recorded.";
+ const block=(label:string,body:string)=>`<section><h3>${label}</h3><pre class="activity-debug-body">${escapeHTML(readableActivityBody(body))}</pre></section>`;
  document.querySelector("#activity-inspector-content")!.innerHTML=kind==="prompt"?block("API request",e.prompt||"Prompt was not recorded."):block("Request sent to Jev",e.jev_request||"No Jev request was recorded.")+block("Jev response",e.jev_response||"No response was received.");
  dialog.showModal();title.focus?.();
 }

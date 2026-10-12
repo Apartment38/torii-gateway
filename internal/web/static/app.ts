@@ -453,6 +453,7 @@ function updateProvider(event: Event): void {
     if(editingProvider===index)providerList.querySelector<HTMLSelectElement>(`[data-provider="${index}"][data-key="type"]`)?.focus?.({preventScroll:true});
     void testProvider(index);
   }
+  if(key==="enabled")renderSmartRouterScope();
   markDirty();
 }
 
@@ -473,8 +474,9 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   configurationRevision = revision;
   consoleTimezone=config.server?.timezone||"";
   for(const name of ["prompt_logging","jev_decision_logging"])(form.elements.namedItem(`activity.${name}`) as HTMLInputElement).checked=Boolean(config.activity?.[name]);
-  for(const name of ["max_bytes","retention_days"])(form.elements.namedItem(`activity.${name}`) as HTMLInputElement).value=String(config.activity?.[name]||({max_bytes:104857600,retention_days:7} as Record<string,number>)[name]);
+  (form.elements.namedItem("activity.retention_days") as HTMLInputElement).value=String(config.activity?.retention_days||7);
   (form.elements.namedItem("server.timezone") as HTMLInputElement).value=consoleTimezone;
+  const providerCatalogChanged=JSON.stringify(loadedConfiguration.providers)!==JSON.stringify(config.providers);
   loadedConfiguration=structuredClone(config);modelPricingDraft=structuredClone(config.model_pricing||{});modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
@@ -533,6 +535,7 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   renderProviders();
   const fill = (value: any, prefix = ""): void => Object.entries(value || {}).forEach(([key, raw]) => {
     const name = prefix ? `${prefix}.${key}` : key;
+    if (name === "activity.max_bytes") return;
     if (raw && typeof raw === "object" && !Array.isArray(raw)) fill(raw, name);
     else {
       const control = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
@@ -540,6 +543,7 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
     }
   });
   fill(config);
+  (form.elements.namedItem("activity.max_bytes") as HTMLInputElement).value=String((config.activity?.max_bytes||104857600)/1048576);
   renderActivity();
   if(overviewRecent)renderOverview();
   if(physicalModels.length)renderModelsPage();
@@ -551,6 +555,7 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   for(const profile of config.smart_routers||[])smartRouterDrafts[profile.model_name]=structuredClone(profile);
   if(!smartRouterDrafts[selectedSmartRouter])selectedSmartRouter="smart";
   renderSmartRouterEditor();
+  if(providerCatalogChanged && (overviewModels!==null||location.hash==="#routing") && consoleSession)void loadSmartRouterModels();
   updateClassifierOptions();
   if (location.hash === "#intelligence" && benchmarksEnabledSaved) void loadBenchmarkData();
 }
@@ -632,7 +637,7 @@ function navigate(): void {
   if(current==="provider-balances" && configurationLoaded)void loadProviderBalancesPage();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models"){if(configurationLoaded)void loadModelsPage();else document.querySelector("#models-list")!.innerHTML=modelLoadingMarkup;}
-  if (current === "routing") updateClassifierOptions();
+  if (current === "routing") {updateClassifierOptions();renderSmartRouterScope();if(configurationLoaded)void loadSmartRouterModels();}
   if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
 }
 
@@ -698,7 +703,7 @@ function readConfig(): Record<string, any> {
   config.server.timezone=String((form.elements.namedItem("server.timezone") as HTMLInputElement)?.value||"").trim();
   if(config.server.timezone){try{new Intl.DateTimeFormat("en-US",{timeZone:config.server.timezone});}catch{throw new Error("Enter a valid IANA timezone, such as America/New_York or UTC");}}
   for(const name of ["prompt_logging","jev_decision_logging"])config.activity[name]=Boolean((form.elements.namedItem(`activity.${name}`) as HTMLInputElement)?.checked);
-  for(const name of ["max_bytes","retention_days"]){const raw=String((form.elements.namedItem(`activity.${name}`) as HTMLInputElement)?.value||"").trim();const value=raw?Number(raw):({max_bytes:104857600,retention_days:7} as Record<string,number>)[name];if(!Number.isSafeInteger(value)||value<({max_bytes:8192,retention_days:1} as Record<string,number>)[name]||name==="retention_days"&&value>3650)throw new Error("Enter valid Activity size and retention limits");config.activity[name]=value;}
+  for(const name of ["max_bytes","retention_days"]){const raw=String((form.elements.namedItem(`activity.${name}`) as HTMLInputElement)?.value||"").trim();const value=raw?Number(raw)*(name==="max_bytes"?1048576:1):({max_bytes:104857600,retention_days:7} as Record<string,number>)[name];if(!Number.isSafeInteger(value)||value<({max_bytes:8192,retention_days:1} as Record<string,number>)[name]||name==="retention_days"&&value>3650)throw new Error("Enter valid Activity size and retention limits");config.activity[name]=value;}
   config.model_pricing=structuredClone(modelPricingDraft);config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
@@ -915,7 +920,7 @@ document.querySelector("#console-login")!.addEventListener("click",()=>location.
 document.querySelector("#console-logout")!.addEventListener("click",async()=>{try{const response=await gatewayFetch("/gateway/v1/session",{method:"DELETE",headers:await authProvider.headers()});if(!response.ok)throw new Error();signOutConsole();location.assign("/login");}catch{toast("Sign-out failed. Retry to revoke the session.");}});
 document.querySelector("#login-form")!.addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector<HTMLInputElement>("#login-username")!.value;const input=document.querySelector<HTMLInputElement>("#login-password")!;const password=input.value;input.value="";
-  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(revision!==configurationRevision){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
+  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(providerConfig!==JSON.stringify(loadedConfiguration.providers)){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error")!.textContent="";document.querySelector<HTMLDialogElement>("#login-dialog")!.close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
   catch{expireConsoleSession();document.querySelector("#login-error")!.textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata():Promise<void>{
@@ -985,6 +990,23 @@ async function detectOllama(provider:Record<string,any>):Promise<void>{
  const index=providers.indexOf(provider);const input=providerList.querySelector<HTMLInputElement>(`[data-provider="${index}"][data-key="ollama_port"]`);if(input)input.value=provider.ollama_port;
 }
 
+let smartRouterModelsSequence=0;
+async function loadSmartRouterModels():Promise<void>{
+ const sequence=++smartRouterModelsSequence,login=consoleSession,providerConfig=JSON.stringify(loadedConfiguration.providers);
+ if(!login)return;
+ const status=document.querySelector<HTMLElement>("#smart-router-model-status")!;
+ status.textContent="Loading available models…";
+ try{
+  const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});
+  if(sequence!==smartRouterModelsSequence||login!==consoleSession||providerConfig!==JSON.stringify(loadedConfiguration.providers))return;
+  if(!response.ok)throw new Error("Model discovery unavailable. Reopen Smart routing to retry.");
+  const data=await response.json();
+  if(sequence!==smartRouterModelsSequence||login!==consoleSession||providerConfig!==JSON.stringify(loadedConfiguration.providers))return;
+  overviewModels=data.models||[];renderSmartRouterScope();
+  status.textContent=overviewModels!.length?"":"No models discovered from enabled providers.";
+ }catch(error){if(sequence===smartRouterModelsSequence&&login===consoleSession&&providerConfig===JSON.stringify(loadedConfiguration.providers))status.textContent=error instanceof Error?error.message:"Model discovery unavailable. Reopen Smart routing to retry.";}
+}
+
 function renderSmartRouterScope():void{
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
  const enabled:string[]=draft.providers||[];
@@ -993,7 +1015,7 @@ function renderSmartRouterScope():void{
   const control=document.querySelector<HTMLSelectElement>(selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }
  const chosen:string[]=draft.models||[];
- const available=(overviewModels||[]).filter(m=>!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id).sort();
+ const available=[...new Set((overviewModels||[]).filter(m=>providers.some(p=>p.id===m.provider_id&&p.enabled!==false&&!classifierProvider(p))&&!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id))].sort();
  for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]] as [string,string[]][]){
   const control=document.querySelector<HTMLSelectElement>(selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }

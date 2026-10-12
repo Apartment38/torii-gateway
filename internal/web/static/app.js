@@ -737,14 +737,41 @@ function renderUsagePage()     {
  const period=document.querySelector                   ("#usage-period") ;period.value=usagePeriod;period.addEventListener("change",()=>{usagePeriod=period.value;renderUsagePage();});
 }
 let providerBalancesData                        =null;
+function combineProviderSnapshots(snapshots      )    {
+ const ordered=[...snapshots].sort((a,b)=>(Date.parse(a.checked_at)||0)-(Date.parse(b.checked_at)||0));
+ const quota=Object.assign({},...ordered);
+ const merge=(rows      ,key                  ,prefer                         )=>{
+  const entries=new Map            ();
+  for(const row of rows){const id=key(row),old=entries.get(id);entries.set(id,old&&prefer?prefer(old,row):row);}
+  return [...entries.values()];
+ };
+ const windowKey=(w    )=>JSON.stringify([w.name,w.unit,w.model,w.slot,w.window_type,w.window_seconds,w.source]);
+ const preferWindow=(old    ,next    )=>{
+  // A model may report the same account cap as informational. Keep one cap,
+  // preserving its enforcement evidence without adding the balances together.
+  return {...next,informational:Boolean(old.informational&&next.informational)};
+ };
+ quota.windows=merge(ordered.flatMap(q=>q.windows||[]),windowKey,preferWindow).map(w=>w.model?{...w,name:`${w.name} (${w.model})`}:w);
+ quota.balances=merge(ordered.flatMap(q=>q.balances||[]),b=>JSON.stringify([b.name,b.unit]));
+ quota.reported_usage=merge(ordered.flatMap(q=>q.reported_usage||[]),u=>JSON.stringify([u.period,u.unit,u.scope]));
+ quota.limits=merge(ordered.flatMap(q=>q.limits||[]),g=>JSON.stringify([g.limit_id,g.map_key,g.scope,g.model]),(old,next)=>({...next,windows:merge([...(old.windows||[]),...(next.windows||[])],windowKey,preferWindow)}));
+ if(ordered.some(q=>q.usage_usd))quota.usage_usd=Object.assign({},...ordered.map(q=>q.usage_usd||{}));
+ quota.source=[...new Set(ordered.map(q=>q.source).filter(Boolean))].join(" · ");
+ quota.known=ordered.some(q=>q.known);
+ // One exhausted model does not establish provider-wide exhaustion.
+ quota.exhausted=ordered.every(q=>q.exhausted);quota.blocked=ordered.every(q=>q.blocked);
+ return quota;
+}
 function renderProviderBalancesPage()     {
  const output=document.querySelector             ("#provider-balances-list") ;
  if(!providerBalancesData){output.innerHTML='<p class="section-note">Provider balances have not loaded yet.</p>';return;}
  const providerSnapshots=new Map            ();
- for(const [id,q] of Object.entries(providerBalancesData)){
-  const provider=id.split("/")[0];const status=q       ;const signature=JSON.stringify([provider,status.source,status.windows,status.balances,status.reported_usage,status.reset_credits,status.usage_usd,status.known,status.exhausted]);
-  if(!providerSnapshots.has(signature))providerSnapshots.set(signature,{id:provider,quota:status});
+ for(const [id,status] of Object.entries(providerBalancesData)){
+  const provider=id.split("/")[0];
+  if(!providerSnapshots.has(provider))providerSnapshots.set(provider,{id:provider,snapshots:[]});
+  providerSnapshots.get(provider).snapshots.push(status);
  }
+ for(const model of providerSnapshots.values())model.quota=combineProviderSnapshots(model.snapshots);
  output.innerHTML=providerSnapshots.size?`<div class="budget-summary-list">${[...providerSnapshots.values()].map(model=>`<div class="budget-summary"><strong>${escapeHTML(model.id)}</strong>${modelTrackingMarkup(model)}</div>`).join("")}</div>`:'<div class="empty-state"><strong>No provider telemetry available</strong><p>Balances and subscription limits appear when providers report account telemetry.</p></div>';
 }
 async function loadProviderBalancesPage()              {
@@ -831,14 +858,25 @@ function activityDebugButtons(e    )       {
  const button=(kind       ,label       ,available        )=>`<td data-label="${label}"><button type="button" class="button quiet" data-inspect-activity="${e.id}" data-inspect-kind="${kind}" ${available?"":"disabled"} title="${available?`Inspect ${label.toLowerCase()}`:"Details were not recorded for this event"}">Inspect ${label.toLowerCase()}</button></td>`;
  return `${loadedConfiguration.activity?.prompt_logging?button("prompt","Prompt",Boolean(e.prompt)):""}${loadedConfiguration.activity?.jev_decision_logging?button("jev","Jev decision",Boolean(e.jev_request)):""}`;
 }
+function readableActivityBody(body       )       {
+ try{
+  const formatted=JSON.stringify(JSON.parse(body),null,2);
+  // Expand newlines inside prompt text as well as indenting the JSON structure.
+  return formatted.split("\n").map(line=>line.replace(/"(?:\\.|[^"\\])*"/g,token=>{
+   const value=JSON.parse(token);if(!value.includes("\n"))return token;
+   const indent=line.match(/^\s*/)?.[0]||"";
+   return '"'+value.split("\n").map((part       )=>JSON.stringify(part).slice(1,-1)).join("\n"+indent+"  ")+'"';
+  })).join("\n");
+ }catch{return body;}
+}
 function openActivityInspector(id       ,kind       )     {
  const e=activityRows.find(row=>row.id===id);if(!e)return;
  if(kind==="prompt"&&!loadedConfiguration.activity?.prompt_logging||kind==="jev"&&!loadedConfiguration.activity?.jev_decision_logging)return;
  const dialog=document.querySelector                   ("#activity-inspector-dialog") ;
  const title=document.querySelector             ("#activity-inspector-title") ;
  title.textContent=kind==="prompt"?"API prompt":"Jev decision";
- document.querySelector("#activity-inspector-note") .textContent=e.debug_truncated?"Debug capture was truncated at 64 KiB per body.":"Original API body as captured. HTTP authorization headers are not recorded.";
- const block=(label       ,body       )=>`<section><h3>${label}</h3><pre class="activity-debug-body">${escapeHTML(body)}</pre></section>`;
+ document.querySelector("#activity-inspector-note") .textContent=e.debug_truncated?"Debug capture was truncated at 64 KiB per body.":"Captured API body formatted for reading. HTTP authorization headers are not recorded.";
+ const block=(label       ,body       )=>`<section><h3>${label}</h3><pre class="activity-debug-body">${escapeHTML(readableActivityBody(body))}</pre></section>`;
  document.querySelector("#activity-inspector-content") .innerHTML=kind==="prompt"?block("API request",e.prompt||"Prompt was not recorded."):block("Request sent to Jev",e.jev_request||"No Jev request was recorded.")+block("Jev response",e.jev_response||"No response was received.");
  dialog.showModal();title.focus?.();
 }
@@ -1307,6 +1345,7 @@ function updateProvider(event       )       {
     if(editingProvider===index)providerList.querySelector                   (`[data-provider="${index}"][data-key="type"]`)?.focus?.({preventScroll:true});
     void testProvider(index);
   }
+  if(key==="enabled")renderSmartRouterScope();
   markDirty();
 }
 
@@ -1327,8 +1366,9 @@ function applyConfig(config                     , revision = "")       {
   configurationRevision = revision;
   consoleTimezone=config.server?.timezone||"";
   for(const name of ["prompt_logging","jev_decision_logging"])(form.elements.namedItem(`activity.${name}`)                    ).checked=Boolean(config.activity?.[name]);
-  for(const name of ["max_bytes","retention_days"])(form.elements.namedItem(`activity.${name}`)                    ).value=String(config.activity?.[name]||({max_bytes:104857600,retention_days:7}                         )[name]);
+  (form.elements.namedItem("activity.retention_days")                    ).value=String(config.activity?.retention_days||7);
   (form.elements.namedItem("server.timezone")                    ).value=consoleTimezone;
+  const providerCatalogChanged=JSON.stringify(loadedConfiguration.providers)!==JSON.stringify(config.providers);
   loadedConfiguration=structuredClone(config);modelPricingDraft=structuredClone(config.model_pricing||{});modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
@@ -1387,6 +1427,7 @@ function applyConfig(config                     , revision = "")       {
   renderProviders();
   const fill = (value     , prefix = "")       => Object.entries(value || {}).forEach(([key, raw]) => {
     const name = prefix ? `${prefix}.${key}` : key;
+    if (name === "activity.max_bytes") return;
     if (raw && typeof raw === "object" && !Array.isArray(raw)) fill(raw, name);
     else {
       const control = form.elements.namedItem(name)                                                                     ;
@@ -1394,6 +1435,7 @@ function applyConfig(config                     , revision = "")       {
     }
   });
   fill(config);
+  (form.elements.namedItem("activity.max_bytes")                    ).value=String((config.activity?.max_bytes||104857600)/1048576);
   renderActivity();
   if(overviewRecent)renderOverview();
   if(physicalModels.length)renderModelsPage();
@@ -1405,6 +1447,7 @@ function applyConfig(config                     , revision = "")       {
   for(const profile of config.smart_routers||[])smartRouterDrafts[profile.model_name]=structuredClone(profile);
   if(!smartRouterDrafts[selectedSmartRouter])selectedSmartRouter="smart";
   renderSmartRouterEditor();
+  if(providerCatalogChanged && (overviewModels!==null||location.hash==="#routing") && consoleSession)void loadSmartRouterModels();
   updateClassifierOptions();
   if (location.hash === "#intelligence" && benchmarksEnabledSaved) void loadBenchmarkData();
 }
@@ -1486,7 +1529,7 @@ function navigate()       {
   if(current==="provider-balances" && configurationLoaded)void loadProviderBalancesPage();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models"){if(configurationLoaded)void loadModelsPage();else document.querySelector("#models-list") .innerHTML=modelLoadingMarkup;}
-  if (current === "routing") updateClassifierOptions();
+  if (current === "routing") {updateClassifierOptions();renderSmartRouterScope();if(configurationLoaded)void loadSmartRouterModels();}
   if (current === "intelligence" && configurationLoaded && benchmarksEnabledSaved) void loadBenchmarkData();
 }
 
@@ -1552,7 +1595,7 @@ function readConfig()                      {
   config.server.timezone=String((form.elements.namedItem("server.timezone")                    )?.value||"").trim();
   if(config.server.timezone){try{new Intl.DateTimeFormat("en-US",{timeZone:config.server.timezone});}catch{throw new Error("Enter a valid IANA timezone, such as America/New_York or UTC");}}
   for(const name of ["prompt_logging","jev_decision_logging"])config.activity[name]=Boolean((form.elements.namedItem(`activity.${name}`)                    )?.checked);
-  for(const name of ["max_bytes","retention_days"]){const raw=String((form.elements.namedItem(`activity.${name}`)                    )?.value||"").trim();const value=raw?Number(raw):({max_bytes:104857600,retention_days:7}                         )[name];if(!Number.isSafeInteger(value)||value<({max_bytes:8192,retention_days:1}                         )[name]||name==="retention_days"&&value>3650)throw new Error("Enter valid Activity size and retention limits");config.activity[name]=value;}
+  for(const name of ["max_bytes","retention_days"]){const raw=String((form.elements.namedItem(`activity.${name}`)                    )?.value||"").trim();const value=raw?Number(raw)*(name==="max_bytes"?1048576:1):({max_bytes:104857600,retention_days:7}                         )[name];if(!Number.isSafeInteger(value)||value<({max_bytes:8192,retention_days:1}                         )[name]||name==="retention_days"&&value>3650)throw new Error("Enter valid Activity size and retention limits");config.activity[name]=value;}
   config.model_pricing=structuredClone(modelPricingDraft);config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
@@ -1769,7 +1812,7 @@ document.querySelector("#console-login") .addEventListener("click",()=>location.
 document.querySelector("#console-logout") .addEventListener("click",async()=>{try{const response=await gatewayFetch("/gateway/v1/session",{method:"DELETE",headers:await authProvider.headers()});if(!response.ok)throw new Error();signOutConsole();location.assign("/login");}catch{toast("Sign-out failed. Retry to revoke the session.");}});
 document.querySelector("#login-form") .addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector                  ("#login-username") .value;const input=document.querySelector                  ("#login-password") ;const password=input.value;input.value="";
-  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(revision!==configurationRevision){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error") .textContent="";document.querySelector                   ("#login-dialog") .close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
+  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(providerConfig!==JSON.stringify(loadedConfiguration.providers)){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error") .textContent="";document.querySelector                   ("#login-dialog") .close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
   catch{expireConsoleSession();document.querySelector("#login-error") .textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata()              {
@@ -1839,6 +1882,23 @@ async function detectOllama(provider                   )              {
  const index=providers.indexOf(provider);const input=providerList.querySelector                  (`[data-provider="${index}"][data-key="ollama_port"]`);if(input)input.value=provider.ollama_port;
 }
 
+let smartRouterModelsSequence=0;
+async function loadSmartRouterModels()              {
+ const sequence=++smartRouterModelsSequence,login=consoleSession,providerConfig=JSON.stringify(loadedConfiguration.providers);
+ if(!login)return;
+ const status=document.querySelector             ("#smart-router-model-status") ;
+ status.textContent="Loading available models…";
+ try{
+  const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});
+  if(sequence!==smartRouterModelsSequence||login!==consoleSession||providerConfig!==JSON.stringify(loadedConfiguration.providers))return;
+  if(!response.ok)throw new Error("Model discovery unavailable. Reopen Smart routing to retry.");
+  const data=await response.json();
+  if(sequence!==smartRouterModelsSequence||login!==consoleSession||providerConfig!==JSON.stringify(loadedConfiguration.providers))return;
+  overviewModels=data.models||[];renderSmartRouterScope();
+  status.textContent=overviewModels .length?"":"No models discovered from enabled providers.";
+ }catch(error){if(sequence===smartRouterModelsSequence&&login===consoleSession&&providerConfig===JSON.stringify(loadedConfiguration.providers))status.textContent=error instanceof Error?error.message:"Model discovery unavailable. Reopen Smart routing to retry.";}
+}
+
 function renderSmartRouterScope()     {
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
  const enabled         =draft.providers||[];
@@ -1847,7 +1907,7 @@ function renderSmartRouterScope()     {
   const control=document.querySelector                   (selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }
  const chosen         =draft.models||[];
- const available=(overviewModels||[]).filter(m=>!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id).sort();
+ const available=[...new Set((overviewModels||[]).filter(m=>providers.some(p=>p.id===m.provider_id&&p.enabled!==false&&!classifierProvider(p))&&!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id))].sort();
  for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]]                       ){
   const control=document.querySelector                   (selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }

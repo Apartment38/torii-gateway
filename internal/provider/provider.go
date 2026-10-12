@@ -8,6 +8,7 @@ import (
 
 // Model is the OpenAI-compatible metadata exposed for a physical model.
 type Model struct {
+	Decision         bool            `json:"decision,omitempty"`
 	Quota            *quota.Status   `json:"quota,omitempty"`
 	QuotaError       string          `json:"quota_error,omitempty"`
 	ID               string          `json:"id"`

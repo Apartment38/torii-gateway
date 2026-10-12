@@ -12,7 +12,7 @@ model supports it. Use an upstream model suited to the requested task.
 | `openai_compatible` | Your compatible HTTP(S) origin/path prefix | Optional bearer/custom headers, static/discovered models | Transparent Chat, Completions, Embeddings, stateless Responses if upstream supports them |
 | `openai-codex` | Usually `https://chatgpt.com/backend-api/codex`; token-scoped plan-usage flow can use `https://api.openai.com/v1` | Gateway-managed subscription OAuth; live discovery; configured models only fallback | Translated Chat and stateless Responses; JSON/SSE; no Completions or Embeddings |
 | `nous` | `https://inference-api.nousresearch.com/v1` | Bearer API key; discovered/static models and live prices | Compatible Chat, Completions, Embeddings, stateless Responses where supported by service/model |
-| `openrouter` | `https://openrouter.ai/api` | Required inference key; optional separate management key for credits | Compatible `/v1` endpoints; native metadata and quota support |
+| `openrouter` | `https://openrouter.ai/api` | Required inference key; optional separate management key for credits | Compatible `/v1` endpoints and System One decisions; automatic decision catalog discovery, native metadata and quota support |
 | `gemini` | `https://generativelanguage.googleapis.com` | Required bearer key; discovery/static models | Compatible `/v1beta/openai` endpoints; not a native Gemini API adapter |
 | `xai` | `https://api.x.ai` | Required bearer key; discovery/static models | Compatible `/v1` endpoints, subject to upstream/model support |
 | `opencode-go` | `https://opencode.ai`, `/zen/go/v1` | Required bearer key; discovered/static models | Go subscription usage windows |
@@ -23,8 +23,8 @@ model supports it. Use an upstream model suited to the requested task.
 | `minimax` | `https://api.minimax.io`, `/v1` | Required bearer key; discovered/static models | Token-plan remaining usage; subscription mode optional |
 | `deepseek` | `https://api.deepseek.com`, `/v1` | Required bearer key; discovered/static models | Native multi-currency account balances |
 | `anthropic` | Exactly `https://api.anthropic.com` | Required API key; discovered/static models | Native Messages translation for Chat and basic stateless Responses, including SSE; no Completions/Embeddings |
-| `jev` | `https://api.typesafe.ai`, default `api_path: /v1` | Required key; discovered/static classifier models | Typed System One classification only; excluded from inference catalog |
-| `jev_compatible` | Your compatible decision-service origin | Optional key; `/models` discovery, `/health` fallback on 404/405 | Typed System One classification only; excluded from inference catalog |
+| `typesafe` (legacy alias `jev`) | `https://api.typesafe.ai`, default `api_path: /v1` | Required key; discovered/static classifier models | Typed System One passthrough and smart-router judge; no chat inference |
+| `jev_compatible` | Your compatible decision-service origin | Optional key; `/models` discovery, `/health` fallback on 404/405 | Typed System One passthrough and smart-router judge; no chat inference |
 
 ## Compatibility details
 

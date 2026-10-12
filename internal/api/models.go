@@ -69,6 +69,14 @@ type ModelUsage struct {
 	accounting.Amount
 }
 
+// decisionModelMetadata is the TypeSafe SDK model-list shape, returned alongside
+// the OpenAI data array. Empty release dates indicate unavailable upstream data.
+type decisionModelMetadata struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ReleaseDate string `json:"release_date"`
+}
+
 type clientModel struct {
 	provider.Model
 	Pricing        *catalog.Pricing `json:"pricing,omitempty"`
@@ -150,7 +158,7 @@ func (h *OpenAIHandler) clientMetadata(ctx context.Context, d catalog.Descriptor
 
 func clientMetadataWithQuota(d catalog.Descriptor, usage []ModelUsage, available bool, status quota.Status) clientModel {
 	status.AccountIdentity = "" // Account display identity is administrator-only.
-	return clientModel{Model: provider.Model{ID: d.PublicID, Object: "model", Created: d.Created, OwnedBy: d.OwnedBy, ContextWindow: d.ContextWindow, InputPerMillion: d.Pricing.InputPerMillion, OutputPerMillion: d.Pricing.OutputPerMillion, Subscription: d.Subscription}, Pricing: &d.Pricing, Quota: &status, Usage: usage, UsageAvailable: available}
+	return clientModel{Model: provider.Model{Decision: d.Endpoints.SystemOne == catalog.Supported, ID: d.PublicID, Object: "model", Created: d.Created, OwnedBy: d.OwnedBy, ContextWindow: d.ContextWindow, InputPerMillion: d.Pricing.InputPerMillion, OutputPerMillion: d.Pricing.OutputPerMillion, Subscription: d.Subscription}, Pricing: &d.Pricing, Quota: &status, Usage: usage, UsageAvailable: available}
 }
 
 func (h *OpenAIHandler) ManagementModels(w http.ResponseWriter, r *http.Request) {

@@ -75,9 +75,6 @@ func NewOpenAIHandlerWithOverrides(providers []provider.OpenAIProvider, override
 		if p == nil {
 			return nil, errors.New("register provider: nil provider")
 		}
-		if classifier, ok := p.(interface{ ClassifierOnly() bool }); ok && classifier.ClassifierOnly() {
-			continue
-		}
 		if _, exists := registered[p.ID()]; exists {
 			return nil, fmt.Errorf("register provider: duplicate ID %q", p.ID())
 		}
@@ -152,6 +149,8 @@ func (h *OpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.listModels(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/"):
 		h.getModel(w, r, strings.TrimPrefix(r.URL.Path, "/v1/models/"))
+	case r.Method == http.MethodPost && strings.TrimRight(r.URL.Path, "/") == "/v1/systemone":
+		h.forward(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
 		h.forward(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/completions":
@@ -187,6 +186,7 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 	descriptors := h.CatalogModels()
 	snapshots := h.prefetchQuotas(r.Context(), descriptors)
 	models := make([]clientModel, 0, len(descriptors)+1)
+	decisions := make([]decisionModelMetadata, 0)
 	modelUsage, usageAvailable := h.modelUsage(r, false)
 	// Clients may show only the first page of a provider's catalog. Keep the
 	// gateway routing choice visible before the sorted physical models.
@@ -198,11 +198,19 @@ func (h *OpenAIHandler) listModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		models = append(models, clientMetadataWithQuota(descriptor, modelUsage[descriptor.PublicID], usageAvailable, snapshots[descriptor.PublicID]))
+		if descriptor.Endpoints.SystemOne == catalog.Supported {
+			releaseDate := ""
+			if descriptor.Created > 0 {
+				releaseDate = time.Unix(descriptor.Created, 0).UTC().Format("2006-01-02")
+			}
+			decisions = append(decisions, decisionModelMetadata{Name: descriptor.PublicID, Description: "System One decision model from " + descriptor.ProviderID, ReleaseDate: releaseDate})
+		}
 	}
 	writeJSON(w, http.StatusOK, struct {
-		Object string        `json:"object"`
-		Data   []clientModel `json:"data"`
-	}{Object: "list", Data: models})
+		Object string                  `json:"object"`
+		Data   []clientModel           `json:"data"`
+		Models []decisionModelMetadata `json:"models"`
+	}{Object: "list", Data: models, Models: decisions})
 }
 
 func (h *OpenAIHandler) getModel(w http.ResponseWriter, r *http.Request, publicID string) {
@@ -251,6 +259,11 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	if fields.Model == "" {
 		writeAPIError(w, http.StatusBadRequest, "A valid model is required", "invalid_request_error", "invalid_model")
+		return
+	}
+	decisionRequest := strings.TrimRight(r.URL.Path, "/") == "/v1/systemone"
+	if decisionRequest && (fields.Model == h.smartName() || h.namedRouters[fields.Model] != nil) {
+		writeAPIError(w, 400, "System One requires a physical decision model", "invalid_request_error", "invalid_model")
 		return
 	}
 	if child := h.namedRouters[fields.Model]; child != nil {
@@ -316,6 +329,17 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	upstream := h.byID[providerID]
 	if err != nil || upstream == nil {
 		writeError(w, fault.New(fault.ModelNotFound, "model"))
+		return
+	}
+	if decisionRequest {
+		if err := h.ensureCatalog(r.Context()); err != nil {
+			writeError(w, fault.Wrap(fault.ProviderUnavailable, "discover models", err))
+			return
+		}
+	}
+	descriptor, exists := h.catalog.Model(requestedModel)
+	if decisionRequest && (!exists || descriptor.Endpoints.SystemOne != catalog.Supported) || !decisionRequest && exists && descriptor.Endpoints.SystemOne == catalog.Supported && descriptor.Endpoints.ChatCompletions == catalog.Unsupported {
+		writeAPIError(w, 400, "Model does not support this endpoint", "invalid_request_error", "unsupported_endpoint")
 		return
 	}
 	activitySelected = requestedModel

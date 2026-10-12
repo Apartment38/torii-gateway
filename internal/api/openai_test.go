@@ -64,7 +64,7 @@ func TestOpenAIHandlerOllamaEndToEnd(t *testing.T) {
 
 type failingProvider struct{}
 
-func TestClassifierProvidersAreNotAdvertisedOrForwardedAsInference(t *testing.T) {
+func TestDecisionProvidersAreAdvertisedButDoNotAcceptChat(t *testing.T) {
 	p, err := provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: "laya", BaseURL: "http://localhost:8000", StaticModels: []string{"english"}}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +75,8 @@ func TestClassifierProvidersAreNotAdvertisedOrForwardedAsInference(t *testing.T)
 	}
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
-	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "laya/") || !strings.Contains(w.Body.String(), "smart") {
-		t.Fatalf("classifier leaked into inference models: %d %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "laya/english") || !strings.Contains(w.Body.String(), `"decision":true`) || !strings.Contains(w.Body.String(), "smart") {
+		t.Fatalf("decision model missing from catalog: %d %s", w.Code, w.Body.String())
 	}
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"laya/english","messages":[{"role":"user","content":"hello"}]}`)))

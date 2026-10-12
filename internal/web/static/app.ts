@@ -94,13 +94,13 @@ function renderOverview():void{
  workspace.innerHTML=`${providers.length?renderOverviewMonitoring():""}<section class="overview-panel"><div class="section-heading"><h3>Connected providers</h3><a href="#providers">Manage providers →</a></div>${providers.length?providers.slice(0,6).map(p=>{const status=providerStatuses.get(p);const count=classifierProvider(p)?classifierCatalogs.get(p)?.length:overviewModels?.filter(m=>m.provider_id===p.id).length;return `<div class="overview-provider-row"><span class="provider-avatar">${escapeHTML(String(p.id||"P").slice(0,1).toUpperCase())}</span><div><strong>${value(p,"id")}</strong><span class="data-secondary">${escapeHTML(providerTypeLabel(String(p.type)))}</span></div><span class="status-badge ${p.enabled===false?"neutral":status?.state||"neutral"}">${p.enabled===false?"Disabled":status?.state==="success"?"Connected":status?.state==="failure"?"Needs attention":status?.state==="pending"?"Checking…":"Not checked"}</span>${count===undefined?"":`<span class="data-secondary">${count} models</span>`}</div>`;}).join(""):`<div class="empty-state"><strong>${configurationLoaded?"Your gateway starts here":"Welcome to your control plane"}</strong><p>${configurationLoaded?"Connect an upstream to discover models and start routing requests.":"Sign in to manage providers, model access and routing."}</p><a class="button primary" href="${configurationLoaded?"#providers":"/login"}">${configurationLoaded?"Connect a provider":"Sign in"}</a></div>`}</section>${providers.length?renderClientConnection():`<section class="overview-panel"><h3>Your next step</h3><a class="workflow-link" href="#providers"><span class="workflow-number">01</span><span><strong>Connect your providers</strong><span class="data-secondary">API endpoints and subscription accounts</span></span><span>→</span></a><a class="workflow-link" href="#models"><span class="workflow-number">02</span><span><strong>Choose your model catalog</strong><span class="data-secondary">Inspect capabilities and control model access</span></span><span>→</span></a><a class="workflow-link" href="#routing"><span class="workflow-number">03</span><span><strong>Shape your routing policy</strong><span class="data-secondary">Choose intelligent or deterministic selection</span></span><span>→</span></a><a class="workflow-link" href="#credentials"><span class="workflow-number">04</span><span><strong>Create a client API key</strong><span class="data-secondary">Give each application its own gateway access</span></span><span>→</span></a></section>`}${overviewError?`<p class="notice" role="status">${escapeHTML(overviewError)}</p>`:""}`;
  initializeClientConnection();renderSmartRouterScope();
 }
-function providerTypeLabel(type:string):string{return ({"opencode-go":"OpenCode Go","opencode-zen":"OpenCode Zen","standard-compute":"Standard Compute",zai:"Z AI","kimi-coding":"Kimi Coding",minimax:"MiniMax",deepseek:"DeepSeek",openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",jev:"TypeSafe Jev",jev_compatible:"Jev compatible"} as Record<string,string>)[type]||type;}
+function providerTypeLabel(type:string):string{return ({"opencode-go":"OpenCode Go","opencode-zen":"OpenCode Zen","standard-compute":"Standard Compute",zai:"Z AI","kimi-coding":"Kimi Coding",minimax:"MiniMax",deepseek:"DeepSeek",openai_compatible:"OpenAI compatible",openai:"OpenAI", "openai-codex":"OpenAI Codex",anthropic:"Anthropic",gemini:"Google Gemini",xai:"xAI",openrouter:"OpenRouter",ollama:"Ollama",nous:"Nous",typesafe:"TypeSafe",jev:"TypeSafe",jev_compatible:"Jev compatible"} as Record<string,string>)[type]||type;}
 function providerTypeOptions(provider:Record<string,string|boolean>,subscriptionOnly=false):string{
- const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter","opencode-go","opencode-zen","standard-compute","zai","kimi-coding","minimax","deepseek","nous"]},{label:"Subscriptions",types:["openai-codex"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["jev","jev_compatible"]}];
+ const groups=[{label:"API providers",types:["openai_compatible","openai","anthropic","gemini","xai","openrouter","opencode-go","opencode-zen","standard-compute","zai","kimi-coding","minimax","deepseek","nous"]},{label:"Subscriptions",types:["openai-codex"]},{label:"Self-hosted",types:["ollama"]},{label:"Classifiers",types:["typesafe","jev_compatible"]}];
  return groups.filter(group=>!subscriptionOnly||group.label==="Subscriptions").map(group=>`<optgroup label="${group.label}">${group.types.map(type=>`<option value="${type}" ${provider.type===type?"selected":""}>${escapeHTML(providerTypeLabel(type))}</option>`).join("")}</optgroup>`).join("");
 }
 function providerTypeDescription(type:string):string{
- return ({openai_compatible:"Connect any API that supports OpenAI-compatible endpoints.",openai:"Connect OpenAI with your API key.",anthropic:"Connect Anthropic with your API key.",gemini:"Connect Google Gemini with your API key.",xai:"Connect xAI with your API key.",openrouter:"Connect OpenRouter with your API key.","openai-codex":"Connect your OpenAI Codex subscription using OAuth login.",nous:"Connect Nous Portal with your API key.",ollama:"Connect a self-hosted Ollama server and discover its model catalog.",jev:"Connect TypeSafe Jev classifier models for Smart routing.",jev_compatible:"Connect a Jev-compatible classifier, such as Laya, for Smart routing."} as Record<string,string>)[type]||"Configure this provider integration.";
+ return ({openai_compatible:"Connect any API that supports OpenAI-compatible endpoints.",openai:"Connect OpenAI with your API key.",anthropic:"Connect Anthropic with your API key.",gemini:"Connect Google Gemini with your API key.",xai:"Connect xAI with your API key.",openrouter:"Connect OpenRouter with your API key.","openai-codex":"Connect your OpenAI Codex subscription using OAuth login.",nous:"Connect Nous Portal with your API key.",ollama:"Connect a self-hosted Ollama server and discover its model catalog.",typesafe:"Connect TypeSafe decision models for passthrough and Smart routing.",jev:"Connect TypeSafe decision models for passthrough and Smart routing.",jev_compatible:"Connect a Jev-compatible classifier, such as Laya, for Smart routing."} as Record<string,string>)[type]||"Configure this provider integration.";
 }
 async function loadOverview():Promise<void>{
  if(!consoleSession||!configurationLoaded||overviewLoading)return;const login=consoleSession;overviewLoading=true;overviewError="";renderOverview();
@@ -155,6 +155,7 @@ interface ProviderStatus {
   message: string;
 }
 const providerStatuses = new WeakMap<Record<string, string | boolean>, ProviderStatus>();
+const providerOriginalIDs = new WeakMap<Record<string,string|boolean>,string>();
 const classifierCatalogs = new WeakMap<Record<string, string | boolean>, string[]>();
 let classifierDiscoveryPending = false;
 let configurationLoaded = false;
@@ -213,11 +214,11 @@ function editClassifierQuestion(field:"instructions"|"criteria", value:string): 
 }
 
 function classifierProvider(provider: Record<string, string | boolean>): boolean {
-  return provider.type === "jev" || provider.type === "jev_compatible";
+  return provider.type === "typesafe" || provider.type === "jev" || provider.type === "jev_compatible";
 }
 function availableClassifiers(): string[] {
-  return providers.filter(provider => classifierProvider(provider) && providerStatuses.get(provider)?.state === "success")
-    .flatMap(provider => classifierCatalogs.get(provider) || []);
+  return providers.filter(provider => provider.enabled!==false && providerStatuses.get(provider)?.state === "success")
+    .flatMap(provider => classifierCatalogs.get(provider) || []).filter(id => modelEnabledDraft[id] !== false);
 }
 function updateClassifierOptions(): void {
   const models = availableClassifiers();
@@ -233,7 +234,7 @@ function updateClassifierOptions(): void {
   notice.hidden = models.length > 0 && !existing;
   document.querySelector<HTMLDivElement>("#classifier-provider-notice")!.hidden = pending || models.length > 0;
   message.textContent = pending ? "Checking classifier providers…" : models.length === 0
-    ? "No classifier models are available. Add a TypeSafe Jev or Jev-compatible provider (such as Laya) on the Providers page, then test its connection. Deterministic routing remains available."
+    ? "No classifier models are available. Connect a provider with decision models (TypeSafe, OpenRouter, or a Jev-compatible service such as Laya) on the Providers page, then test its connection. Deterministic routing remains available."
     : "The selected classifier is unavailable. Check its provider or choose another discovered model.";
 
 }
@@ -266,7 +267,7 @@ function escapeHTML(value: string): string { return value.replace(/[&<>"]/g, ch 
 function value(provider: Record<string, string | boolean>, key: string): string { return escapeHTML(String(provider[key] ?? "")); }
 function checked(provider: Record<string, string | boolean>, key: string): string { return provider[key] === false ? "" : "checked"; }
 function subscriptionProvider(provider: Record<string, string | boolean>): boolean { return provider.type === "openai-codex"; }
-const knownProviderIDs: Record<string, string> = { "opencode-go":"opencode-go","opencode-zen":"opencode-zen","standard-compute":"standard-compute",zai:"zai","kimi-coding":"kimi-coding",minimax:"minimax",deepseek:"deepseek", openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous", jev: "jev" };
+const knownProviderIDs: Record<string, string> = { "opencode-go":"opencode-go","opencode-zen":"opencode-zen","standard-compute":"standard-compute",zai:"zai","kimi-coding":"kimi-coding",minimax:"minimax",deepseek:"deepseek", openai: "openai", "openai-codex": "openai-codex", anthropic: "anthropic", gemini: "gemini", xai: "xai", openrouter: "openrouter", ollama: "ollama", nous: "nous", typesafe: "typesafe", jev: "typesafe" };
 // Complete API URLs shown when selecting a hosted integration. Custom services
 // require an operator URL; Ollama uses the existing local/remote detection flow.
 const knownProviderURLs: Record<string, string> = {
@@ -284,6 +285,7 @@ const knownProviderURLs: Record<string, string> = {
   deepseek: "https://api.deepseek.com/v1",
   nous: "https://inference-api.nousresearch.com/v1",
   "openai-codex": "https://chatgpt.com/backend-api/codex",
+  typesafe: "https://api.typesafe.ai/v1",
   jev: "https://api.typesafe.ai/v1",
 };
 function knownProviderID(type: string, index: number): string {
@@ -327,9 +329,9 @@ function renderProviders(): void {
     <article class="provider-card">
       <div class="provider-card-head"><div class="provider-card-title"><span class="provider-avatar">${escapeHTML(String(provider.id||"P").slice(0,1).toUpperCase())}</span><div><span data-provider-title="${index}">${value(provider,"id") || `Provider ${index + 1}`}</span><span class="data-secondary">${escapeHTML(providerTypeLabel(String(provider.type)))}${provider.enabled===false?" · Disabled":""}</span>${provider.api_url&&!subscriptionProvider(provider)?`<span class="provider-endpoint" title="${value(provider,"api_url")}">${value(provider,"api_url")}</span>`:""}</div></div><div class="provider-card-actions"><button class="button quiet" type="button" data-provider-models="${index}">Models →</button><button class="test-provider button secondary" type="button" data-test="${index}">${subscriptionProvider(provider) ? "Check status" : "Test connection"}</button>${subscriptionProvider(provider) ? `<button class="login-provider button secondary" type="button" data-login="${index}">Log in</button>` : ""}<button class="button secondary" type="button" data-edit="${index}">Edit</button><button class="remove-provider" type="button" data-remove="${index}">Remove</button></div></div>
       <div class="provider-result" data-result="${index}" role="status" aria-live="polite">Not checked yet</div>
-      <dialog class="provider-editor" data-provider-dialog="${index}" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title-${index}"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3 id="provider-editor-title-${index}">${editingProvider===index&&!editingOriginal?"Add provider":provider.id?`Edit ${value(provider,"id")}`:"Add provider"}</h3><p>${escapeHTML(providerTypeDescription(String(provider.type)))}</p></div><div data-editor-status="${index}" role="status" aria-live="polite"></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,editingProvider!==index||editingOriginal!==null)}</select></label><label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" readonly required /></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p>` : `<div class="grid three">
-        <label data-tooltip="The provider integration Torii should use. Jev and Jev-compatible providers supply classifier models, not chat models.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,false)}</select></label>
-        <label data-tooltip="The stable ID used as the prefix of public model names. Built-in providers receive this automatically; custom API endpoints must define it.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" ${isKnownProvider(provider) ? "readonly" : ""} required /></label>
+      <dialog class="provider-editor" data-provider-dialog="${index}" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title-${index}"><div class="dialog-heading"><span class="eyebrow">Upstream connection</span><h3 id="provider-editor-title-${index}">${editingProvider===index&&!editingOriginal?"Add provider":provider.id?`Edit ${value(provider,"id")}`:"Add provider"}</h3><p>${escapeHTML(providerTypeDescription(String(provider.type)))}</p></div><div data-editor-status="${index}" role="status" aria-live="polite"></div><div class="check-row"><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="enabled" ${provider.enabled!==false?"checked":""}> Provider enabled</label><label class="checkbox"><input type="checkbox" data-provider="${index}" data-key="treat_models_as_free" ${provider.treat_models_as_free?"checked":""}> Treat models as free</label></div>${subscriptionProvider(provider) ? `<div class="grid two"><label data-tooltip="The subscription integration used by Torii. OAuth credentials are encrypted in the gateway database.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,editingProvider!==index||editingOriginal!==null)}</select></label><label data-tooltip="The stable ID used as the prefix of public model names. Edit this namespace to choose the prefix of public model names. Saved router references follow ID changes.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label></div><p class="provider-subscription-note">This subscription provider uses its OAuth login. API URL, API keys, and discovery controls are not used.</p><button class="button secondary" type="button" data-login="${index}">Log in</button>` : `<div class="grid three">
+        <label data-tooltip="The provider integration Torii should use. TypeSafe and Jev-compatible providers supply decision models for System One and Smart routing.">Type<select data-provider="${index}" data-key="type">${providerTypeOptions(provider,false)}</select></label>
+        <label data-tooltip="The stable ID used as the prefix of public model names. Edit this namespace to choose the prefix of public model names. Saved router references follow ID changes.">Provider ID<input data-provider="${index}" data-key="id" value="${value(provider,"id")}" required /></label>
         ${provider.type==="ollama"?`<label>Port<input type="number" min="1" max="65535" data-provider="${index}" data-key="ollama_port" value="${value(provider,"ollama_port")}" placeholder="Auto-detect" /></label><button type="button" class="button secondary" data-detect-ollama="${index}">Detect Ollama</button>`:`<label data-tooltip="The complete upstream URL Torii should call. Include any required API path yourself; Torii does not add /v1 to this field."><span>API URL</span><input data-provider="${index}" data-key="api_url" value="${value(provider,"api_url")}" placeholder="https://api.example.com" /></label>`}
         ${provider.type === "ollama" ? "" : `<label data-tooltip="Enter an upstream API key to replace the configured credential. Save encrypts it in SQLite; saved keys cannot be revealed.">API key<span class="password-field"><input id="provider-api-key-${index}" type="password" autocomplete="new-password" data-provider="${index}" data-key="api_key" placeholder="${provider.bearer_token ? "Configured · leave blank to keep" : "Enter provider API key"}" /><button class="reveal-button" type="button" data-reveal-provider-key="${index}" aria-controls="provider-api-key-${index}" aria-label="Reveal entered provider API key" aria-pressed="false">Reveal</button></span></label>`}
         ${provider.type === "ollama" ? `<label data-tooltip="Time allowed for model loading and the complete response, including streaming. Leave blank for 5 minutes. Client cancellation still applies.">Request timeout<input data-provider="${index}" data-key="request_timeout" value="${value(provider,"request_timeout")}" placeholder="5m" /></label>` : ""}
@@ -495,6 +497,7 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
   providers = (config.providers || []).filter((provider: Record<string, any>) => !isSetupPlaceholder(provider)).map((provider: Record<string, any>) => ({
     ...providerDefaults,
     ...provider,
+    type: provider.type === "jev" ? "typesafe" : provider.type,
     api_key: "",
     api_key_env: provider.bearer_token?.env || "",
     api_key_file: provider.bearer_token?.file || "",
@@ -515,11 +518,12 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
     treat_models_as_free:provider.treat_models_as_free??provider.type==="ollama",
     discover: provider.discover_models !== false,
   }));
+  providers.forEach(provider => providerOriginalIDs.set(provider, String(provider.id)));
   // Move legacy direct Jev connections into provider drafts, retaining secret
   // references (including key files) rather than dropping them on the next save.
   if (classifier.type === "jev" && classifier.transport !== "provider") {
-    const type = new URL(classifier.base_url).hostname === "api.typesafe.ai" ? "jev" : "jev_compatible";
-    const id = type === "jev" ? knownProviderID("jev", -1) : `classifier-${providers.length + 1}`;
+    const type = new URL(classifier.base_url).hostname === "api.typesafe.ai" ? "typesafe" : "jev_compatible";
+    const id = type === "typesafe" ? knownProviderID("typesafe", -1) : `classifier-${providers.length + 1}`;
     providers.push({ ...providerDefaults, id, type, api_url:classifier.base_url, bearer_token:classifier.api_key, api_key:classifier.api_key?.value || "", api_key_env:classifier.api_key?.env || "", api_key_file:classifier.api_key?.file || "", models:classifier.model || "jev-latest", discover:true });
     requestedClassifier = `${id}/${classifier.model || "jev-latest"}`;
   } else if (classifier.type && classifier.type !== "jev" && classifier.type !== "disabled") {
@@ -744,7 +748,28 @@ function readConfig(): Record<string, any> {
   smartRouterDrafts[selectedSmartRouter]=structuredClone(config.router);
   config.router=structuredClone(smartRouterDrafts.smart||{});
   config.smart_routers=Object.entries(smartRouterDrafts).filter(([name])=>name!=="smart"&&name!=="").map(([,draft])=>structuredClone(draft));
+  providers.forEach((provider,index) => {
+    const original=providerOriginalIDs.get(provider), next=String(provider.id);
+    if(original && original!==next && editingProvider!==index)renameProviderReferences(config,original,next);
+  });
   return config;
+}
+function renameProviderReferences(config:Record<string,any>,original:string,next:string):void {
+  const model=(id:string)=>id.startsWith(original+"/")?next+id.slice(original.length):id;
+  const keys=(map:Record<string,any>|undefined,providerKeys=false)=>map?Object.fromEntries(Object.entries(map).map(([id,value])=>[providerKeys&&id===original?next:model(id),value])):map;
+  config.model_enabled=keys(config.model_enabled);config.model_pricing=keys(config.model_pricing);
+  for(const router of [config.router,...(config.smart_routers||[])]) {
+    if(!router)continue;
+    if(router.providers)router.providers=router.providers.map((id:string)=>id===original?next:id);
+    if(router.models)router.models=router.models.map(model);
+    if(router.classifier?.provider===original)router.classifier.provider=next;
+    if(router.classifier?.model && !(router.classifier.type==="jev" && router.classifier.transport==="provider"))router.classifier.model=model(router.classifier.model);
+    if(router.quota?.allowances)router.quota.allowances=keys(router.quota.allowances,true);
+    for(const descriptor of router.catalog_overrides||[]) {
+      descriptor.id=model(descriptor.id);
+      if(descriptor.provider_id===original)descriptor.provider_id=next;
+    }
+  }
 }
 
 function updateBenchmarkControls(): void {
@@ -781,8 +806,8 @@ async function testProvider(index: number): Promise<void> {
     const count = body.models?.length || 0;
     if (providerStatuses.get(provider) !== pending || !providers.includes(provider)) return;
     const connection = subscriptionProvider(provider) ? "Logged in" : "Connected";
-    if (classifierProvider(provider)) {
-      const ids = (body.models || []).map((model: {id:string}) => model.id);
+    {
+      const ids = (body.models || []).filter((model: {decision?:boolean}) => classifierProvider(provider) || model.decision === true).map((model: {id:string}) => model.id);
       if (ids.some((id: unknown) => typeof id !== "string" || !id.startsWith(`${provider.id}/`))) throw new Error("Invalid classifier model IDs");
       classifierCatalogs.set(provider, ids);
     }
@@ -1015,7 +1040,7 @@ function renderSmartRouterScope():void{
   const control=document.querySelector<HTMLSelectElement>(selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }
  const chosen:string[]=draft.models||[];
- const available=[...new Set((overviewModels||[]).filter(m=>providers.some(p=>p.id===m.provider_id&&p.enabled!==false&&!classifierProvider(p))&&!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id))].sort();
+ const available=[...new Set((overviewModels||[]).filter(m=>providers.some(p=>p.id===m.provider_id&&p.enabled!==false&&!classifierProvider(p))&&m.endpoints?.systemone!=="supported"&&!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id))].sort();
  for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]] as [string,string[]][]){
   const control=document.querySelector<HTMLSelectElement>(selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }

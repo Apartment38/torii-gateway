@@ -26,6 +26,7 @@ const (
 
 // EndpointCapabilities records which public endpoint families a model accepts.
 type EndpointCapabilities struct {
+	SystemOne       TriState `json:"systemone" yaml:"systemone"`
 	ChatCompletions TriState `json:"chat_completions" yaml:"chat_completions"`
 	Completions     TriState `json:"completions" yaml:"completions"`
 	Responses       TriState `json:"responses" yaml:"responses"`
@@ -234,6 +235,7 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 			d.Metadata.CatalogSource = "live"
 			if model.Discovery != nil {
 				d.Endpoints = mergeEndpoints(d.Endpoints, EndpointCapabilities{
+					SystemOne:       discoveredState(model.Discovery.Endpoints, "systemone"),
 					ChatCompletions: discoveredState(model.Discovery.Endpoints, "chat_completions"),
 					Completions:     discoveredState(model.Discovery.Endpoints, "completions"),
 					Responses:       discoveredState(model.Discovery.Endpoints, "responses"),
@@ -299,7 +301,7 @@ func (c *Catalog) Model(id string) (Descriptor, bool) {
 
 func unknownDescriptor(publicID, providerID, upstreamID string) Descriptor {
 	return Descriptor{PublicID: publicID, ProviderID: providerID, UpstreamID: upstreamID,
-		Endpoints:    EndpointCapabilities{Unknown, Unknown, Unknown, Unknown},
+		Endpoints:    EndpointCapabilities{Unknown, Unknown, Unknown, Unknown, Unknown},
 		Capabilities: ModelCapabilities{Unknown, Unknown, Unknown, Unknown, Unknown},
 		Modalities:   Modalities{Unknown, Unknown, Unknown, Unknown, Unknown}}
 }
@@ -387,6 +389,9 @@ func mergeMatching(base Descriptor, records []Descriptor, source string) Descrip
 }
 
 func mergeEndpoints(a, b EndpointCapabilities) EndpointCapabilities {
+	if b.SystemOne != "" && b.SystemOne != Unknown {
+		a.SystemOne = b.SystemOne
+	}
 	if b.ChatCompletions != "" && b.ChatCompletions != Unknown {
 		a.ChatCompletions = b.ChatCompletions
 	}

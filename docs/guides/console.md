@@ -95,7 +95,17 @@ balance and Standard Compute budget amounts remain unknown unless their service
 returns them through an explicitly configured tracking endpoint; available reset
 headers still appear. See [provider tracking](../reference/configuration.md#provider-tracking).
 
-Provider editors show connection checks and save progress inside the card. A successful check and save closes the editor; connection or save errors keep the draft open for correction. Overview counts include discovered classifier models, even though those models are excluded from the chat catalog.
+Provider editors show connection checks and save progress inside the card. A successful check and save closes the editor; connection or save errors keep the draft open for correction. Decision models appear in Models and client discovery and can be selected as
+judges after a successful connection check. They use the System One API and are
+excluded from chat routing pools. OpenRouter discovers Jev and other decision
+models automatically; TypeSafe uses the default ID `typesafe`. Existing `jev`
+provider types load as TypeSafe while retaining their saved IDs.
+
+**Provider ID** is editable for every integration. Saving an ID change updates
+saved router provider/model pools, judge references, model controls and pricing.
+Clients must use the new public prefix. Stored API-key references are retained;
+subscription OAuth logins are bound to the ID, so log in under the new ID before
+saving a renamed subscription provider.
 
 Smart routing supports named provider/model pools. The top selector loads a router's full policy. **Create router** clears the editor to default options; enter a unique **Router Name**, configure the policy, and click **Save**. **Remove router** stays beside the name and cannot remove the default router. **Save** also applies a named router's name changes. Existing policy edits continue to save automatically. Double-click providers from **Allowed providers** into **Enabled providers**, or use **Enable →** / **← Remove**. The catalog loads automatically when Smart routing opens and refreshes after provider configuration changes. Disabled provider connections are excluded. This updates **Available models** and removes enabled models outside a restricted provider pool. An empty enabled provider list allows all providers. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
 

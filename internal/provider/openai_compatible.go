@@ -31,26 +31,28 @@ type OpenAICompatibleConfig struct {
 	// APIPath identifies the upstream OpenAI-compatible API root relative to
 	// BaseURL. The default is /v1; providers such as Gemini use a different
 	// compatibility root.
-	APIPath      string
-	QuotaURL     string
-	QuotaHeaders http.Header
-	KeyQuotaURL  string
+	APIPath           string
+	DiscoverDecisions bool
+	QuotaURL          string
+	QuotaHeaders      http.Header
+	KeyQuotaURL       string
 }
 
 // Compatible is a generic transparent OpenAI-compatible provider.
 type Compatible struct {
-	id, baseURL  string
-	client       *http.Client
-	transport    *transport.OpenAICompatible
-	headers      http.Header
-	discover     bool
-	static       []string
-	rewrites     map[string]string
-	discoveryTO  time.Duration
-	apiPath      string
-	quotaURL     string
-	quotaHeaders http.Header
-	keyQuotaURL  string
+	id, baseURL       string
+	client            *http.Client
+	transport         *transport.OpenAICompatible
+	headers           http.Header
+	discover          bool
+	static            []string
+	rewrites          map[string]string
+	discoveryTO       time.Duration
+	apiPath           string
+	discoverDecisions bool
+	quotaURL          string
+	quotaHeaders      http.Header
+	keyQuotaURL       string
 }
 
 func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error) {
@@ -87,7 +89,7 @@ func NewOpenAICompatibleProvider(cfg OpenAICompatibleConfig) (*Compatible, error
 	for k, v := range cfg.ModelRewrites {
 		rewrites[k] = v
 	}
-	return &Compatible{id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone(), keyQuotaURL: cfg.KeyQuotaURL}, nil
+	return &Compatible{discoverDecisions: cfg.DiscoverDecisions, id: cfg.ID, baseURL: cfg.BaseURL, client: cfg.Client, transport: t, headers: cfg.Headers.Clone(), discover: cfg.DiscoverModels, static: static, rewrites: rewrites, discoveryTO: cfg.DiscoveryTimeout, apiPath: cfg.APIPath, quotaURL: strings.TrimRight(cfg.QuotaURL, "/"), quotaHeaders: cfg.QuotaHeaders.Clone(), keyQuotaURL: cfg.KeyQuotaURL}, nil
 }
 
 // accountQuota reads OpenRouter account credits with the configured billing
@@ -184,6 +186,38 @@ func (p *Compatible) Models(ctx context.Context) ([]Model, error) {
 			req.Header.Add(name, value)
 		}
 	}
+	entries, err := p.catalogEntries(req)
+	if err != nil {
+		return nil, err
+	}
+	if p.discoverDecisions {
+		decisionURL := *u
+		query := decisionURL.Query()
+		query.Set("output_modalities", "decisions")
+		decisionURL.RawQuery = query.Encode()
+		decisionRequest := req.Clone(dctx)
+		decisionRequest.URL = &decisionURL
+		extra, extraErr := p.catalogEntries(decisionRequest)
+		if extraErr != nil {
+			return nil, fmt.Errorf("discover decision models: %w", extraErr)
+		}
+		entries = append(entries, extra...)
+	}
+	for _, raw := range entries {
+		if trimmed := bytes.TrimSpace(raw); len(trimmed) < 2 || trimmed[0] != '{' {
+			return nil, errors.New("decode models: each model must be an object")
+		}
+		var model Model
+		if err := json.Unmarshal(raw, &model); err != nil || model.ID == "" {
+			return nil, errors.New("decode models: model has empty or invalid ID")
+		}
+		applyCatalogMetadata(raw, &model)
+		add(model)
+	}
+	return models, nil
+}
+
+func (p *Compatible) catalogEntries(req *http.Request) ([]json.RawMessage, error) {
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("discover models: %w", err)
@@ -211,30 +245,19 @@ func (p *Compatible) Models(ctx context.Context) ([]Model, error) {
 	if len(envelope.Data) == 0 || json.Unmarshal(envelope.Data, &entries) != nil || entries == nil {
 		return nil, errors.New("decode models: data must be an array")
 	}
-	for _, raw := range entries {
-		if trimmed := bytes.TrimSpace(raw); len(trimmed) < 2 || trimmed[0] != '{' {
-			return nil, errors.New("decode models: each model must be an object")
-		}
-		var model Model
-		if err := json.Unmarshal(raw, &model); err != nil || model.ID == "" {
-			return nil, errors.New("decode models: model has empty or invalid ID")
-		}
-		applyCatalogMetadata(raw, &model)
-		add(model)
-	}
-	return models, nil
+	return entries, nil
 }
 
 func (p *Compatible) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
 	switch endpoint {
-	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses":
+	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses", "/v1/systemone", "/v1/systemone/":
 	default:
 		return nil, fmt.Errorf("unsupported OpenAI-compatible endpoint %q", endpoint)
 	}
 	if rewritten, ok := p.rewrites[model]; ok {
 		model = rewritten
 	}
-	upstreamEndpoint := p.apiPath + strings.TrimPrefix(endpoint, "/v1")
+	upstreamEndpoint := p.apiPath + strings.TrimPrefix(strings.TrimRight(endpoint, "/"), "/v1")
 	return p.transport.Do(ctx, upstreamEndpoint, body, model)
 }
 
@@ -242,7 +265,7 @@ func (p *Compatible) Forward(ctx context.Context, endpoint string, body []byte, 
 // configured origin and credentials. The provider must explicitly opt into
 // this transport by implementing DecisionProvider.
 func (p *Compatible) ForwardDecision(ctx context.Context, body []byte) (*http.Response, error) {
-	return p.transport.Do(ctx, "/v1/systemone/", body, modelFromBody(body))
+	return p.Forward(ctx, "/v1/systemone", body, modelFromBody(body))
 }
 
 func modelFromBody(body []byte) string {

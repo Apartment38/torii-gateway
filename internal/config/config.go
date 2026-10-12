@@ -276,7 +276,7 @@ func (c Config) Validate() error {
 		}
 		ids[providerConfig.ID] = struct{}{}
 
-		if !trackedCompatible(providerConfig.Type) && providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.Type != "jev" && providerConfig.Type != "jev_compatible" {
+		if !trackedCompatible(providerConfig.Type) && providerConfig.Type != "ollama" && providerConfig.Type != "openai_compatible" && providerConfig.Type != "openai" && providerConfig.Type != "openai-codex" && providerConfig.Type != "nous" && providerConfig.Type != "openrouter" && providerConfig.Type != "gemini" && providerConfig.Type != "xai" && providerConfig.Type != "anthropic" && providerConfig.Type != "typesafe" && providerConfig.Type != "jev" && providerConfig.Type != "jev_compatible" {
 			return fmt.Errorf("%s.type %q is unsupported", field, providerConfig.Type)
 		}
 		if err := validateBaseURL(providerConfig.BaseURL); err != nil {
@@ -290,17 +290,17 @@ func (c Config) Validate() error {
 				return fmt.Errorf("%s.request_timeout must be a positive duration", field)
 			}
 		}
-		if providerConfig.Type == "openai_compatible" || providerConfig.Type == "jev" || providerConfig.Type == "jev_compatible" {
+		if providerConfig.Type == "openai_compatible" || providerConfig.Type == "typesafe" || providerConfig.Type == "jev" || providerConfig.Type == "jev_compatible" {
 			if err := validateCompatibleProvider(providerConfig); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
 			}
-			if providerConfig.Type == "jev" {
+			if providerConfig.Type == "typesafe" || providerConfig.Type == "jev" {
 				parsed, _ := url.Parse(providerConfig.BaseURL)
 				if parsed.Scheme != "https" || parsed.Host != "api.typesafe.ai" {
-					return fmt.Errorf("%s: type jev requires https://api.typesafe.ai; use jev_compatible for other endpoints", field)
+					return fmt.Errorf("%s: type typesafe requires https://api.typesafe.ai; use jev_compatible for other endpoints", field)
 				}
 				if providerConfig.BearerToken == nil {
-					return fmt.Errorf("%s: type jev requires bearer_token", field)
+					return fmt.Errorf("%s: type typesafe requires bearer_token", field)
 				}
 			}
 		}

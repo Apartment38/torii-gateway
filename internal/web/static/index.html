@@ -102,7 +102,7 @@
           <section id="providers" class="page section-block">
             <div class="section-heading"><div><h2>Providers</h2></div><button id="add-provider" class="button primary" type="button">＋ Add provider</button></div>
             <div id="providers-empty-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span>No providers have been configured. Click <strong>Add provider</strong> to connect an API or sign in to a subscription. Models will become available after you configure a provider and save.</span></div>
-            <div id="classifier-provider-notice" class="notice" role="status" hidden><span>◎</span><span>No classifier models are available. Add a provider with type <strong>TypeSafe AI · Jev</strong> or <strong>Jev compatible · Laya / custom</strong>, then test its connection to discover models for Smart Routing.</span></div>
+            <div id="classifier-provider-notice" class="notice" role="status" hidden><span>◎</span><span>No classifier models are available. Connect <strong>TypeSafe</strong>, <strong>OpenRouter</strong>, or a <strong>Jev compatible</strong> provider, then test its connection to discover models for Smart Routing.</span></div>
             <div id="providers-list" class="provider-list"></div>
           </section>
 
@@ -120,7 +120,7 @@
             <p class="page-description">Jev chooses the cheapest capable model using prices, capabilities and relevant benchmarks for each prompt. Torii verifies availability and your routing policy before dispatch.</p>
             <div id="classifier-notice" class="notice" role="status" aria-live="polite" hidden><span>◎</span><span id="classifier-notice-message"></span><a href="#providers">Add a classifier provider</a></div>
             <div class="grid two">
-              <label data-tooltip="Classifier models are discovered from connected TypeSafe Jev or Jev-compatible providers. Connection URLs and credentials are configured on the Providers page.">Classifier model<select id="classifier-model"><option value="">Discovering classifier models…</option></select></label>
+              <label data-tooltip="Decision models are discovered from connected TypeSafe, OpenRouter, and Jev-compatible providers. Connection URLs and credentials are configured on the Providers page.">Classifier model<select id="classifier-model"><option value="">Discovering classifier models…</option></select></label>
               <label data-tooltip="Controls whether a failed model request is retried through another model or returned immediately. Reroute enables the retry path.">On model failure<select name="router.sessions.on_model_failure"><option value="">Default</option><option value="reroute">Reroute</option><option value="fail">Fail</option></select></label>
               <label data-tooltip="Controls what happens when classification fails. Fallback keeps routing available; fail returns the classifier error.">Classifier failure policy<select name="router.classifier.on_failure"><option value="">Fallback</option><option value="capability_fallback">Fallback</option><option value="fail">Fail</option></select></label>
             </div>
@@ -208,7 +208,7 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=16"></script>
+    <script type="module" src="/web/app.js?v=17"></script>
 
 </body>
 </html>

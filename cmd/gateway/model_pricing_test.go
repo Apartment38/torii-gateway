@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Apartment38/torii-gateway/internal/config"
@@ -81,5 +84,81 @@ func TestPricingCSVParseAndTemplateRequireAdmin(t *testing.T) {
 	}
 	if currentConfigRevision(t, r) != revision {
 		t.Fatal("CSV validation changed configuration before saving")
+	}
+}
+
+func TestPricingRefreshRequiresAdminAndDoesNotChangeSettings(t *testing.T) {
+	r, _ := credentialRuntime(t)
+	revision := currentConfigRevision(t, r)
+	const path = "/gateway/v1/models/pricing/refresh"
+	req := httptest.NewRequest("POST", path, nil)
+	req.Header.Set("Authorization", "Bearer admin-sentinel")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 401 {
+		t.Fatalf("inference key refreshed pricing: %d", w.Code)
+	}
+	req = httptest.NewRequest("POST", path, nil)
+	req.SetBasicAuth("chosen-admin", "administrator-password")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	var result struct {
+		Models []json.RawMessage `json:"models"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || len(result.Models) != 1 {
+		t.Fatalf("refresh failed: %d %s", w.Code, w.Body.String())
+	}
+	if currentConfigRevision(t, r) != revision {
+		t.Fatal("refresh modified settings")
+	}
+}
+
+func TestPricingRefreshPullsLatestProviderRatesAndRetainsManualOverrides(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		count := calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"data":[{"id":"model","pricing":{"prompt":"0.00000%d","completion":"0.000002"}},{"id":"manual","pricing":{"prompt":"0.000003","completion":"0.000004"}}]}`, count)
+	}))
+	defer upstream.Close()
+	r, _ := credentialRuntime(t)
+	cfg, err := r.loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	discover := true
+	cfg.Providers[0].DiscoverModels = &discover
+	cfg.Providers[0].BaseURL = upstream.URL
+	manual := 9.0
+	cfg.ModelPricing = map[string]catalog.Pricing{"p/manual": {InputPerMillion: &manual}}
+	handler, err := buildHandlerWithRuntime(cfg, r.configPath, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.handler = handler
+	before := calls.Load()
+	req := httptest.NewRequest("POST", "/gateway/v1/models/pricing/refresh", nil)
+	req.SetBasicAuth("chosen-admin", "administrator-password")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	var result struct {
+		Models []struct {
+			ID      string          `json:"id"`
+			Pricing catalog.Pricing `json:"pricing"`
+		} `json:"models"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil {
+		t.Fatalf("refresh failed: %d %s", w.Code, w.Body.String())
+	}
+	if calls.Load() <= before {
+		t.Fatal("refresh reused cached catalog")
+	}
+	for _, model := range result.Models {
+		if model.ID == "p/model" && (model.Pricing.UpdatedAt == nil || *model.Pricing.InputPerMillion != float64(calls.Load())) {
+			t.Fatalf("latest provider pricing not returned: %+v", model.Pricing)
+		}
+		if model.ID == "p/manual" && (*model.Pricing.InputPerMillion != 9 || model.Pricing.Source != "operator") {
+			t.Fatal("refresh replaced manual pricing")
+		}
 	}
 }

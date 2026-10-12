@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/provider"
@@ -178,5 +179,78 @@ func TestLivePricingPrecedesBundledButOperatorCanOverride(t *testing.T) {
 	paid, _ = c.Model("p/paid")
 	if *paid.Pricing.InputPerMillion != 3 || *paid.Pricing.OutputPerMillion != 4 {
 		t.Fatal("operator precedence", paid)
+	}
+}
+
+func TestPricingFreshnessSurvivesFailureAndPriceDisappearance(t *testing.T) {
+	p := &stubProvider{id: "p", models: []provider.Model{{ID: "p/m", InputPerMillion: floatPointer(2), OutputPerMillion: floatPointer(4), PricingSource: "provider_model_catalog"}}}
+	c, err := catalog.New([]provider.Provider{p}, []catalog.Descriptor{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first := c.Models()[0].Pricing
+	if first.UpdatedAt == nil || first.RefreshFailed {
+		t.Fatalf("no successful price evidence: %+v", first)
+	}
+	p.err = errors.New("offline")
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	failed := c.Models()[0].Pricing
+	if !failed.RefreshFailed || !failed.UpdatedAt.Equal(*first.UpdatedAt) || *failed.InputPerMillion != 2 {
+		t.Fatalf("failed refresh lost evidence: %+v", failed)
+	}
+	p.err = nil
+	p.models = []provider.Model{{ID: "p/m"}}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	missing := c.Models()[0].Pricing
+	if !missing.RefreshFailed || !missing.UpdatedAt.Equal(*first.UpdatedAt) {
+		t.Fatalf("discovery renewed missing prices: %+v", missing)
+	}
+	p.models[0].InputPerMillion = floatPointer(1)
+	p.models[0].PricingSource = "models.dev snapshot 2025-01-02; base token rates"
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fallback := c.Models()[0].Pricing
+	if !fallback.RefreshFailed || *fallback.InputPerMillion != 2 || !fallback.UpdatedAt.Equal(*first.UpdatedAt) {
+		t.Fatal("bundled fallback replaced last live pricing")
+	}
+	p.models[0].PricingSource = "provider_model_catalog"
+	p.models[0].InputPerMillion = floatPointer(3)
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	recovered := c.Models()[0].Pricing
+	if recovered.RefreshFailed || *recovered.InputPerMillion != 3 || recovered.UpdatedAt.Before(*first.UpdatedAt) {
+		t.Fatalf("price recovery failed: %+v", recovered)
+	}
+	// Returned timestamps are isolated from the catalog snapshot.
+	*recovered.UpdatedAt = time.Time{}
+	if c.Models()[0].Pricing.UpdatedAt.IsZero() {
+		t.Fatal("caller modified catalog freshness")
+	}
+}
+
+func TestSnapshotPricingUsesSnapshotDateAndUnknownPricesHaveNoTimestamp(t *testing.T) {
+	p := &stubProvider{id: "p", models: []provider.Model{{ID: "p/estimate", InputPerMillion: floatPointer(1), PricingSource: "models.dev snapshot 2025-01-02; base token rates"}, {ID: "p/unknown"}}}
+	c, err := catalog.New([]provider.Provider{p}, []catalog.Descriptor{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	models := c.Models()
+	if models[0].Pricing.UpdatedAt == nil || models[0].Pricing.UpdatedAt.Format("2006-01-02") != "2025-01-02" {
+		t.Fatal("snapshot was dated as a live pull")
+	}
+	if models[1].Pricing.UpdatedAt != nil {
+		t.Fatal("model discovery invented price evidence")
 	}
 }

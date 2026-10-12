@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,9 +51,11 @@ type Modalities struct {
 }
 
 type Pricing struct {
-	Source           string   `json:"source,omitempty" yaml:"source,omitempty"`
-	InputPerMillion  *float64 `json:"input_per_million,omitempty" yaml:"input_per_million,omitempty"`
-	OutputPerMillion *float64 `json:"output_per_million,omitempty" yaml:"output_per_million,omitempty"`
+	UpdatedAt        *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	RefreshFailed    bool       `json:"refresh_failed,omitempty" yaml:"-"`
+	Source           string     `json:"source,omitempty" yaml:"source,omitempty"`
+	InputPerMillion  *float64   `json:"input_per_million,omitempty" yaml:"input_per_million,omitempty"`
+	OutputPerMillion *float64   `json:"output_per_million,omitempty" yaml:"output_per_million,omitempty"`
 }
 
 type Quality struct {
@@ -157,6 +160,9 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 			if previous, ok := nextState[p.ID()]; ok {
 				for i := range previous.descriptors {
 					previous.descriptors[i].Availability.Stale = true
+					if previous.descriptors[i].Pricing.UpdatedAt != nil {
+						previous.descriptors[i].Pricing.RefreshFailed = true
+					}
 				}
 				nextState[p.ID()] = previous
 				usable++
@@ -189,6 +195,35 @@ func (c *Catalog) Refresh(ctx context.Context) error {
 			}
 			if model.PricingSource != "" {
 				d.Pricing.Source = model.PricingSource
+			}
+			// Only live price evidence advances freshness; discovery alone does not.
+			var previousPrice *Pricing
+			for _, old := range c.state[p.ID()].descriptors {
+				if old.PublicID == d.PublicID && old.Pricing.UpdatedAt != nil {
+					value := old.Pricing
+					previousPrice = &value
+					break
+				}
+			}
+			hasLivePrice := model.InputPerMillion != nil || model.OutputPerMillion != nil
+			snapshotPrice := strings.HasPrefix(model.PricingSource, "models.dev snapshot ")
+			if previousPrice != nil && (!hasLivePrice || snapshotPrice && previousPrice.Source == "provider_model_catalog") {
+				d.Pricing = *previousPrice
+				d.Pricing.RefreshFailed = true
+			} else if hasLivePrice {
+				updated := now
+				if snapshotPrice {
+					fields := strings.Fields(strings.TrimPrefix(model.PricingSource, "models.dev snapshot "))
+					if len(fields) > 0 {
+						if parsed, err := time.Parse("2006-01-02", strings.TrimSuffix(fields[0], ";")); err == nil {
+							updated = parsed
+						}
+					}
+				}
+				d.Pricing.UpdatedAt = &updated
+				if d.Pricing.Source == "" {
+					d.Pricing.Source = "provider_model_catalog"
+				}
 			}
 			d.Subscription = model.Subscription
 			if model.Subscription {
@@ -286,6 +321,10 @@ func bundledForProvider(records []Descriptor, providerID string, now time.Time) 
 func clone(d Descriptor) Descriptor {
 	d.MaxOutputTokens = copyInt(d.MaxOutputTokens)
 	d.ContextWindow = copyInt(d.ContextWindow)
+	if d.Pricing.UpdatedAt != nil {
+		updated := *d.Pricing.UpdatedAt
+		d.Pricing.UpdatedAt = &updated
+	}
 	d.Pricing.InputPerMillion = copyFloat(d.Pricing.InputPerMillion)
 	d.Pricing.OutputPerMillion = copyFloat(d.Pricing.OutputPerMillion)
 	d.Quality.General = copyFloat(d.Quality.General)

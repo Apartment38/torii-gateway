@@ -46,7 +46,7 @@ func (h *OpenAIHandler) CatalogModels() []catalog.Descriptor {
 		models[i] = h.applyModelPricing(models[i])
 		if h.freeProviders[models[i].ProviderID] {
 			zero := float64(0)
-			models[i].Pricing = catalog.Pricing{InputPerMillion: &zero, OutputPerMillion: &zero}
+			models[i].Pricing.InputPerMillion, models[i].Pricing.OutputPerMillion = &zero, &zero
 		}
 	}
 	return models

@@ -14,13 +14,13 @@ Benchmarks, Server), in that order.
 | --- | --- |
 | Provider Balances | Inspect provider balances, subscription limits, and reset times |
 | Overview | Inspect the current gateway and model summary |
-| Server | Listener setting and database bootstrap information |
+| Server | Listener, display timezone, Activity monitoring and database bootstrap information |
 | Providers | Add/test inference and classifier providers; subscription login |
 | Models | Enable models, edit/import pricing, and inspect usage, provider quotas and benchmarks |
 | Smart routing | Smart routing, classifier selection/tuning, session failure policy |
 | Benchmarks | Enable sources, enter source keys, refresh and inspect scores |
 | API keys | Create/revoke client API keys and rotate the default key |
-| Activity | Recent metadata-only request events and live routing/completion updates |
+| Activity | Recent request events, live updates and optional prompt/Jev inspectors |
 | Usage & quota | Inspect usage and allowance/quota state |
 
 The overview leads with current UTC requests, processed tokens, and estimated cost, plus success among the bounded recent request sample. Provider, enabled-model, and routing context link to their detailed pages. It shows current UTC token distribution, recent completed request metadata, and copyable client base URL/model settings. The model catalog supports search, provider and enablement filters; **Inspect metadata** expands full capabilities and benchmark provenance. **Activity** defaults to completed requests; choose **All events** to inspect request stages. **Usage & quota** shows the chosen client scope and UTC period without combining daily and monthly totals. View filters change only the display. Budget limits and advanced settings expand below the usage summary.
@@ -31,7 +31,7 @@ and expands provider-reported spend under **Inspect metadata**. **Provider Balan
 shows provider balances and subscription limits separately from the operator budgets
 on **Usage & quota**.
 Dollar balances, token/request allowances and subscription percentages retain
-their units; reset times use your browser's local time. “Quota unknown” and
+their units; reset times use the saved display timezone (your browser timezone when unset). “Quota unknown” and
 “Usage unavailable” mean data was not reported or could not be read, not zero.
 Portal dollar balances and some Codex credential types remain unknown; see
 [Provider support](../reference/providers.md#costs-usage-and-remaining-allowances).
@@ -43,6 +43,28 @@ and month. Benchmark scorecards keep full measurements in **Inspect** dialogs.
 The console supports light and dark themes. It loads the active configuration
 when you sign in. Static assets are public, but configuration and credential
 management require administrator authentication.
+
+## Timezone and Activity monitoring
+
+On **Server**, set **Display timezone** to an IANA name such as `America/New_York`
+or `UTC`. It applies across the console after saving. Leave it blank to use your
+browser timezone. Usage periods remain UTC; a benchmark date without a time keeps
+its published calendar date.
+
+Under **Activity monitoring**, configure **Maximum data (bytes)** (default
+104857600, or 100 MiB) and **Retention (days)** (default 7). Oldest events are
+removed when either limit is exceeded; changing limits applies cleanup immediately.
+Expired events are also cleaned up at least every minute and open Activity views refresh.
+
+**Enable prompt logging** and **Enable Jev decision logging** default to off.
+Their tooltips identify these as debugging controls: leave them off unless needed.
+With logging enabled, each Activity row has **Inspect prompt** and/or **Inspect Jev
+decision** buttons. The overlay shows the original API request body, or the request
+sent to Jev and its response, as plain text. Unrecorded details have disabled buttons;
+Jev is not called for every request. Each body is capped at 64 KiB and truncation is
+labeled. Captured content shares the event retention limits and may contain sensitive
+prompt data. Closing the card, leaving Activity or signing out clears its display.
+Disabling logging stops new capture; older captures expire under the configured limits.
 
 ## Apply changes
 

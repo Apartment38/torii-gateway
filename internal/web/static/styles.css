@@ -471,5 +471,5 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
 .model-price-edit { display: block; margin-top: 8px; }
 
 #activity-inspector-dialog { width: min(900px,calc(100vw - 32px)); }
-.activity-debug-body { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; padding: 16px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+.activity-debug-body { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; padding: 16px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
 #activity-monitoring-title { margin-top: 28px; }

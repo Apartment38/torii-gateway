@@ -2,6 +2,27 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Server timezone and Activity monitoring
+
+Implemented on `feat/server-monitoring` in `/workspace/work/server-monitoring`.
+Server settings expose an IANA display timezone, Activity size/retention limits
+(default 100 MiB and seven days), and independent prompt/Jev debug capture toggles
+(default off). Shared date formatters cover Activity, Overview, API-key dates,
+benchmark timestamps and quota/reset displays; accounting periods stay UTC.
+Activity inspectors show original API JSON and final Jev request/response bodies,
+escape content as text, label 64 KiB truncation, and clear on dismissal/navigation.
+Debug details persist with the events but are excluded from general activity logs.
+Limit changes prune immediately; live views refresh after cleanup. No schema or
+module dependency changes are required. Affected guides and references are updated.
+
+Validation: full Go tests and race checks, build, vet, module tidy (no changes),
+126 console tests, generated assets, release-validator tests, formatting/diff and
+affected documentation links pass. Disposable Chromium checks cover persisted
+settings, both inspectors, raw prompt preservation, malformed Jev response capture,
+Escape dismissal and mobile overlays with no browser errors. Container validation
+is unavailable because Podman and the host SQLite CLI are absent. Live-provider
+checks and deployment remain unperformed.
+
 ## Console monitoring navigation
 
 Implemented on `chore/sidebar-sections` in `/workspace/torii-sidebar`. Sidebar
@@ -32,6 +53,7 @@ URL fields and actual connection-test payloads for every hosted integration, bot
 with blank drafts and previous endpoint values, plus custom URL preservation.
 Backend provider behavior and dependencies are unchanged. No live provider calls
 or deployment were performed.
+
 
 ## Codex browser login
 

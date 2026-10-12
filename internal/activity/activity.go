@@ -1,4 +1,4 @@
-// Package activity publishes bounded, metadata-only request history.
+// Package activity publishes bounded request history with opt-in debug bodies.
 package activity
 
 import (

@@ -11,7 +11,7 @@ import (
 )
 
 // DecisionTrace captures bounded protocol bodies only when explicitly enabled.
-// Credentials and HTTP headers never cross this boundary.
+// HTTP headers, including authorization credentials, never cross this boundary.
 type DecisionTrace struct {
 	mu                sync.Mutex
 	request, response string

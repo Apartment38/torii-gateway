@@ -19,14 +19,41 @@ function renderUsagePage():void{
  const period=document.querySelector<HTMLSelectElement>("#usage-period")!;period.value=usagePeriod;period.addEventListener("change",()=>{usagePeriod=period.value;renderUsagePage();});
 }
 let providerBalancesData:Record<string,any>|null=null;
+function combineProviderSnapshots(snapshots:any[]):any{
+ const ordered=[...snapshots].sort((a,b)=>String(a.checked_at||"").localeCompare(String(b.checked_at||"")));
+ const quota=Object.assign({},...ordered);
+ const merge=(rows:any[],key:(row:any)=>string,prefer?:(old:any,next:any)=>any)=>{
+  const entries=new Map<string,any>();
+  for(const row of rows){const id=key(row),old=entries.get(id);entries.set(id,old&&prefer?prefer(old,row):row);}
+  return [...entries.values()];
+ };
+ const windowKey=(w:any)=>JSON.stringify([w.name,w.unit,w.model,w.slot,w.window_type,w.window_seconds,w.source]);
+ const preferWindow=(old:any,next:any)=>{
+  // A model may report the same account cap as informational. Keep one cap,
+  // preserving its enforcement evidence without adding the balances together.
+  return {...next,informational:Boolean(old.informational&&next.informational)};
+ };
+ quota.windows=merge(ordered.flatMap(q=>q.windows||[]),windowKey,preferWindow).map(w=>w.model?{...w,name:`${w.name} (${w.model})`}:w);
+ quota.balances=merge(ordered.flatMap(q=>q.balances||[]),b=>JSON.stringify([b.name,b.unit]));
+ quota.reported_usage=merge(ordered.flatMap(q=>q.reported_usage||[]),u=>JSON.stringify([u.period,u.unit,u.scope]));
+ quota.limits=merge(ordered.flatMap(q=>q.limits||[]),g=>JSON.stringify([g.limit_id,g.map_key,g.scope,g.model]),(old,next)=>({...next,windows:merge([...(old.windows||[]),...(next.windows||[])],windowKey,preferWindow)}));
+ if(ordered.some(q=>q.usage_usd))quota.usage_usd=Object.assign({},...ordered.map(q=>q.usage_usd||{}));
+ quota.source=[...new Set(ordered.map(q=>q.source).filter(Boolean))].join(" · ");
+ quota.known=ordered.some(q=>q.known);
+ // One exhausted model does not establish provider-wide exhaustion.
+ quota.exhausted=ordered.every(q=>q.exhausted);quota.blocked=ordered.every(q=>q.blocked);
+ return quota;
+}
 function renderProviderBalancesPage():void{
  const output=document.querySelector<HTMLElement>("#provider-balances-list")!;
  if(!providerBalancesData){output.innerHTML='<p class="section-note">Provider balances have not loaded yet.</p>';return;}
  const providerSnapshots=new Map<string,any>();
- for(const [id,q] of Object.entries(providerBalancesData)){
-  const provider=id.split("/")[0];const status=q as any;const signature=JSON.stringify([provider,status.source,status.windows,status.balances,status.reported_usage,status.reset_credits,status.usage_usd,status.known,status.exhausted]);
-  if(!providerSnapshots.has(signature))providerSnapshots.set(signature,{id:provider,quota:status});
+ for(const [id,status] of Object.entries(providerBalancesData)){
+  const provider=id.split("/")[0];
+  if(!providerSnapshots.has(provider))providerSnapshots.set(provider,{id:provider,snapshots:[]});
+  providerSnapshots.get(provider).snapshots.push(status);
  }
+ for(const model of providerSnapshots.values())model.quota=combineProviderSnapshots(model.snapshots);
  output.innerHTML=providerSnapshots.size?`<div class="budget-summary-list">${[...providerSnapshots.values()].map(model=>`<div class="budget-summary"><strong>${escapeHTML(model.id)}</strong>${modelTrackingMarkup(model)}</div>`).join("")}</div>`:'<div class="empty-state"><strong>No provider telemetry available</strong><p>Balances and subscription limits appear when providers report account telemetry.</p></div>';
 }
 async function loadProviderBalancesPage():Promise<void>{

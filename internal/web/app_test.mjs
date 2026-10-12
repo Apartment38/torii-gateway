@@ -1811,7 +1811,7 @@ test("overview counts classifier models outside the chat catalog",()=>{
 
 test("smart router dual selector transfers models and enforces 250 choices",async()=>{
  const app=consoleFixture(()=>response({}));
- app.run('applyConfig({providers:[],router:{models:["local/a"]}});overviewModels=[{id:"local/a",provider_id:"local"},{id:"local/b",provider_id:"local"}];saveConfig=async()=>{};renderSmartRouterScope()');
+ app.run('applyConfig({providers:[{id:"local",type:"ollama",base_url:"http://local.test"}],router:{models:["local/a"]}});overviewModels=[{id:"local/a",provider_id:"local"},{id:"local/b",provider_id:"local"}];saveConfig=async()=>{};renderSmartRouterScope()');
  assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/local\/b/);
  assert.ok(!app.run('document.querySelector("#smart-router-models-available").innerHTML').includes('local/a'));
  await app.run('transferSmartModels(true,"local/b")');
@@ -1946,7 +1946,7 @@ test("saved timezone applies across date boundaries, quotas and benchmark timest
  assert.match(app.run('quotaWindowText({name:"daily",remaining:10,unit:"tokens",reset_at:"2026-10-09T01:30:00Z"})'),/10\/8\/2026/);
  assert.equal(app.run('consoleDate("invalid")'),"—");
 });
-test("activity debug inspectors show raw bodies safely and clear content on dismissal",()=>{
+test("activity debug inspectors format bodies safely and clear content on dismissal",()=>{
  const app=consoleFixture(()=>response({}));
  app.context.debugRow={id:123,kind:"request_complete",prompt:'{\n "messages": [{"role":"user","content":"<script>private</script>"}]\n}',jev_request:'{"state":"<unsafe>","questions":{}}',jev_response:'{"answers":{"choice":"<unsafe>"}}',debug_truncated:true};
  app.run('activityRows=[debugRow];loadedConfiguration.activity={prompt_logging:true,jev_decision_logging:true};renderActivity()');
@@ -1954,7 +1954,7 @@ test("activity debug inspectors show raw bodies safely and clear content on dism
  assert.match(rows,/data-inspect-activity="123" data-inspect-kind="prompt"/);assert.match(rows,/data-inspect-kind="jev"/);
  app.run('openActivityInspector(123,"prompt")');
  let html=app.run('document.querySelector("#activity-inspector-content").innerHTML');
- assert.match(html,/&lt;script&gt;private&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>/);assert.ok(html.includes('{\n &quot;messages&quot;'));
+ assert.match(html,/&lt;script&gt;private&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>/);assert.ok(html.includes('{\n  &quot;messages&quot;'));
  assert.equal(app.run('document.querySelector("#activity-inspector-dialog").open'),true);
  assert.match(app.run('document.querySelector("#activity-inspector-note").textContent'),/truncated/);
  app.run('openActivityInspector(123,"jev")');html=app.run('document.querySelector("#activity-inspector-content").innerHTML');
@@ -2137,4 +2137,60 @@ test("inline editing uses table pagination, filter, scope and refreshes untouche
  assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/value="91"/);
  assert.equal(app.run('document.querySelector("#benchmark-page-label").textContent'),"Page 2 of 2");
  assert.equal(app.run('document.querySelector("#benchmark-next").disabled'),true);
+});
+
+
+test("Activity size displays MiB and saves exact byte limits",()=>{
+ const html=readFileSync(new URL("./static/index.html",import.meta.url),"utf8");assert.match(html,/Maximum data \(MiB\)/);assert.match(html,/min="0.0078125" step="any" placeholder="100"/);
+ const app=consoleFixture(()=>response({}));app.run('applyConfig({providers:[],activity:{max_bytes:104857601}})');
+ assert.equal(app.run('Number(form.elements.namedItem("activity.max_bytes").value)'),104857601/1048576);
+ assert.equal(app.run('readConfig().activity.max_bytes'),104857601);
+ app.run('form.elements.namedItem("activity.max_bytes").value="1.5"');assert.equal(app.run('readConfig().activity.max_bytes'),1572864);
+ for(const value of ['0.007','-1','NaN','0.0000001','9007199254740992']){app.context.badSize=value;app.run('form.elements.namedItem("activity.max_bytes").value=badSize');assert.throws(()=>app.run('readConfig()'),/Activity/);}
+ app.run('form.elements.namedItem("activity.max_bytes").value=""');assert.equal(app.run('readConfig().activity.max_bytes'),104857600);
+});
+
+test("Activity inspectors indent nested JSON and multiline text with raw fallback",()=>{
+ const app=consoleFixture(()=>response({}));app.context.body=JSON.stringify({messages:[{role:'user',content:'First line\n  second line\n<script>third</script>'}],literal:'literal \\n',tools:{nested:[1,2]}});
+ const formatted=app.run('readableActivityBody(body)');assert.ok(formatted.includes('\n  "messages": [\n    {'));assert.ok(formatted.includes('First line\n'));assert.ok(formatted.includes('second line\n'));assert.ok(formatted.includes(JSON.stringify('literal \\n')));
+ for(const raw of ['plain text\n  indented','{"messages":[','data: {"answer":1}\n\ndata: [DONE]']){app.context.rawBody=raw;assert.equal(app.run('readableActivityBody(rawBody)'),raw);}
+ app.run('activityRows=[{id:1,prompt:body,jev_request:body,jev_response:body}];loadedConfiguration.activity={prompt_logging:true,jev_decision_logging:true};openActivityInspector(1,"jev")');
+ const html=app.run('document.querySelector("#activity-inspector-content").innerHTML');assert.ok(html.includes('First line\n'));assert.match(html,/&lt;script&gt;third/);assert.doesNotMatch(html,/<script>/);
+});
+
+test("Smart routing loads models directly and refreshes when enabled providers change",async()=>{
+ let stored={providers:[{id:'p',type:'ollama',base_url:'http://local.test',enabled:true},{id:'q',type:'ollama',base_url:'http://local.test',enabled:false}],router:{}};
+ const app=consoleFixture((url,options)=>{
+  if(url==='/gateway/v1/models')return response({models:stored.providers.filter(p=>p.enabled).map(p=>({id:p.id+'/m',provider_id:p.id}))});
+  if(url==='/gateway/v1/config'&&options?.method==='PUT'){stored=JSON.parse(options.body);return response({});}
+  if(url==='/gateway/v1/config')return response(stored);
+  return response({models:[]});
+ });
+ app.context.stored=stored;app.run('applyConfig(stored,fixtureRevision);consoleSession="active";location.hash="#routing";navigate()');
+ await app.run('loadSmartRouterModels()');assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/p\/m/);assert.doesNotMatch(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/q\/m/);
+ app.run('providers[0].enabled=false;providers[1].enabled=true;markDirty()');await app.run('saveConfig()');await new Promise(resolve=>setImmediate(resolve));
+ const html=app.run('document.querySelector("#smart-router-models-available").innerHTML');assert.match(html,/q\/m/);assert.doesNotMatch(html,/p\/m/);
+ app.run('smartRouterDrafts.smart.providers=["p"];renderSmartRouterScope()');assert.equal(app.run('document.querySelector("#smart-router-models-available").innerHTML'),'');
+});
+
+test("Smart routing rejects old catalog replies and shows discovery failures",async()=>{
+ const pending=[];const app=consoleFixture(()=>new Promise(resolve=>pending.push(resolve)));
+ app.run('consoleSession="active";providers=[{id:"p"}];smartRouterDrafts={smart:{}}');
+ const first=app.run('loadSmartRouterModels()');await new Promise(resolve=>setImmediate(resolve));const second=app.run('loadSmartRouterModels()');await new Promise(resolve=>setImmediate(resolve));
+ pending[1](response({models:[{id:'p/new',provider_id:'p'}]}));await second;pending[0](response({models:[{id:'p/old',provider_id:'p'}]}));await first;
+ assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/p\/new/);assert.doesNotMatch(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/p\/old/);
+ app.setFetch(()=>response({},false));await app.run('loadSmartRouterModels()');assert.match(app.run('document.querySelector("#smart-router-model-status").textContent'),/unavailable/);
+});
+
+test("Provider Balances combines free and paid snapshots without adding shared credits",()=>{
+ const app=consoleFixture(()=>response({}));const spend={name:'key_spend',unit:'USD',remaining:10,reset_at:'2026-11-01T00:00:00Z'};
+ app.context.quotas={'openrouter/paid':{known:true,source:'openrouter_key',checked_at:'2026-10-12T20:03:32Z',windows:[spend],balances:[{name:'account',unit:'USD',remaining:4.622757}],usage_usd:{total:0,daily:0,weekly:0,monthly:0}},'openrouter/free':{known:true,source:'openrouter_key',checked_at:'2026-10-12T20:03:32Z',windows:[{name:'free_daily_requests',unit:'requests',remaining:50},{...spend,informational:true}],balances:[{name:'account',unit:'USD',remaining:4.622757}],usage_usd:{total:0,daily:0,weekly:0,monthly:0}},'other/m':{known:false,source:'unavailable'}};
+ app.run('providerBalancesData=quotas;renderProviderBalancesPage()');const html=app.run('document.querySelector("#provider-balances-list").innerHTML');
+ assert.equal((html.match(/<strong>openrouter<\/strong>/g)||[]).length,1);assert.equal((html.match(/key spend:/g)||[]).length,1);assert.equal((html.match(/account: \$4.622757/g)||[]).length,1);assert.match(html,/50 requests remaining/);assert.match(html,/Provider-reported spend/);assert.equal((html.match(/<strong>other<\/strong>/g)||[]).length,1);
+ assert.equal(app.run('quotas["openrouter/free"].windows[1].informational'),true);
+});
+
+test("Provider balance merge retains scoped windows and freshest shared data",()=>{
+ const app=consoleFixture(()=>response({}));app.context.snapshots=[{known:true,exhausted:true,source:'old',checked_at:'2026-10-11T00:00:00Z',windows:[{name:'daily',unit:'requests',model:'a',remaining:0},{name:'credits',unit:'USD',remaining:2}],balances:[{name:'account',unit:'USD',remaining:2}],reported_usage:[{period:'monthly',unit:'USD',scope:'account',used:1}]},{known:true,source:'new',checked_at:'2026-10-12T00:00:00Z',windows:[{name:'daily',unit:'requests',model:'b',remaining:50},{name:'credits',unit:'USD',remaining:3}],balances:[{name:'account',unit:'USD',remaining:3}],reported_usage:[{period:'monthly',unit:'USD',scope:'account',used:2},{period:'monthly',unit:'tokens',scope:'organization',used:100}]}];
+ const merged=app.run('combineProviderSnapshots(snapshots)');assert.equal(merged.windows.length,3);assert.equal(merged.balances.length,1);assert.equal(merged.balances[0].remaining,3);assert.equal(merged.reported_usage.length,2);assert.equal(merged.exhausted,false);assert.equal(merged.source,'old · new');assert.ok(merged.windows.some(w=>w.name==='daily (a)'));assert.ok(merged.windows.some(w=>w.name==='daily (b)'));
 });

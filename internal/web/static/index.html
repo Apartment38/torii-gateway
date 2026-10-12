@@ -90,7 +90,7 @@
               <label data-tooltip="The SQLite database for credentials, usage, Codex identity and benchmarks, default /data/torii.db. TORII_DB_PATH overrides it; changes require an offline edit and restart.">Database path<input name="state.database_path" placeholder="/data/torii.db" readonly /></label>
             </div>
             <section aria-labelledby="activity-monitoring-title"><h3 id="activity-monitoring-title">Activity monitoring</h3><p class="section-note">Oldest events are removed automatically when either limit is reached. Changes apply when saved.</p><div class="grid two">
-              <label data-tooltip="Maximum retained Activity data in bytes, including debug details and per-event storage overhead. Defaults to 100 MiB (104857600 bytes). Oldest events are removed first.">Maximum data (bytes)<input name="activity.max_bytes" type="number" min="8192" step="1" placeholder="104857600" /></label>
+              <label data-tooltip="Maximum retained Activity data in MiB (1 MiB = 1048576 bytes), including debug details and per-event storage overhead. Defaults to 100 MiB. Oldest events are removed first.">Maximum data (MiB)<input name="activity.max_bytes" type="number" min="0.0078125" step="any" placeholder="100" /></label>
               <label data-tooltip="Number of days to retain Activity events. Defaults to 7 days. Expired events are cleaned up on writes and at least every minute.">Retention (days)<input name="activity.retention_days" type="number" min="1" max="3650" step="1" placeholder="7" /></label>
               <label class="checkbox" data-tooltip="For debugging. Keep off unless needed. Records the original API request body, which may contain sensitive prompt content."><input name="activity.prompt_logging" type="checkbox" /> Enable prompt logging</label>
               <label class="checkbox" data-tooltip="For debugging. Keep off unless needed. Records the prompt sent to Jev and its response, which may contain sensitive content."><input name="activity.jev_decision_logging" type="checkbox" /> Enable Jev decision logging</label>
@@ -113,6 +113,7 @@
             <div class="section-heading"><div><h2>Smart routing</h2></div><div class="router-heading-actions"><label>Router<select id="smart-router-select"><option value="smart">smart · default</option></select></label><button id="add-smart-router" class="button primary" type="button">＋ Create router</button></div></div>
             <div class="grid two"><label data-tooltip="The virtual model name clients use to invoke this router.">Router Name<input id="smart-router-new-name" name="router.model_name" value="smart" placeholder="coding-local" /></label><div class="check-row"><button id="save-smart-router" class="button primary" type="button">Save</button><button id="remove-smart-router" class="button quiet" type="button" disabled>Remove router</button></div></div>
             <div class="model-transfer provider-transfer"><label>Allowed providers<select id="smart-router-providers-available" multiple size="6" aria-describedby="smart-router-scope-note"></select></label><div class="model-transfer-actions"><button id="smart-router-provider-add" class="button quiet" type="button">Enable →</button><button id="smart-router-provider-remove" class="button quiet" type="button">← Remove</button></div><label>Enabled providers<select id="smart-router-providers" multiple size="6" aria-describedby="smart-router-scope-note"></select></label></div>
+            <p id="smart-router-model-status" class="section-note" role="status" aria-live="polite"></p>
             <div class="model-transfer"><label>Available models<select id="smart-router-models-available" multiple size="10" aria-describedby="smart-router-scope-note"></select></label><div class="model-transfer-actions"><button id="smart-router-model-add" class="button quiet" type="button">Enable →</button><button id="smart-router-model-remove" class="button quiet" type="button">← Remove</button></div><label>Enabled models <span id="smart-router-model-count"></span><select id="smart-router-models" multiple size="10" aria-describedby="smart-router-scope-note"></select></label></div>
             <p id="smart-router-scope-note" class="section-note">Double-click a provider or model to move it between columns, or select entries and use Enable / Remove. An empty enabled provider list allows all providers. Maximum 250 models per router. An empty enabled list allows all models from allowed providers, up to 250; larger pools require an explicit selection. Each router has its own settings. Clients select the router by its model name.</p>
 
@@ -207,7 +208,7 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=15"></script>
+    <script type="module" src="/web/app.js?v=16"></script>
 
 </body>
 </html>

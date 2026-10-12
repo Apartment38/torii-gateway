@@ -28,7 +28,8 @@ The overview leads with current UTC requests, processed tokens, and estimated co
 The Overview client model selector includes token prices, provider allowance/reset
 information, and this month's gateway usage. **Models** shows the same tracking
 and expands provider-reported spend under **Inspect metadata**. **Provider Balances**
-shows provider balances and subscription limits separately from the operator budgets
+shows one card per provider, combining shared account balances and independent quota
+windows without adding repeated balances together. It shows subscription limits separately from the operator budgets
 on **Usage & quota**.
 Dollar balances, token/request allowances and subscription percentages retain
 their units; reset times use the saved display timezone (your browser timezone when unset). “Quota unknown” and
@@ -53,8 +54,8 @@ or `UTC`. It applies across the console after saving. Leave it blank to use your
 browser timezone. Usage periods remain UTC; a benchmark date without a time keeps
 its published calendar date.
 
-Under **Activity monitoring**, configure **Maximum data (bytes)** (default
-104857600, or 100 MiB) and **Retention (days)** (default 7). Oldest events are
+Under **Activity monitoring**, configure **Maximum data (MiB)** (default
+100; 1 MiB is 1,048,576 bytes) and **Retention (days)** (default 7). Oldest events are
 removed when either limit is exceeded; changing limits applies cleanup immediately.
 Expired events are also cleaned up at least every minute and open Activity views refresh.
 
@@ -62,7 +63,8 @@ Expired events are also cleaned up at least every minute and open Activity views
 Their tooltips identify these as debugging controls: leave them off unless needed.
 With logging enabled, each Activity row has **Inspect prompt** and/or **Inspect Jev
 decision** buttons. The overlay shows the original API request body, or the request
-sent to Jev and its response, as plain text. Unrecorded details have disabled buttons;
+sent to Jev and its response, with JSON indentation and line breaks in prompt text.
+Plain text and truncated bodies retain their captured formatting. Unrecorded details have disabled buttons;
 Jev is not called for every request. Each body is capped at 64 KiB and truncation is
 labeled. Captured content shares the event retention limits and may contain sensitive
 prompt data. Closing the card, leaving Activity or signing out clears its display.
@@ -95,7 +97,7 @@ headers still appear. See [provider tracking](../reference/configuration.md#prov
 
 Provider editors show connection checks and save progress inside the card. A successful check and save closes the editor; connection or save errors keep the draft open for correction. Overview counts include discovered classifier models, even though those models are excluded from the chat catalog.
 
-Smart routing supports named provider/model pools. The top selector loads a router's full policy. **Create router** clears the editor to default options; enter a unique **Router Name**, configure the policy, and click **Save**. **Remove router** stays beside the name and cannot remove the default router. **Save** also applies a named router's name changes. Existing policy edits continue to save automatically. Double-click providers from **Allowed providers** into **Enabled providers**, or use **Enable →** / **← Remove**. This updates **Available models** and removes enabled models outside a restricted provider pool. An empty enabled provider list allows all providers. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
+Smart routing supports named provider/model pools. The top selector loads a router's full policy. **Create router** clears the editor to default options; enter a unique **Router Name**, configure the policy, and click **Save**. **Remove router** stays beside the name and cannot remove the default router. **Save** also applies a named router's name changes. Existing policy edits continue to save automatically. Double-click providers from **Allowed providers** into **Enabled providers**, or use **Enable →** / **← Remove**. The catalog loads automatically when Smart routing opens and refreshes after provider configuration changes. Disabled provider connections are excluded. This updates **Available models** and removes enabled models outside a restricted provider pool. An empty enabled provider list allows all providers. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
 
 On **Benchmarks**, **Configure Ingestion** opens the source card and **Upload Data**
 opens the CSV card. **Edit data** switches the current table to inline measurement

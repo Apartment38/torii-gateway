@@ -32,6 +32,78 @@ were updated and shell syntax checked. Provisioned Go 1.25.1/caches use
 `-buildvcs=false` because child builds cannot obtain VCS status in this sandbox.
 No existing deployment or live-mail service was changed. Worktree retained for
 review; deployment requires the documented HTTPS/SMTP environment configuration.
+Review: [PR #34](https://github.com/Apartment38/torii-gateway/pull/34).
+
+## Decision-model passthrough and provider namespaces
+
+Implemented on `feat/jev-provider-passthrough` in `/workspace/torii-jev`,
+starting from current main `d55248f` before implementation (verified against
+GitHub, then fetched full history). Decision catalogs now carry System One
+capability evidence and appear in public/management model discovery. The client
+model list includes a TypeSafe-compatible `models` array alongside OpenAI `data`.
+`POST /v1/systemone` transparently forwards physical decision models, with
+provider credentials, aliases, model controls and operator accounting. Virtual
+routers/non-decision models are rejected; decision-only models stay out of chat
+pools. Mixed-provider decision models can run the smart-router judge.
+
+OpenRouter additionally discovers `output_modalities=decisions`; a read-only live
+check detected 480 total models including 21 decision models, with both
+`typesafe/jev-1.13` and `~typesafe/jev-latest`. Detection uses catalog evidence,
+not model names. TypeSafe uses profile/default ID `typesafe`; legacy `jev`
+profiles remain accepted and saved IDs are retained until explicitly edited.
+All provider IDs are editable. Saves update router references, model controls
+and pricing while preserving upstream judge namespaces and API-key references.
+Subscription IDs retain their OAuth binding; the editor offers login under the
+new ID before save. Provider/API/configuration/console guides are updated.
+
+Validation: all-package Go tests and race tests, vet, build, gofmt, unchanged
+module metadata after tidy, generated-script freshness and 148 console tests
+pass. Go commands use `GOFLAGS=-buildvcs=false` because this executor's VCS
+stamping fails despite valid repository history. Protocol and judge tests use
+controlled fixtures; the live check only reads public catalogs, with no billable
+decision requests. Container/release checks are outside this change's scope. Review: [PR #33](https://github.com/Apartment38/torii-gateway/pull/33).
+
+## Console monitoring and routing fixes
+
+Implemented on `fix/console-monitoring-routing-balances` in
+`/workspace/torii-console-fixes`, starting from current main `de98767`.
+Activity Monitoring edits MiB while retaining byte-based API storage, including
+fractional sizes. Prompt and Jev inspectors indent JSON and display multiline
+text, with raw fallback for truncated/non-JSON bodies. Smart routing loads the
+catalog on direct entry and refreshes after provider changes, filters disabled
+connections, and retains in-flight discovery across unrelated policy saves.
+Provider Balances renders one card per provider, deduplicating shared credit,
+spend and quota evidence while retaining distinct model-scoped windows.
+The console guide describes the updated units and behavior.
+
+Validation: 144 console tests, generated-script freshness, all-package Go tests,
+vet, build, formatting and unchanged module metadata pass. Desktop (1440×1000)
+and mobile (390×844) Chromium checks pass with a mocked gateway, no page errors
+and no horizontal page overflow. Go tests use inherited `GOFLAGS=-buildvcs=false`
+for the imported main snapshot's shallow history. Browser and Go HTTP-server
+tests run outside the socket-restricted sandbox. All-package race tests pass.
+No live gateway data changed. Review: PR #32.
+
+## Benchmarks page controls
+
+Implemented on `feat/benchmark-page-controls` in
+`/workspace/work/benchmark-page-controls`, starting from current main `4326118`.
+The exact snapshot was imported through GitHub reads because the Git proxy is
+unavailable; main is a local shallow boundary. Configure Ingestion and Upload
+Data open separate overlay cards. The upload card no longer contains the loaded
+measurement editor. Edit data switches the current table to inline measurement
+fields with per-row Save/Cancel, draft retention and revision conflict handling.
+Display Fields transfers available/enabled columns by double-click, buttons or
+keyboard, with separate summary and measurement selections. Configured-only
+measurement reads follow current catalog associations without granting display
+matches routing authority.
+
+Validation: 137 console tests, generated script freshness, all-package tests,
+vet, build and module checks pass. Go checks use `-buildvcs=false` because the
+imported main snapshot has a shallow history boundary. Chromium verifies
+separate overlays, field transfers, row Save/Cancel and persistence with a mocked
+gateway, at 1440×1000 light and 390×844 dark sizes, without page errors or page
+horizontal overflow. All-package race tests also pass. No live gateway data changed.
 
 ## Smart routing editor
 

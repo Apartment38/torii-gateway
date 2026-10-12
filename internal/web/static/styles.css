@@ -504,3 +504,13 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
  .grid.benchmark-view-controls { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
  .benchmark-view-controls > button { grid-row: 3; grid-column: 2; }
 }
+#benchmark-table.benchmark-custom-fields { table-layout: auto; }
+#benchmark-table.benchmark-custom-fields th { width: auto; min-width: 130px; }
+#benchmark-table.benchmark-custom-fields td { min-width: 130px; }
+@media (max-width: 760px) {
+ #benchmark-table.benchmark-custom-fields td { min-width: 0; grid-column: auto; text-align: left; }
+ #benchmark-table.benchmark-custom-fields td::before { display: block; }
+ #benchmark-table.benchmark-custom-fields td[colspan] { grid-column: 1/-1; }
+ #benchmark-table.benchmark-measurements tbody tr { grid-template-columns: minmax(0,1fr); }
+ #benchmark-table.benchmark-measurements input,#benchmark-table.benchmark-measurements select { min-width: 0; width: 100%; }
+}

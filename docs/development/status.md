@@ -2,6 +2,27 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Benchmarks page controls
+
+Implemented on `feat/benchmark-page-controls` in
+`/workspace/work/benchmark-page-controls`, starting from current main `4326118`.
+The exact snapshot was imported through GitHub reads because the Git proxy is
+unavailable; main is a local shallow boundary. Configure Ingestion and Upload
+Data open separate overlay cards. The upload card no longer contains the loaded
+measurement editor. Edit data switches the current table to inline measurement
+fields with per-row Save/Cancel, draft retention and revision conflict handling.
+Display Fields transfers available/enabled columns by double-click, buttons or
+keyboard, with separate summary and measurement selections. Configured-only
+measurement reads follow current catalog associations without granting display
+matches routing authority.
+
+Validation: 137 console tests, generated script freshness, all-package tests,
+vet, build and module checks pass. Go checks use `-buildvcs=false` because the
+imported main snapshot has a shallow history boundary. Chromium verifies
+separate overlays, field transfers, row Save/Cancel and persistence with a mocked
+gateway, at 1440×1000 light and 390×844 dark sizes, without page errors or page
+horizontal overflow. All-package race tests also pass. No live gateway data changed.
+
 ## Smart routing editor
 
 Implemented on `feat/smart-router-editor` in `/workspace/work/smart-router-editor`,

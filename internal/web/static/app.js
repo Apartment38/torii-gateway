@@ -48,7 +48,7 @@ function applyBenchmarkConfig(config                      = {})       {
 }
 function clearBenchmarkConsole()       {
   clearBenchmarkRecords();closeBenchmarkEvidence();
-  benchmarkEditing=false;benchmarkInlineDrafts={};benchmarkInlineSaving=false;benchmarkSummaryEnabled=["model","overall","capabilities","sources","freshness","evidence"];benchmarkMeasurementEnabled=benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
+  benchmarkEditing=false;benchmarkInlineDrafts={};benchmarkInlineSaving=false;benchmarkInlineSaveSequence++;benchmarkSummaryEnabled=["model","overall","capabilities","sources","freshness","evidence"];benchmarkMeasurementEnabled=benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
   for(const id of ["benchmark-configuration","benchmark-upload-dialog","benchmark-fields-dialog"])document.querySelector                   (`#${id}`)?.close?.();
   document.querySelector("#benchmark-edit-data") .textContent="Edit data";document.querySelector("#benchmark-edit-data") .setAttribute("aria-pressed","false");
   document.querySelector("#benchmark-inline-status") .textContent="";inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
@@ -170,6 +170,7 @@ let benchmarkSummaryEnabled = ["model","overall","capabilities","sources","fresh
 let benchmarkMeasurementEnabled = benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
 let benchmarkInlineDrafts                                                                                          = {};
 let benchmarkInlineSaving = false;
+let benchmarkInlineSaveSequence = 0;
 function benchmarkActiveFields()                      {return benchmarkEditing?benchmarkMeasurementFields:benchmarkSummaryFields;}
 function benchmarkEnabledFields()         {return benchmarkEditing?benchmarkMeasurementEnabled:benchmarkSummaryEnabled;}
 function renderBenchmarkFields()     {
@@ -256,7 +257,7 @@ async function saveBenchmarkInlineRow(index       )              {
    else observation[field]=value;
   }
  }catch(error){draft.error=error instanceof Error?error.message:"Invalid measurement";renderBenchmarkTable();return;}
- const login=consoleSession,sequence=benchmarkRecordSequence;benchmarkInlineSaving=true;renderBenchmarkTable();
+ const login=consoleSession,sequence=benchmarkRecordSequence,saveSequence=++benchmarkInlineSaveSequence;benchmarkInlineSaving=true;renderBenchmarkTable();
  try{
   const response=await gatewayFetch("/gateway/v1/intelligence/observations/edit",{method:"PUT",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({...draft.record,observation})});
   const result=await response.json();if(login!==consoleSession||sequence!==benchmarkRecordSequence)return;
@@ -264,10 +265,14 @@ async function saveBenchmarkInlineRow(index       )              {
   delete benchmarkInlineDrafts[key];document.querySelector("#benchmark-inline-status") .textContent="Measurement saved.";
   await loadBenchmarkData();
  }catch(error){if(login===consoleSession&&sequence===benchmarkRecordSequence)draft.error=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to save measurement");}
- finally{if(login===consoleSession){benchmarkInlineSaving=false;renderBenchmarkTable();}}
+ finally{if(saveSequence===benchmarkInlineSaveSequence){benchmarkInlineSaving=false;renderBenchmarkTable();}}
 }
 
 function renderBenchmarkTable()       {
+ const table=document.querySelector("#benchmark-table");
+ table?.classList.add("benchmark-scorecard");
+ table?.classList.toggle("benchmark-custom-fields",benchmarkEditing||benchmarkSummaryEnabled.join(",")!=="model,overall,capabilities,sources,freshness,evidence");
+ table?.classList.toggle("benchmark-measurements",benchmarkEditing);
  if(benchmarkEditing){renderBenchmarkMeasurements();return;}
  const fields=benchmarkEnabledFields().map(key=>benchmarkSummaryFields.find(field=>field.key===key) );
  const headers=fields.map(field=>field.label);

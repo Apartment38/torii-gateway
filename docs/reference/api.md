@@ -175,7 +175,7 @@ CSV template download.
 | `GET /unmatched` | Unmatched/ambiguous IDs and candidate identities |
 | `GET /template.csv` | Download CSV header and sample; also available when intelligence is disabled |
 | `POST /import` | Administrator-only CSV body, ≤8 MiB/10,000 rows; atomically merge into reserved `custom` source |
-| `GET /records` | Paginated editable records using observation pagination/filter parameters; each has `source`, `index`, `revision`, `observation` |
+| `GET /records` | Paginated editable records using observation pagination/filter parameters; `configured_only=true` limits records to current catalog associations (including display-only matches); each has `source`, `index`, `revision`, `observation` |
 | `PUT /observations/edit` | Administrator-only JSON `{source,index,revision,observation}` from `/records`; validates and saves one row, HTTP 409 for stale revisions |
 | `POST /refresh` | JSON `updated`, `partial_failure`, `sources`, model/unmatched counts; failed sources retain cache |
 

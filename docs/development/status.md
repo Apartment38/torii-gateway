@@ -2,6 +2,22 @@
 
 Updated 2026-10-11. This is the sole project progress and backlog tracker.
 
+## Codex subscription quota tracking
+
+Implemented on `fix/codex-quota` in `/workspace/work/codex-quota`: shared OAuth
+refresh/retry and conditional encrypted rotation, verified upstream endpoint
+selection, optional account-verified app-server reads, multi-bucket/duration
+normalization, stale cache/backoff, background polling and console manual refresh.
+Validation passes: Go package tests, changed-subsystem race tests, vet, build,
+module/format checks, console/generated assets, release-validator tests and
+modified documentation links. The full race suite fails the unchanged benchmark
+`TestSharedLaneSpacesRequestsAndSerializesAcrossAdapters`; the same failure was
+reproduced on the original checkout. The production container build and five
+helper target builds pass. A disposable non-root image with the final gateway
+binary passes startup, management authentication, console assets and restart
+persistence. Podman-specific full credential/container checks were not run. The original live HTTP 401 remains unverified:
+no affected credential or authenticated service is available in this environment.
+
 ## v1 implementation and rollout
 
 The v1 implementation and authorized Podman rollout are complete on
@@ -349,7 +365,7 @@ Completed:
 
 Decisions:
 - unknown quota is never interpreted as exhausted or unlimited
-- failed refreshes are not cached, allowing the next request to retry
+- collection failures have bounded exponential backoff; Codex preserves last-known-good evidence
 
 ### TASK-028 — Implement deterministic model selection
 

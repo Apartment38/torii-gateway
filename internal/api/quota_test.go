@@ -77,3 +77,31 @@ func TestCodexInferenceQuotaHeadersSharedAcrossModelPickerAndRouters(t *testing.
 		}
 	}
 }
+
+func TestCodexHeadersFromPreviousLoginAreIgnored(t *testing.T) {
+	current := provider.CodexCredential{AccessToken: "synthetic", AccountID: "account", Subject: "first", Endpoint: provider.DefaultCodexBaseURL}
+	c, _ := provider.NewCodex("codex", provider.DefaultCodexBaseURL, nil, func(string) (provider.CodexCredential, error) { return current, nil }, nil)
+	h, _ := NewOpenAIHandler([]provider.OpenAIProvider{c})
+	h.SetQuotaCache(quota.NewCache(time.Minute, nil))
+	old := c.QuotaKey("m")
+	current.Subject = "second"
+	headers := http.Header{"X-Codex-Primary-Used-Percent": []string{"99"}}
+	h.recordQuotaHeadersForAccount("codex/m", headers, old)
+	if _, exists := h.quota.Peek("codex/m"); exists {
+		t.Fatal("old login headers reached new account cache")
+	}
+}
+
+func TestCodexHeaderPoolWithoutIdentityIsInformational(t *testing.T) {
+	c, _ := provider.NewCodex("codex", provider.DefaultCodexBaseURL, nil, func(string) (provider.CodexCredential, error) {
+		return provider.CodexCredential{AccessToken: "synthetic", AccountID: "account", Endpoint: provider.DefaultCodexBaseURL}, nil
+	}, nil)
+	h, _ := NewOpenAIHandler([]provider.OpenAIProvider{c})
+	h.SetQuotaCache(quota.NewCache(time.Minute, nil))
+	headers := http.Header{"X-Codex-Primary-Used-Percent": []string{"100"}, "X-Codex-Primary-Window-Minutes": []string{"10080"}}
+	h.recordQuotaHeadersForAccount("codex/m", headers, c.QuotaKey("m"))
+	s, err := h.ModelQuota(context.Background(), "codex/other")
+	if err != nil || s.Known || s.Exhausted || len(s.Limits) != 1 || s.Limits[0].Scope != "unknown" || s.Limits[0].Windows[0].WindowType != "weekly" || !s.Limits[0].Windows[0].Exhausted {
+		t.Fatal("unidentified header pool became an account-wide routing constraint")
+	}
+}

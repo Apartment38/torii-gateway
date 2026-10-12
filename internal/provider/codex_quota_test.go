@@ -30,7 +30,7 @@ func TestCodexQuotaWindowsAndAuthentication(t *testing.T) {
 	}
 }
 func TestCodexQuotaUnknownAndErrors(t *testing.T) {
-	for _, body := range []string{`{}`, `{"rate_limit":{"primary_window":{"used_percent":120}}}`} {
+	for _, body := range []string{`{}`, `{"rate_limit":{"primary_window":{"used_percent":-1}}}`} {
 		c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) {
 			return CodexCredential{AccessToken: "test-token", Endpoint: DefaultCodexBaseURL}, nil
 		}, &http.Client{Transport: codexTestTransport(func(*http.Request) (*http.Response, error) {

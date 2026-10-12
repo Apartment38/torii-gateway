@@ -72,8 +72,9 @@ type SessionConfig struct {
 	OnModelFailure    string `yaml:"on_model_failure,omitempty"`
 }
 type QuotaConfig struct {
-	CacheTTL   string             `yaml:"cache_ttl,omitempty"`
-	Allowances map[string]float64 `yaml:"allowances,omitempty"`
+	PollInterval string             `yaml:"poll_interval,omitempty"`
+	CacheTTL     string             `yaml:"cache_ttl,omitempty"`
+	Allowances   map[string]float64 `yaml:"allowances,omitempty"`
 }
 type SelectionConfig struct {
 	ContextUtilizationLimit     float64            `yaml:"context_utilization_limit,omitempty"`
@@ -96,28 +97,30 @@ type StateConfig struct {
 
 // ProviderConfig contains common and standard compatible provider settings.
 type ProviderConfig struct {
-	Enabled           *bool                `yaml:"enabled,omitempty"`
-	TreatModelsAsFree *bool                `yaml:"treat_models_as_free,omitempty"`
-	ID                string               `yaml:"id"`
-	Type              string               `yaml:"type"`
-	BaseURL           string               `yaml:"base_url"`
-	APIPath           string               `yaml:"api_path,omitempty"`
-	PortalURL         string               `yaml:"portal_url,omitempty"`
-	ClientID          string               `yaml:"client_id,omitempty"`
-	BearerToken       *SecretRef           `yaml:"bearer_token,omitempty"`
-	ManagementToken   *SecretRef           `yaml:"management_token,omitempty"`
-	Tracking          *TrackingConfig      `yaml:"tracking,omitempty"`
-	Headers           map[string]SecretRef `yaml:"headers,omitempty"`
-	TLS               *TLSConfig           `yaml:"tls,omitempty"`
-	Models            []string             `yaml:"models,omitempty"`
-	DiscoverModels    *bool                `yaml:"discover_models,omitempty"`
-	Transport         string               `yaml:"transport,omitempty"`
-	Organization      string               `yaml:"organization,omitempty"`
-	Project           string               `yaml:"project,omitempty"`
-	ModelRewrites     map[string]string    `yaml:"model_rewrites,omitempty"`
-	ConnectTimeout    string               `yaml:"connect_timeout,omitempty"`
-	RequestTimeout    string               `yaml:"request_timeout,omitempty"`
-	DiscoveryTimeout  string               `yaml:"discovery_timeout,omitempty"`
+	CodexAppServerPath string               `yaml:"codex_app_server_path,omitempty"`
+	CodexHome          string               `yaml:"codex_home,omitempty"`
+	Enabled            *bool                `yaml:"enabled,omitempty"`
+	TreatModelsAsFree  *bool                `yaml:"treat_models_as_free,omitempty"`
+	ID                 string               `yaml:"id"`
+	Type               string               `yaml:"type"`
+	BaseURL            string               `yaml:"base_url"`
+	APIPath            string               `yaml:"api_path,omitempty"`
+	PortalURL          string               `yaml:"portal_url,omitempty"`
+	ClientID           string               `yaml:"client_id,omitempty"`
+	BearerToken        *SecretRef           `yaml:"bearer_token,omitempty"`
+	ManagementToken    *SecretRef           `yaml:"management_token,omitempty"`
+	Tracking           *TrackingConfig      `yaml:"tracking,omitempty"`
+	Headers            map[string]SecretRef `yaml:"headers,omitempty"`
+	TLS                *TLSConfig           `yaml:"tls,omitempty"`
+	Models             []string             `yaml:"models,omitempty"`
+	DiscoverModels     *bool                `yaml:"discover_models,omitempty"`
+	Transport          string               `yaml:"transport,omitempty"`
+	Organization       string               `yaml:"organization,omitempty"`
+	Project            string               `yaml:"project,omitempty"`
+	ModelRewrites      map[string]string    `yaml:"model_rewrites,omitempty"`
+	ConnectTimeout     string               `yaml:"connect_timeout,omitempty"`
+	RequestTimeout     string               `yaml:"request_timeout,omitempty"`
+	DiscoveryTimeout   string               `yaml:"discovery_timeout,omitempty"`
 }
 
 // TrackingConfig selects an optional billing endpoint and its own credentials.
@@ -493,6 +496,11 @@ func (r RouterConfig) Validate() error {
 			return errors.New("sessions.inactivity_timeout must be positive")
 		}
 	}
+	if r.Quota.PollInterval != "" {
+		if d, err := time.ParseDuration(r.Quota.PollInterval); err != nil || d < 10*time.Second {
+			return errors.New("quota.poll_interval must be at least 10s")
+		}
+	}
 	if r.Quota.CacheTTL != "" {
 		if d, err := time.ParseDuration(r.Quota.CacheTTL); err != nil || d <= 0 {
 			return errors.New("quota.cache_ttl must be positive")
@@ -521,6 +529,12 @@ func (r RouterConfig) Validate() error {
 }
 
 func validateCodexProvider(p ProviderConfig) error {
+	if strings.ContainsAny(p.CodexAppServerPath+p.CodexHome, "\r\n\x00") {
+		return errors.New("invalid Codex app-server path")
+	}
+	if p.CodexHome != "" && p.CodexAppServerPath == "" {
+		return errors.New("codex_home requires codex_app_server_path")
+	}
 	if p.BearerToken != nil || len(p.Headers) > 0 || p.TLS != nil {
 		return errors.New("openai-codex credentials are managed by state, not provider headers")
 	}

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -22,10 +23,11 @@ const Owner = "default"
 
 // Database encrypts credential payloads. Benchmark tables contain public data.
 type Database struct {
-	db            *sql.DB
-	aead          cipher.AEAD
-	dsn           string
-	benchmarkGate chan struct{}
+	db              *sql.DB
+	aead            cipher.AEAD
+	dsn             string
+	benchmarkGate   chan struct{}
+	credentialLocks sync.Map
 }
 type SecretMetadata struct {
 	ID         string `json:"id"`

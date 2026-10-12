@@ -6,6 +6,10 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 
 ## Find the right page
 
+The sidebar groups pages under **MONITOR** (Overview, Activity), **MANAGE**
+(Usage & quota, API keys), and **CONFIGURE** (Providers, Models, Smart routing,
+Benchmarks, Server), in that order.
+
 | Page | Purpose |
 | --- | --- |
 | Overview | Inspect the current gateway and model summary |

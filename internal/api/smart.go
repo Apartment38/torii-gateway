@@ -76,7 +76,7 @@ func (h *OpenAIHandler) prepareSmartRouting(r *http.Request, body []byte) (*smar
 	if routing.toolContinuation && hasPin && hasCached {
 		classification = classifier.ApplyObjective(cached, requirements)
 		routing.classifierSource = "cached_tool_task"
-	} else if h.classifier.Classifier != nil && endpoint != router.EndpointEmbeddings {
+	} else if h.classifier.Classifier != nil && !h.jevChoosesModel() && endpoint != router.EndpointEmbeddings {
 		routing.classifierSource = "called"
 		classifyStarted := time.Now()
 		classification, err = h.classifier.Classify(r.Context(), classifier.ClassificationRequest{
@@ -134,7 +134,10 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 	if len(candidates) == 0 && budgetErr != nil {
 		return "", budgetErr
 	}
-	if excluded == "" && routing.pinnedModel != "" {
+	if len(candidates) > 250 {
+		return "", fault.New(fault.InvalidRequest, "smart routers support at most 250 candidate models; configure an explicit model pool")
+	}
+	if excluded == "" && routing.pinnedModel != "" && (routing.toolContinuation || !h.jevChoosesModel()) {
 		for _, candidate := range candidates {
 			if candidate.Model.PublicID == routing.pinnedModel {
 				// Affinity is a preference among eligible models, never permission
@@ -150,6 +153,43 @@ func (h *OpenAIHandler) selectSmartModel(ctx context.Context, routing *smartRout
 		h.sessions.Delete(routing.identity.ID)
 		if routing.toolContinuation {
 			return "", fault.New(fault.ModelUnavailable, "smart")
+		}
+	}
+	if h.jevChoosesModel() && routing.requirements.Endpoint != router.EndpointEmbeddings {
+		eligible := router.Eligible(candidates, routing.requirements, routing.policy)
+		if len(eligible) == 0 {
+			return "", fault.New(fault.ModelUnavailable, "no eligible smart model")
+		}
+		started := time.Now()
+		classification, err := h.classifier.Classify(ctx, classifier.ClassificationRequest{Model: h.classifier.Classifier.ID(), Text: smartText(routing.body), Requirements: routing.requirements, Candidates: eligible, ExpectedOutputTokens: routing.policy.DefaultExpectedOutputTokens, SelectionPolicy: routing.policy})
+		routing.classifierElapsed += time.Since(started)
+		routing.classifierSource = "called"
+		routing.classification = classification
+		if subject := accounting.SubjectFrom(ctx); subject != nil && subject.BudgetFailure() != nil {
+			return "", subject.BudgetFailure()
+		}
+		if err != nil {
+			return "", fault.Wrap(fault.ClassifierFailure, "choose smart model", err)
+		}
+		routing.requirements.Tools = classification.Requirements.Tools
+		routing.requirements.Vision = classification.Requirements.Vision
+		routing.requirements.Reasoning = classification.Requirements.Reasoning
+		routing.requirements.StructuredOutput = classification.Requirements.StructuredOutput
+		routing.requirements.TaskType = string(classification.TaskType)
+		if classification.SelectedModel != "" {
+			for _, candidate := range eligible {
+				if candidate.Model.PublicID != classification.SelectedModel {
+					continue
+				}
+				decision, err := router.Select([]router.Candidate{candidate}, routing.requirements, string(classification.Complexity), routing.policy)
+				decision.Reasons = append(decision.Reasons, router.ModelReason{Model: classification.SelectedModel, Eligible: err == nil, Reason: "chosen by Jev using price, capabilities and task-relevant benchmarks"})
+				routing.recordSelection(decision, false)
+				if err != nil {
+					return "", fault.Wrap(fault.ModelUnavailable, "Jev selected an incompatible model", err)
+				}
+				return classification.SelectedModel, nil
+			}
+			return "", fault.New(fault.ClassifierFailure, "Jev chose a model outside the configured pool")
 		}
 	}
 	decision, err := router.Select(candidates, routing.requirements, string(routing.classification.Complexity), routing.policy)
@@ -417,4 +457,9 @@ func smartIdentityInfo(r *http.Request, body []byte, endpoint string) session.Id
 	}
 	headers := map[string]string{"X-Session-ID": r.Header.Get("X-Session-ID"), "X-Conversation-ID": r.Header.Get("X-Conversation-ID")}
 	return session.Identify(headers, metadata, user, endpoint, system, first)
+}
+
+func (h *OpenAIHandler) jevChoosesModel() bool {
+	chooser, ok := h.classifier.Classifier.(interface{ ChoosesModel() bool })
+	return ok && chooser.ChoosesModel()
 }

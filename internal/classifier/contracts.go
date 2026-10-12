@@ -52,12 +52,13 @@ type Preferences struct {
 	LatencySensitive bool `json:"latency_sensitive"`
 }
 type Classification struct {
-	TaskType     TaskType            `json:"task_type"`
-	Complexity   Complexity          `json:"complexity"`
-	Confidence   float64             `json:"confidence"`
-	Requirements FeatureRequirements `json:"requirements"`
-	Preferences  Preferences         `json:"preferences"`
-	Decision     *DecisionMetadata   `json:"-"`
+	TaskType      TaskType            `json:"task_type"`
+	Complexity    Complexity          `json:"complexity"`
+	Confidence    float64             `json:"confidence"`
+	Requirements  FeatureRequirements `json:"requirements"`
+	Preferences   Preferences         `json:"preferences"`
+	SelectedModel string              `json:"selected_model,omitempty"`
+	Decision      *DecisionMetadata   `json:"-"`
 }
 
 // DecisionMetadata retains protocol evidence for routing observability. It
@@ -79,9 +80,12 @@ type ChoiceDecision struct {
 	Probabilities map[string]float64
 }
 type ClassificationRequest struct {
-	Model        string
-	Text         string
-	Requirements router.RequestRequirements
+	Model                string
+	Text                 string
+	Requirements         router.RequestRequirements
+	Candidates           []router.Candidate
+	SelectionPolicy      router.SelectionPolicy
+	ExpectedOutputTokens int64
 }
 type Classifier interface {
 	ID() string

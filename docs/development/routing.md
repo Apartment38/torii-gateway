@@ -1,9 +1,10 @@
 # Smart routing end to end: Jev decisions and gateway selection
 
-When a client requests `model: "smart"`, Torii asks Jev to describe the task,
-uses its own selector to choose an eligible physical model, and dispatches the
+When a client requests `model: "smart"`, Torii asks Jev to choose the cheapest capable model from the configured pool,
+validates that choice, and dispatches the
 original request to that model's provider. Jev receives task text and questions;
-Torii owns the catalog, policy, quota checks, session affinity, and dispatch.
+Torii supplies catalog prices, capabilities and benchmark evidence as per-model
+criteria and owns policy, quota checks, session affinity, and dispatch.
 The selected inference model produces the user-facing answer.
 
 Here, **router** means Torii's selection logic. It chooses a provider-qualified
@@ -30,13 +31,13 @@ sequenceDiagram
     C->>G: Inference request with model = smart
     G->>G: Inspect requirements, catalog, and session
     opt Classifier configured; generation endpoint; new task
-        G->>J: System One: model, state, seven questions
+        G->>J: System One: prompt, model choices + seven task questions
         J-->>G: Typed choices, probabilities, and noul scores
         G->>G: Validate answers and apply confidence policy
     end
     G->>G: Merge decisions with objective requirements
     G->>S: Candidates, requirements, complexity, policy
-    S-->>G: Eligible pin or ranked physical model
+    S-->>G: Validate Jev choice or use eligible pin/fallback
     G->>P: Original request with selected upstream model
     P-->>G: JSON response or SSE stream
     G-->>C: Provider response plus routing headers
@@ -106,7 +107,7 @@ does not include the candidate catalog, prices, quotas, or session identifier.
 See [`smartText`](../../internal/api/smart.go) and
 [context tests](../../internal/api/smart_context_test.go).
 
-## 3. Ask Jev seven typed questions
+## 3. Ask Jev to choose a model and assess the task
 
 The JSON request has `model`, `state`, and `questions`. `model` selects the
 classifier checkpoint/service model. Direct Jev posts to `/v1/systemone` using
@@ -122,6 +123,7 @@ answers:
 
 | Question | Type and default rubric | Gateway use |
 | --- | --- | --- |
+| `model` | `choice`: cheapest model capable of successful task completion; dynamic physical IDs with price, capability, context, quality and task-relevant benchmark evidence | Inference destination, validated against eligible configured models |
 | `task_type` | `choice`: which task best describes the request? | Task identity; matching task-specific benchmark weights when configured |
 | `complexity` | `choice`: low = simple/direct; medium = several steps/moderate judgment; high = deep reasoning/extensive context/difficult execution | General-quality floor |
 | `tools` | `noul`: requires tool or function calling? | Add tool-support requirement |
@@ -166,16 +168,16 @@ Each `noul` answer must have the expected type and a finite numeric `noul` in
 
 ```text
 feature_required = noul >= configured_threshold
-classification_confidence = min(task_type.confidence, complexity.confidence)
+classification_confidence = min(task_type.confidence, complexity.confidence, model.confidence)
 ```
 
 Every yes/no threshold defaults to 0.5; equality counts as yes. Overall
-confidence uses only the two choice confidences, not an average of seven
-answers, and need not equal the chosen probability. Optional `noul` confidence
+confidence uses the three choice confidences, and need not equal the chosen probability. Optional `noul` confidence
 and upstream `action` / `routing` metadata do not control destination selection.
 These scores describe classifier decisions, not inference model quality.
 
-All seven answers are required. Missing/wrong types, invalid labels or
+All eight answers are required for a model decision. Task-only classifier calls
+retain the seven-question contract. Missing/wrong types, invalid labels or
 probabilities, malformed JSON, non-success HTTP responses, responses over
 1 MiB, and network/timeouts cause failure. Optional usage is accepted only when
 both input/output counts are nonnegative integers; bad or absent telemetry stays
@@ -252,8 +254,16 @@ failures can instead return the applicable budget error. See
 
 ## 6. Choose among eligible models
 
-An eligible session pin is reused first. Without a usable pin, Torii compares
-eligible models in this order, proceeding only when the earlier rule ties:
+Tool continuations reuse their eligible originating pin. Jev evaluates every new
+prompt; generic routing reuses eligible pins first. Torii compares
+eligible models using Jev's dynamic `model` choice. Objective gates first remove
+incompatible models; the answer must be a supplied ID and pass semantic quality
+and feature gates before dispatch. Jev sees usable benchmark evidence even when
+operator ranking weights are zero. Unknown prices and scores remain unknown.
+The pool is limited to 250, with an explicit error for larger unrestricted pools.
+
+For non-Jev classifiers, disabled classification, or configured failure fallback,
+Torii compares models in this order, proceeding only when the earlier rule ties:
 
 1. For a latency-sensitive task, lower measured gateway latency; known beats
    unknown latency.
@@ -374,7 +384,8 @@ With `sessions.on_model_failure: reroute` (default), an ordinary smart request
 can retry once after transport failure, missing response body, HTTP 429, or HTTP
 5xx. Invalid-request transport errors are not retryable. Torii removes the pin,
 excludes the failed model, and selects again under the same classification,
-requirements, and policy without calling Jev again. At most two physical
+requirements, and policy. Jev routing asks for another model decision with the
+failed model excluded; generic classification is reused. At most two physical
 inference attempts occur. If no alternate qualifies, the original failure
 remains. `fail` disables rerouting.
 

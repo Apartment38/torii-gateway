@@ -123,8 +123,8 @@ tracking:
 | `allow_paid_models` | Boolean, true | Allows paid and unknown-price candidates; explicit physical-model requests bypass smart |
 | `allow_free_models` | Boolean, true | Allows models positively known to have zero input/output cost; independent of paid permission |
 | `providers` | Provider ID list, empty | Empty allows all; otherwise only listed providers are eligible |
-| `models` | Provider-qualified model ID list, empty | Empty allows all; otherwise narrows the eligible provider pool to these models |
-| `intelligence_weights` | Routing weights object, absent | Per-router override of `intelligence.routing`; same validated categories and units; absence inherits gateway weights |
+| `models` | Provider-qualified model ID list, empty | At most 250 entries. Empty allows all from the provider pool, subject to a 250-candidate runtime limit; otherwise only these models become choices |
+| `intelligence_weights` | Routing weights object, absent | Per-router override of deterministic `intelligence.routing` weights; Jev receives usable benchmark evidence even without ranking weights |
 | `classifier.type` | String, absent | `disabled`, `model`, `laya`, `embedding`, `jev`; absent means no configured classifier |
 | `classifier.model` | String, conditional | Physical `provider/model` for connected `model`/`laya`; provider-local model for typed/embedding transport; never `smart` |
 | `classifier.provider` | String, conditional | Required for embedding and Jev provider transport |
@@ -144,6 +144,12 @@ tracking:
 | `selection.default_expected_output_tokens` | Integer, 1024 | Positive values override estimate; zero/nonpositive uses default |
 | `selection.location_preference` | String, `neutral` | `neutral`, `local`, `cloud` |
 | `selection.minimum_quality` | Complexity → number map | Default `low: 0.55`, `medium: 0.70`, `high: 0.82`; finite 0–1. Supply all needed complexity labels when replacing map |
+
+Jev adds a dynamic `model` choice question whose criteria come from the configured
+model pool's prices, capabilities and usable benchmarks. Its selected physical
+model is validated before dispatch. This question is generated from catalog data
+and cannot be replaced through `classifier.questions`. Other classifier types
+retain task classification followed by deterministic selection.
 
 Disabled classifiers must not specify connection/model fields; tuning can remain.
 For embedding type, `provider` identifies an embedding-capable provider and

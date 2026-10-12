@@ -40,7 +40,9 @@ knowledge, not used to bypass a real incompatibility.
 
 ## Classification and selection
 
-A classifier returns task/complexity/requirements, not physical model names.
+Generic classifiers return task/complexity/requirements. Typed Jev additionally
+chooses a physical model using dynamic price, capability and benchmark criteria
+from the configured pool (at most 250 candidates).
 It may be connected generative (`model`/`laya`), prototype embedding, or typed
 Jev/System One. A physical classifier cannot recursively invoke `smart`.
 Timeout/confidence/failure handling is bounded. Typed questions preserve fixed
@@ -50,7 +52,8 @@ Objective endpoint/tools/images/schema/reasoning/context requirements survive
 classifier failure. Hard gates exclude unavailable, exhausted, incompatible,
 insufficient-context, policy-disallowed paid models and insufficient quality.
 Unknown quality is admitted only when no known-quality candidate meets the floor.
-Deterministic ranking considers estimated cost, quota, location, latency,
+Jev choices are revalidated under all current gates. Deterministic fallback
+ranking considers estimated cost, quota, location, latency,
 context headroom, then public ID. Optional usable intelligence adds weighted
 utility after eligibility; deterministic ordering breaks ties.
 

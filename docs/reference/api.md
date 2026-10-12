@@ -161,6 +161,10 @@ or gateway bearer authentication. Disabled intelligence returns 503.
 | `GET /observations` | Raw paginated observations; `offset` ≥0, `limit` 1–500 (default 100), optional `q` ≤256 characters; `include_metadata=true` includes captured metadata |
 | `GET /models/{id}` | Canonical/physical model details with raw observations/provenance |
 | `GET /unmatched` | Unmatched/ambiguous IDs and candidate identities |
+| `GET /template.csv` | Download CSV header and sample; also available when intelligence is disabled |
+| `POST /import` | Administrator-only CSV body, ≤8 MiB/10,000 rows; atomically merge into reserved `custom` source |
+| `GET /records` | Paginated editable records using observation pagination/filter parameters; each has `source`, `index`, `revision`, `observation` |
+| `PUT /observations/edit` | Administrator-only JSON `{source,index,revision,observation}` from `/records`; validates and saves one row, HTTP 409 for stale revisions |
 | `POST /refresh` | JSON `updated`, `partial_failure`, `sources`, model/unmatched counts; failed sources retain cache |
 
 ```sh
@@ -173,6 +177,11 @@ observations/message, 15-second heartbeats, and a final `result` summary.
 An existing worker is observed rather than duplicated. Reverse proxies need
 streaming and sufficiently long read timeouts (`X-Accel-Buffering: no` is set).
 Both JSON and SSE callers must check partial-source failure, not HTTP 200 alone.
+
+CSV fields and edit behavior are documented in [Custom benchmarks](../guides/benchmarks.md#upload-custom-benchmarks).
+Upload/edit success returns `{"updated":true}`. Invalid data returns HTTP 400;
+cookie mutations require the CSRF token. Editing a publisher source can be
+replaced by its next refresh; custom measurements survive refresh and restart.
 
 ## Errors and correlation
 

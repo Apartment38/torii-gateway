@@ -66,6 +66,8 @@ func NewJevWithOptions(baseURL, apiKey, model string, client *http.Client, optio
 	return &Jev{endpoint: u.String(), apiKey: apiKey, model: model, client: &cloned, options: options.clone()}, nil
 }
 
+func (j *Jev) ChoosesModel() bool { return true }
+
 func (j *Jev) ID() string { return "jev" }
 
 func (j *Jev) Classify(ctx context.Context, request ClassificationRequest) (Classification, error) {
@@ -104,6 +106,8 @@ func NewJevTransportWithOptions(p provider.DecisionProvider, model string, optio
 	return &JevTransport{provider: p, model: model, options: options.clone()}, nil
 }
 
+func (j *JevTransport) ChoosesModel() bool { return true }
+
 func (j *JevTransport) ID() string { return "jev/provider" }
 
 func (j *JevTransport) Classify(ctx context.Context, request ClassificationRequest) (Classification, error) {
@@ -123,7 +127,15 @@ func jevRequestBody(model string, request ClassificationRequest, options Decisio
 	if state == "" {
 		state = request.Model
 	}
-	return json.Marshal(map[string]any{"model": model, "state": state, "questions": options.questions()})
+	questions := options.questions()
+	if len(request.Candidates) > 0 {
+		question, err := modelQuestion(request)
+		if err != nil {
+			return nil, err
+		}
+		questions["model"] = question
+	}
+	return json.Marshal(map[string]any{"model": model, "state": state, "questions": questions})
 }
 
 func jevQuestions() map[string]jevQuestion {
@@ -176,7 +188,15 @@ func decodeJevResponse(resp *http.Response, request ClassificationRequest, optio
 		// contents and upstream diagnostics out of gateway errors.
 		return Classification{}, errors.New("invalid Jev response JSON")
 	}
-	for name, question := range jevQuestions() {
+	questions := jevQuestions()
+	if len(request.Candidates) > 0 {
+		question, err := modelQuestion(request)
+		if err != nil {
+			return Classification{}, err
+		}
+		questions["model"] = question
+	}
+	for name, question := range questions {
 		answer, ok := envelope.Answers[name]
 		if !ok || answer.Type != question.Type {
 			return Classification{}, fmt.Errorf("Jev response is missing or has the wrong type for %q", name)
@@ -195,7 +215,13 @@ func decodeJevResponse(resp *http.Response, request ClassificationRequest, optio
 		return Classification{}, errors.New("Jev response has invalid model metadata")
 	}
 	result.Decision = &DecisionMetadata{Model: envelope.Model, Usage: decodeJevUsage(envelope.Usage), Choices: make(map[string]ChoiceDecision, 2)}
-	for _, name := range []string{"task_type", "complexity"} {
+	names := []string{"task_type", "complexity"}
+	if len(request.Candidates) > 0 {
+		result.SelectedModel = envelope.Answers["model"].Choice
+		result.Confidence = math.Min(result.Confidence, *envelope.Answers["model"].Confidence)
+		names = append(names, "model")
+	}
+	for _, name := range names {
 		answer := envelope.Answers[name]
 		choice := ChoiceDecision{Choice: answer.Choice, Confidence: *answer.Confidence, Probabilities: make(map[string]float64, len(answer.Probabilities))}
 		for option, probability := range answer.Probabilities {

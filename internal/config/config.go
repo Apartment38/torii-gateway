@@ -416,6 +416,9 @@ func validateNousProvider(p ProviderConfig) error {
 }
 
 func (r RouterConfig) Validate() error {
+	if len(r.Models) > 250 {
+		return errors.New("smart routers support at most 250 models")
+	}
 	if r.IntelligenceWeights != nil {
 		if err := (IntelligenceConfig{Routing: *r.IntelligenceWeights}).Validate(); err != nil {
 			return fmt.Errorf("intelligence_weights: %w", err)

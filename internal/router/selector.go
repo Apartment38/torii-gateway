@@ -276,3 +276,20 @@ func normalizePolicy(p *SelectionPolicy, complexity string) error {
 	}
 	return nil
 }
+
+// Eligible applies objective compatibility and policy gates before a semantic
+// model decision. Jev judges task-specific sufficiency using the full evidence.
+func Eligible(candidates []Candidate, requirements RequestRequirements, policy SelectionPolicy) []Candidate {
+	if normalizePolicy(&policy, "low") != nil {
+		return nil
+	}
+	eligible := make([]Candidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		rank, reason, _ := evaluate(candidate, requirements, "low", policy)
+		if reason == "" {
+			eligible = append(eligible, rank.candidate)
+		}
+	}
+	sort.Slice(eligible, func(i, j int) bool { return eligible[i].Model.PublicID < eligible[j].Model.PublicID })
+	return eligible
+}

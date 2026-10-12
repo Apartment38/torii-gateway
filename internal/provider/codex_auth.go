@@ -424,13 +424,20 @@ func randomURLValue(size int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
-// DeviceCodeLogin performs the non-interactive portion of the Codex device
-// flow. The callback receives display-safe verification instructions; tokens
-// are returned only to the caller for secure persistence.
+// DeviceCodeLogin completes Codex authorization on the gateway. Only the
+// verification URL and one-time code go to the browser; tokens stay server-side.
 func DeviceCodeLogin(ctx context.Context, issuer string, client *http.Client, notify func(url, code string)) (CodexCredential, error) {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 30 * time.Second}
 	}
+	authClient := *client
+	if authClient.Timeout == 0 {
+		authClient.Timeout = 30 * time.Second
+	}
+	authClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &authClient
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
 	issuer = strings.TrimRight(issuer, "/")
 	body, _ := json.Marshal(map[string]string{"client_id": CodexOAuthClientID})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, issuer+"/api/accounts/deviceauth/usercode", bytes.NewReader(body))
@@ -440,39 +447,48 @@ func DeviceCodeLogin(ctx context.Context, issuer string, client *http.Client, no
 	req.Header.Set("Content-Type", "application/json")
 	response, err := client.Do(req)
 	if err != nil {
-		return CodexCredential{}, err
+		return CodexCredential{}, errors.New("Could not reach OpenAI to start Codex login")
 	}
-	defer response.Body.Close()
+	var code struct {
+		DeviceAuthID  string          `json:"device_auth_id"`
+		UserCode      string          `json:"user_code"`
+		UserCodeAlias string          `json:"usercode"`
+		Interval      json.RawMessage `json:"interval"`
+	}
+	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&code)
+	_ = response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return CodexCredential{}, errors.New("OpenAI device authorization is unavailable; enable device code authorization in ChatGPT security settings (workspace accounts may require an administrator)")
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return CodexCredential{}, fmt.Errorf("Codex device-code request returned %s", response.Status)
 	}
-	var code struct {
-		DeviceAuthID    string `json:"device_auth_id"`
-		UserCode        string `json:"user_code"`
-		VerificationURL string `json:"verification_url"`
-		Interval        int    `json:"interval"`
+	if code.UserCode == "" {
+		code.UserCode = code.UserCodeAlias
 	}
-	if err := json.NewDecoder(response.Body).Decode(&code); err != nil || code.DeviceAuthID == "" || code.UserCode == "" || code.VerificationURL == "" {
+	if decodeErr != nil || code.DeviceAuthID == "" || code.UserCode == "" {
 		return CodexCredential{}, errors.New("Codex device-code response is invalid")
 	}
+	// OpenAI supplies the code and interval, not a verification_url.
 	if notify != nil {
-		notify(code.VerificationURL, code.UserCode)
+		notify(issuer+"/codex/device", code.UserCode)
 	}
-	interval := time.Duration(code.Interval) * time.Second
-	if interval <= 0 {
-		interval = 5 * time.Second
-	}
-	deadline := time.NewTimer(15 * time.Minute)
-	defer deadline.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return CodexCredential{}, ctx.Err()
-		case <-deadline.C:
-			return CodexCredential{}, errors.New("Codex device authorization expired")
-		case <-time.After(interval):
+	interval := 5 * time.Second
+	if len(code.Interval) != 0 {
+		var text string
+		if json.Unmarshal(code.Interval, &text) != nil {
+			text = string(code.Interval)
 		}
-		pollBody, _ := json.Marshal(map[string]string{"device_auth_id": code.DeviceAuthID, "user_code": code.UserCode, "client_id": CodexOAuthClientID})
+		seconds, err := strconv.Atoi(strings.TrimSpace(text))
+		if err != nil || seconds < 0 || seconds > 900 {
+			return CodexCredential{}, errors.New("Codex device-code polling interval is invalid")
+		}
+		if seconds > 0 {
+			interval = time.Duration(seconds) * time.Second
+		}
+	}
+	for {
+		pollBody, _ := json.Marshal(map[string]string{"device_auth_id": code.DeviceAuthID, "user_code": code.UserCode})
 		poll, err := http.NewRequestWithContext(ctx, http.MethodPost, issuer+"/api/accounts/deviceauth/token", bytes.NewReader(pollBody))
 		if err != nil {
 			return CodexCredential{}, err
@@ -480,41 +496,77 @@ func DeviceCodeLogin(ctx context.Context, issuer string, client *http.Client, no
 		poll.Header.Set("Content-Type", "application/json")
 		result, err := client.Do(poll)
 		if err != nil {
-			return CodexCredential{}, err
-		}
-		if result.StatusCode < 200 || result.StatusCode >= 300 {
-			status := result.Status
-			_ = result.Body.Close()
-			return CodexCredential{}, fmt.Errorf("Codex device token request returned %s", status)
+			if ctx.Err() != nil {
+				return CodexCredential{}, errors.New("Codex device authorization expired or was canceled; click Log in to try again")
+			}
+			return CodexCredential{}, errors.New("Could not reach OpenAI to complete Codex login")
 		}
 		var payload struct {
-			AccessToken  string `json:"access_token"`
-			RefreshToken string `json:"refresh_token"`
-			ExpiresIn    int    `json:"expires_in"`
-			AccountID    string `json:"account_id"`
-			Error        string `json:"error"`
+			AuthorizationCode string `json:"authorization_code"`
+			Verifier          string `json:"code_verifier"`
 		}
-		decodeErr := json.NewDecoder(result.Body).Decode(&payload)
+		decodeErr := json.NewDecoder(io.LimitReader(result.Body, 1<<20)).Decode(&payload)
 		_ = result.Body.Close()
-		if decodeErr != nil {
-			return CodexCredential{}, errors.New("Codex device token response is invalid")
-		}
-		if payload.AccessToken != "" {
-			expiry := time.Time{}
-			if payload.ExpiresIn > 0 {
-				expiry = time.Now().Add(time.Duration(payload.ExpiresIn) * time.Second)
+		// OpenAI returns 403 or 404 while the browser authorization is pending.
+		if result.StatusCode == http.StatusForbidden || result.StatusCode == http.StatusNotFound {
+			timer := time.NewTimer(interval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return CodexCredential{}, errors.New("Codex device authorization expired or was canceled; click Log in to try again")
+			case <-timer.C:
+				continue
 			}
-			return CodexCredential{AccessToken: payload.AccessToken, RefreshToken: payload.RefreshToken, ExpiresAt: expiry, Endpoint: issuer, AccountID: payload.AccountID}, nil
 		}
-		if payload.Error == "authorization_pending" || payload.Error == "slow_down" {
-			if payload.Error == "slow_down" {
-				interval += time.Second
-			}
-			continue
+		if result.StatusCode < 200 || result.StatusCode >= 300 {
+			return CodexCredential{}, fmt.Errorf("Codex device authorization returned %s", result.Status)
 		}
-		if payload.Error == "access_denied" {
-			return CodexCredential{}, errors.New("Codex device authorization was denied")
+		if decodeErr != nil || payload.AuthorizationCode == "" || payload.Verifier == "" {
+			return CodexCredential{}, errors.New("Codex device authorization response is invalid")
 		}
-		return CodexCredential{}, fmt.Errorf("Codex device authorization failed: %s", payload.Error)
+		return exchangeCodexDeviceCode(ctx, issuer, payload.AuthorizationCode, payload.Verifier, client)
 	}
+}
+
+func exchangeCodexDeviceCode(ctx context.Context, issuer, code, verifier string, client *http.Client) (CodexCredential, error) {
+	body := url.Values{
+		"grant_type": {"authorization_code"}, "client_id": {CodexOAuthClientID},
+		"code": {code}, "code_verifier": {verifier}, "redirect_uri": {issuer + "/deviceauth/callback"},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, issuer+"/oauth/token", strings.NewReader(body.Encode()))
+	if err != nil {
+		return CodexCredential{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := client.Do(req)
+	if err != nil {
+		return CodexCredential{}, errors.New("Could not exchange Codex device authorization")
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return CodexCredential{}, fmt.Errorf("Codex device token exchange returned %s", response.Status)
+	}
+	var token struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		IDToken      string `json:"id_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		Scope        string `json:"scope"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&token); err != nil || token.AccessToken == "" || token.RefreshToken == "" {
+		return CodexCredential{}, errors.New("Codex device token response is invalid")
+	}
+	credential := CodexCredential{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, IDToken: token.IDToken, ClientID: CodexOAuthClientID, Issuer: issuer, Endpoint: issuer, Scopes: strings.Fields(token.Scope)}
+	if token.ExpiresIn > 0 {
+		credential.ExpiresAt = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
+	}
+	// These hints come from the trusted token endpoint, not browser-submitted claims.
+	claims := codexClaims(token.IDToken)
+	credential.AccountID = codexTokenAccount(token.IDToken)
+	if credential.AccountID == "" {
+		credential.AccountID = codexTokenAccount(token.AccessToken)
+	}
+	credential.Subject = textValue(claims["sub"])
+	credential.Email = textValue(claims["email"])
+	return credential, nil
 }

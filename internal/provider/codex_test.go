@@ -426,27 +426,127 @@ func TestCodexRejectsUnsupportedMessageRoleAndMalformedImage(t *testing.T) {
 }
 
 func TestDeviceCodeLoginPollsPendingThenSucceeds(t *testing.T) {
-	var polls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/accounts/deviceauth/usercode":
-			_, _ = io.WriteString(w, `{"device_auth_id":"device","user_code":"code","verification_url":"https://example.test/verify","interval":1}`)
-		case "/api/accounts/deviceauth/token":
-			if polls.Add(1) == 1 {
-				_, _ = io.WriteString(w, `{"error":"authorization_pending"}`)
-			} else {
-				_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"refresh","expires_in":3600,"account_id":"acct"}`)
+	for _, interval := range []string{`"1"`, `1`} {
+		t.Run(interval, func(t *testing.T) {
+			var polls atomic.Int32
+			idToken := "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user","email":"user@example.test","https://api.openai.com/auth":{"chatgpt_account_id":"acct"}}`)) + ".signature"
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Error("expected POST")
+				}
+				switch r.URL.Path {
+				case "/api/accounts/deviceauth/usercode":
+					var body map[string]string
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					if body["client_id"] != CodexOAuthClientID {
+						t.Error("wrong OAuth client")
+					}
+					_, _ = io.WriteString(w, `{"device_auth_id":"device","usercode":"code","interval":`+interval+`}`)
+				case "/api/accounts/deviceauth/token":
+					var body map[string]string
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					if len(body) != 2 || body["device_auth_id"] != "device" || body["user_code"] != "code" {
+						t.Error("invalid poll payload")
+					}
+					switch polls.Add(1) {
+					case 1:
+						w.WriteHeader(http.StatusForbidden)
+					case 2:
+						w.WriteHeader(http.StatusNotFound)
+					default:
+						_, _ = io.WriteString(w, `{"authorization_code":"auth-code","code_verifier":"verifier","code_challenge":"challenge"}`)
+					}
+				case "/oauth/token":
+					_ = r.ParseForm()
+					if r.Form.Get("client_id") != CodexOAuthClientID || r.Form.Get("code") != "auth-code" || r.Form.Get("code_verifier") != "verifier" || r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("redirect_uri") != "http://"+r.Host+"/deviceauth/callback" || r.Form.Get("resource") != "" {
+						t.Error("invalid token exchange")
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "refresh_token": "refresh", "expires_in": 3600, "id_token": idToken, "scope": "openid profile email offline_access"})
+				default:
+					t.Errorf("unexpected endpoint %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			var notified bool
+			credential, err := DeviceCodeLogin(context.Background(), server.URL, server.Client(), func(url, code string) {
+				notified = true
+				if url != server.URL+"/codex/device" || code != "code" {
+					t.Error("invalid browser instructions")
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
-		default:
-			http.NotFound(w, r)
+			if !notified || credential.AccessToken != "access" || credential.RefreshToken != "refresh" || credential.AccountID != "acct" || credential.Subject != "user" || credential.Email != "user@example.test" || credential.ClientID != CodexOAuthClientID || credential.IDToken != idToken || credential.Issuer != server.URL || !credential.ExpiresAt.After(time.Now()) || len(credential.Scopes) != 4 || polls.Load() != 3 {
+				t.Fatalf("incomplete device login, polls=%d", polls.Load())
+			}
+		})
+	}
+}
+
+func TestDeviceCodeLoginFailuresDoNotExposeSecrets(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		startStatus int
+		startBody   string
+		pollStatus  int
+		pollBody    string
+		tokenStatus int
+		tokenBody   string
+	}{
+		{name: "disabled", startStatus: 404},
+		{name: "invalid code", startStatus: 200, startBody: `{"device_auth_id":"secret"}`},
+		{name: "denied", startStatus: 200, startBody: `{"device_auth_id":"secret","user_code":"code"}`, pollStatus: 400, pollBody: `{"error":"access_denied","secret":"secret"}`},
+		{name: "malformed success", startStatus: 200, startBody: `{"device_auth_id":"secret","user_code":"code"}`, pollStatus: 200, pollBody: `{"access_token":"secret"}`},
+		{name: "exchange failure", startStatus: 200, startBody: `{"device_auth_id":"secret","user_code":"code"}`, pollStatus: 200, pollBody: `{"authorization_code":"secret","code_verifier":"secret"}`, tokenStatus: 401, tokenBody: `{"error":"secret"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				status, body := tc.startStatus, tc.startBody
+				if strings.HasSuffix(r.URL.Path, "/deviceauth/token") {
+					status, body = tc.pollStatus, tc.pollBody
+				}
+				if r.URL.Path == "/oauth/token" {
+					status, body = tc.tokenStatus, tc.tokenBody
+				}
+				w.WriteHeader(status)
+				_, _ = io.WriteString(w, body)
+			}))
+			defer server.Close()
+			_, err := DeviceCodeLogin(context.Background(), server.URL, server.Client(), nil)
+			if err == nil || strings.Contains(err.Error(), "secret") {
+				t.Fatalf("unsafe or missing failure: %v", err)
+			}
+			if tc.name == "disabled" && !strings.Contains(err.Error(), "security settings") {
+				t.Fatal("missing enablement guidance")
+			}
+		})
+	}
+}
+
+func TestDeviceCodeLoginCancellationAndRedirect(t *testing.T) {
+	var canceled context.CancelFunc
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/usercode") {
+			_, _ = io.WriteString(w, `{"device_auth_id":"d","user_code":"c","interval":"1"}`)
+			return
 		}
+		canceled()
+		w.WriteHeader(403)
 	}))
 	defer server.Close()
-	credential, err := DeviceCodeLogin(context.Background(), server.URL, server.Client(), nil)
-	if err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	canceled = cancel
+	defer cancel()
+	if _, err := DeviceCodeLogin(ctx, server.URL, server.Client(), nil); err == nil || !strings.Contains(err.Error(), "canceled") {
+		t.Fatalf("cancellation failed: %v", err)
 	}
-	if credential.AccessToken != "access" || polls.Load() != 2 {
-		t.Fatalf("credential=%#v polls=%d", credential, polls.Load())
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("OAuth payload followed redirect") }))
+	defer target.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, 307) }))
+	defer redirect.Close()
+	if _, err := DeviceCodeLogin(context.Background(), redirect.URL, redirect.Client(), nil); err == nil {
+		t.Fatal("redirect accepted")
 	}
 }

@@ -236,9 +236,21 @@ discovers the authenticated subscription model catalog from the Codex backend,
 supports Chat/Responses request translation, response translation for
 non-streaming Chat Completions, SSE event adaptation, and refreshes credentials
 near expiry. Device-code login is the default CLI flow; browser
-authorization-code + PKCE is available with `--browser`.
+authorization-code + PKCE is available with `--browser`. The console uses
+server-side device authorization for local and remote gateways, opening OpenAI
+in another browser tab with a one-time code and no helper download.
 
-Last verified: 2026-09-30
+Device-flow source reviewed 2026-10-12: OpenAI returns `device_auth_id`,
+`user_code` (or `usercode`) and a string polling interval, without a verification
+URL. The browser URL is `/codex/device`; polling `/api/accounts/deviceauth/token`
+returns 403/404 while pending, then an authorization code and PKCE verifier.
+Torii exchanges them at `/oauth/token` with the fixed Codex client and
+`{issuer}/deviceauth/callback`. Device credentials retain account/client/issuer
+context and use the Codex backend. Existing plan-usage/helper tokens retain their
+separate endpoint and refresh behavior. Tests use synthetic upstream fixtures;
+this change has not been verified with a live OpenAI account.
+
+Last source review: 2026-10-12
 
 Official implementation findings used here: the OpenAI Codex repository uses
 `https://auth.openai.com/oauth/token` for refresh, the client identifier

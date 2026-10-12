@@ -117,10 +117,6 @@ label.tooltip-open .tooltip-content { opacity: 1; pointer-events: auto; }
 .provider-result.pending,.provider-result.unchecked { color: var(--muted); }
 .provider-result.success { color: var(--success); }
 .provider-result.failure { color: var(--danger); }
-.provider-helper { display: grid; gap: 6px; width: min(620px,calc(100% - 39px)); line-height: 1.5; }
-.provider-helper span { overflow-wrap: anywhere; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-muted); color: var(--text); font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 11px; font-weight: 400; }
-.provider-helper a,.provider-helper small { font-size: 11px; font-weight: 400; }
-.provider-helper .copy-helper { width: max-content; padding: 6px 9px; }
 .provider-subscription-note { margin: 0 0 10px 39px; color: var(--muted); font-size: 11px; }
 .password-field { display: flex; gap: 7px; }
 .password-field input { min-width: 0; }
@@ -258,7 +254,6 @@ dialog .button { min-height: 37px; }
   .provider-card-head { flex-wrap: wrap; align-items: flex-start; }
   .provider-card-actions { justify-content: flex-start; }
   .provider-result,.provider-subscription-note { margin-left: 0; max-width: 100%; }
-  .provider-helper { width: 100%; }
   .credential-card { flex-direction: column; align-items: stretch; }
   .credential-card-delete { align-self: flex-start; }
   .overview-panel { padding: 18px; }

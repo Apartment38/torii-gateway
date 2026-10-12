@@ -100,7 +100,7 @@ provider's initial model list; the endpoint returns the complete catalog.
 | `GET /gateway/v1/config` | Admin | Config JSON with references, never secret values; `ETag` identifies its revision |
 | `PUT /gateway/v1/config` (also `POST`) | Full config JSON, admin, `If-Match` | `reloaded: true` on successful validated atomic save; revision checks described below |
 | `POST /gateway/v1/providers/test` | `{"provider": PROVIDER_CONFIG}` JSON, admin | Actual discovery status/models, including classifier-only metadata; no inference test |
-| `POST /gateway/v1/providers/login` | `{"provider_id":"ID"}` or `{"provider":"ID"}`, admin | Pending login instructions/URL or helper session details |
+| `POST /gateway/v1/providers/login` | `{"provider_id":"ID"}` or `{"provider":"ID"}`, admin | Pending browser login; `login_method: "device"` explicitly selects device authorization; remote requests default to it |
 | `GET /gateway/v1/providers/login?provider=ID` | Admin | Login status without stored tokens |
 | `GET /gateway/v1/providers/login/helper/{asset}` | Admin | OS/architecture-matching binary; unavailable assets fail |
 | `GET /gateway/v1/providers/login/session` | Pairing bearer token | Pending session metadata used by helper |
@@ -122,9 +122,18 @@ your draft; do not fetch a new revision merely to retry the old full document.
 The console preserves conflicted drafts. Copy your edits before choosing
 **Refresh config**, which discards the local draft.
 
-Use the console/helper to orchestrate OAuth; do not hand-author import payloads.
-The helper URL/token comes from the pending login, is short-lived, and must not be
-logged or shared. See [Providers](../guides/providers.md).
+Console Codex login requests `login_method: "device"`. Poll the status endpoint
+for `verification_url` and `user_code`, open the URL in a browser, and enter the
+code there. Authorization expires after 15 minutes; successful completion stores
+the credential on the gateway and refreshes discovery. Login responses are not
+cacheable and never include stored OAuth tokens. See [Providers](../guides/providers.md).
+
+For legacy helper clients only, `POST /gateway/v1/providers/login` with
+`login_method: "helper"` explicitly requests a 10-minute single-use pairing
+session. Its URL/token must not be logged or shared. The console does not offer
+helper downloads or commands. Do not hand-author credential import payloads.
+Omitting `login_method` on a loopback request retains the legacy local PKCE flow;
+use `"device"` for the same browser-only flow as the console.
 
 ## Credentials and client keys
 

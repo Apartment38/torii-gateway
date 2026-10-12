@@ -118,8 +118,9 @@ gateway's persistent OAuth credential store.
 The `openai-codex` provider automatically discovers the visible models for
 the logged-in subscription. A `models` list is optional and is only a fallback,
 not an allowlist. Import credentials with `gateway auth login openai-codex`
-or the web console's one-shot helper. Credentials remain endpoint-bound:
-the helper's `chatgpt.tokens.use.direct` tokens use the documented
+or **Log in** in the web console. Console login opens OpenAI in another browser
+tab and displays a one-time code; no downloaded helper is required. Credentials
+remain endpoint-bound: existing `chatgpt.tokens.use.direct` tokens use the documented
 [ChatGPT plan-usage API](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
 at `https://api.openai.com/v1`; legacy Codex OAuth tokens use the Codex backend.
 This does not use an OpenAI API key or the API-key provider's credentials.
@@ -132,44 +133,30 @@ Connection tests report the actual
 discovery error instead of claiming the fallback is a successful connection.
 Use `gateway models --database ./state/torii.db` to inspect the catalog.
 
-## Remote Codex login
+## Codex login in a browser
 
-When the gateway runs on another computer, the Providers page cannot complete
-OpenAI's loopback OAuth callback directly in the container. Click **Log in**
-for the `openai-codex` provider and run the displayed one-shot helper on the
-computer where your browser is running. The container serves a matching
-binary for the selected operating system and architecture. Check the manual
-platform selector, download it from the console, then open a terminal in the
-download folder (usually Downloads). On Linux amd64 run:
+This works with a local gateway or one hosted on another computer/container.
+You need an OpenAI account with Codex subscription access and device code
+authorization enabled in ChatGPT's security settings. Managed workspaces may
+require an administrator to enable it.
 
-```sh
-chmod +x ./torii-auth-linux-amd64
-./torii-auth-linux-amd64 --session-url 'https://gateway.example.com/gateway/v1/providers/login/session' \
-  --pairing-token '<one-time-token-from-the-console>'
-```
+1. On **Providers**, add or edit **OpenAI Codex**, then click **Log in**.
+2. Torii opens a new browser tab. Sign in with OpenAI and enter the one-time code
+   shown on the provider card. If the tab is blocked or closed, click
+   **Open OpenAI login** on the card to open it yourself.
+3. Return to Torii. It completes authorization on the gateway, stores the
+   credential encrypted in SQLite, and checks the subscription's model catalog.
+   A successful check shows **Logged in · Working** and the discovered model count.
 
-The helper opens OpenAI login locally, receives the callback on `127.0.0.1`,
-transfers the protected credential to the pending gateway session, and exits.
-The pairing token expires after 10 minutes and can be used only once. The
-gateway stores and refreshes the credential. Success prints `Codex login imported
-into Torii successfully.` and the helper exits. After failure or expiry, click
-**Log in** for a fresh session/token and rerun the newly generated commands.
-Linux arm64 and macOS commands use their selected filename; Windows uses the
-PowerShell command shown by the console without `chmod`. Use HTTPS for the console in production because the helper transfers
-OAuth credentials to the gateway over the session connection.
+No companion app, terminal command, or local callback listener is needed.
+The code expires after 15 minutes. If login expires or fails, click **Log in**
+again. OpenAI access and refresh tokens remain on the gateway; the console
+receives only the authorization URL, one-time code, and status. Use HTTPS for
+remote console access in production.
 
-For images built before the helper endpoint was added, rebuild the container:
-
-```sh
-podman compose -f compose.yaml -f compose.secrets.yaml build --no-cache
-podman compose -f compose.yaml -f compose.secrets.yaml up -d
-```
-
-For local development, build the helper with:
-
-```sh
-go build -o ./bin/torii-auth ./cmd/torii-auth
-```
+The optional legacy helper protocol remains available to API clients that
+explicitly request it; see [API](../reference/api.md) and
+[CLI](../reference/cli.md). It is not part of console login.
 
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its database volume. If an upstream

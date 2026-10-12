@@ -620,7 +620,7 @@ providers:
 	}
 	runtime.handler = handler
 
-	start := httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/login", strings.NewReader(`{"provider":{"id":"openai-codex","type":"openai-codex","base_url":"https://chatgpt.com/backend-api/codex","discover_models":false,"models":["gpt-5.5"]}}`))
+	start := httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/login", strings.NewReader(`{"login_method":"helper","provider":{"id":"openai-codex","type":"openai-codex","base_url":"https://chatgpt.com/backend-api/codex","discover_models":false,"models":["gpt-5.5"]}}`))
 	start.Host = "gateway.example.test:8398"
 	start.Header.Set("Content-Type", "application/json")
 	start.SetBasicAuth("test-admin", "test-admin-password")

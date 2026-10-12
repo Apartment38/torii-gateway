@@ -309,7 +309,7 @@ test("a removed provider cannot write a late status onto its replacement", async
 test("successful login performs real discovery rather than just saying logged in", async () => {
   const app = consoleFixture(url => response(url.startsWith("/gateway/v1/providers/login?") ? { status: "success" } : models(5)));
   app.setProviders([draft("openai-codex")]);
-  await app.run('pollProviderLogin(providers[0], providerList.querySelector(\'[data-result="0"]\'), providerList.querySelector(\'[data-login="0"]\'))');
+  await app.run('pollProviderLogin(providers[0], providerList.querySelector(\'[data-login="0"]\'), null, {status:"pending"})');
   assert.equal(app.status(0).textContent, "Logged in · Working · 5 models discovered");
   assert.equal(app.calls[1].url, "/gateway/v1/providers/test");
 });
@@ -317,7 +317,7 @@ test("successful login performs real discovery rather than just saying logged in
 test("a successful login with failed discovery reports not working", async () => {
   const app = consoleFixture(url => response(url.startsWith("/gateway/v1/providers/login?") ? { status: "success" } : { error: "Catalog HTTP 401" }, url.startsWith("/gateway/v1/providers/login?")));
   app.setProviders([draft("openai-codex")]);
-  await app.run('pollProviderLogin(providers[0], providerList.querySelector(\'[data-result="0"]\'), providerList.querySelector(\'[data-login="0"]\'))');
+  await app.run('pollProviderLogin(providers[0], providerList.querySelector(\'[data-login="0"]\'), null, {status:"pending"})');
   assert.match(app.status(0).textContent, /Not working · 0 models discovered · Catalog HTTP 401/);
 });
 
@@ -1248,16 +1248,68 @@ test("provider dialogs keep incomplete drafts out of unrelated automatic saves",
  app.run('cancelProviderEditor()');
  assert.equal(app.run('providers[0].api_url'),"https://openai_compatible.example/v1");
 });
-test("helper commands match platform downloads and quote shell arguments",()=>{
- const app=consoleFixture(()=>response({}));
- const linux=app.run(`helperCommand("torii-auth-linux-amd64","https://gateway.test/session?x=1&y=2","token")`);
- assert.equal(linux,"chmod +x ./torii-auth-linux-amd64\n./torii-auth-linux-amd64 --session-url 'https://gateway.test/session?x=1&y=2' --pairing-token 'token'");
- assert.equal(app.run(`quoteShell("a'b")`),"'a'\\''b'");
- const windows=app.run(`helperCommand("torii-auth-windows-amd64.exe","https://gateway.test/session","a'b")`);
- assert.equal(windows,"& '.\\torii-auth-windows-amd64.exe' --session-url 'https://gateway.test/session' --pairing-token 'a''b'");
- for(const asset of ["torii-auth-linux-arm64","torii-auth-darwin-amd64","torii-auth-darwin-arm64"]){app.context.asset=asset;assert.match(app.run('helperCommand(asset,"url","token")'),new RegExp(asset));assert.ok(app.run('helperDownloadURL(asset)').endsWith(asset));}
- const source=readFileSync(new URL("./static/app.ts",import.meta.url),"utf8");assert.match(source,/helper-platform/);assert.doesNotMatch(source,/torii-router\/releases/);
+test("Codex login reserves a tab before requesting device authorization and keeps a fallback link",async()=>{
+ let app;
+ const tab={opener:"console",closed:false,location:{replace(url){tab.url=url;}},close(){tab.closed=true;}};
+ let opened=0,polls=0;
+ app=consoleFixture((url,options)=>{
+  if(options?.method==="POST" && url.endsWith("/login")){
+   assert.equal(opened,1);assert.equal(tab.opener,null);
+   assert.equal(JSON.parse(options.body).login_method,"device");
+   return response({status:"pending",message:"Preparing login"});
+  }
+  if(url.includes("/login?")){
+   polls++;
+   if(polls===1)return response({status:"pending",verification_url:"https://auth.openai.com/codex/device",user_code:"ONE-TIME",message:"Sign in"});
+   assert.equal(tab.url,"https://auth.openai.com/codex/device");
+   assert.match(app.status(0).innerHTML,/ONE-TIME/);assert.match(app.status(0).innerHTML,/Open OpenAI login/);
+   assert.match(app.status(0).innerHTML,/noopener noreferrer/);
+   return response({status:"success"});
+  }
+  return response(models(2));
+ });
+ app.context.window.open=(url,target)=>{opened++;assert.equal(url,"about:blank");assert.equal(target,"_blank");return tab;};
+ app.setProviders([draft("openai-codex")]);
+ await app.run(`loginProvider(0,providerList.querySelector('[data-login="0"]'))`);
+ assert.equal(opened,1);assert.equal(tab.closed,false);
+ assert.match(app.status(0).textContent,/Logged in.*2 models/);
+ assert.equal(app.list.buttons.get("login:0").disabled,false);
+ const source=readFileSync(new URL("./static/app.ts",import.meta.url),"utf8");
+ assert.doesNotMatch(source,/torii-auth|Download and run the helper/);
 });
+
+test("blocked Codex login tabs keep the code and link visible through delayed authorization",async()=>{
+ let app,polls=0;
+ app=consoleFixture((url)=>{
+  if(url.includes("/login?")){
+   polls++;
+   if(polls>180){assert.match(app.status(0).innerHTML,/CODE/);assert.match(app.status(0).innerHTML,/Open OpenAI login/);return response({status:"success"});}
+  }
+  if(url.includes("/login"))return response({status:"pending",verification_url:"https://auth.openai.com/codex/device",user_code:"CODE"});
+  return response(models(1));
+ });
+ app.context.window.open=()=>null;app.setProviders([draft("openai-codex")]);
+ await app.run(`loginProvider(0,providerList.querySelector('[data-login="0"]'))`);
+ assert.equal(polls,181);assert.equal(app.list.buttons.get("login:0").disabled,false);
+});
+
+test("Codex login errors close the reserved tab and allow retry",async()=>{
+ for(const stage of ["start","status","failure","unsafe URL"]){
+  let polls=0;
+  const app=consoleFixture((url)=>{
+   if(stage==="start")return response({error:"Cannot start login"},false);
+   if(url.includes("/login?")){polls++;return stage==="status"?response({message:"Cannot check login"},false):response({status:"failure",message:"Login denied"});}
+   return response(stage==="unsafe URL"?{status:"pending",verification_url:"https://attacker.example/login"}:{status:"pending"});
+  });
+  const tab={closed:false,close(){tab.closed=true;},location:{replace(){assert.fail("unexpected navigation");}}};
+  app.context.window.open=()=>tab;app.setProviders([draft("openai-codex")]);
+  await app.run(`loginProvider(0,providerList.querySelector('[data-login="0"]'))`);
+  assert.equal(tab.closed,true);assert.equal(app.list.buttons.get("login:0").disabled,false);
+  assert.match(app.status(0).textContent,/Not working/);
+  if(stage==="unsafe URL")assert.equal(polls,0);
+ }
+});
+
 
 
 test("session expiry and failed reauthentication preserve settings drafts", async () => {

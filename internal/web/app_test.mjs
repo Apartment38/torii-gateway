@@ -24,6 +24,22 @@ class Element {
   querySelector() { return null; }
   querySelectorAll() { return []; }
 }
+class CodexLoginStatus extends Element {
+  set innerHTML(html) {
+    this.html = html;
+    this.codeInput = html.includes('class="codex-login-code"') ? new Element() : null;
+    this.copyButton = html.includes('class="codex-copy-code ') ? new Element() : null;
+    this.copyStatus = html.includes('class="codex-copy-status"') ? new Element() : null;
+    if (this.codeInput) {
+      this.codeInput.focus = () => { this.codeInput.focused = true; };
+      this.codeInput.select = () => { this.codeInput.selected = true; };
+    }
+  }
+  get innerHTML() { return this.html || ""; }
+  querySelector(selector) {
+    return ({".codex-login-code": this.codeInput, ".codex-copy-code": this.copyButton, ".codex-copy-status": this.copyStatus})[selector] || null;
+  }
+}
 class ProviderList extends Element {
   dialogs = new Map();
   editorStatuses = new Map();
@@ -39,7 +55,7 @@ class ProviderList extends Element {
     this.reveals = new Map();
     this.dialogs = new Map();
     this.editorStatuses = new Map();
-    for(const match of html.matchAll(/data-provider-dialog="(\d+)"/g)){const dialog=new Element();const status=new Element();dialog.querySelector=selector=>selector==="[data-editor-status]"?status:null;this.dialogs.set(match[1],dialog);this.editorStatuses.set(match[1],status);}
+    for(const match of html.matchAll(/data-provider-dialog="(\d+)"/g)){const dialog=new Element();const status=new CodexLoginStatus();dialog.querySelector=selector=>selector==="[data-editor-status]"?status:null;this.dialogs.set(match[1],dialog);this.editorStatuses.set(match[1],status);}
     for (const match of html.matchAll(/<input\b[^>]*data-provider="(\d+)"[^>]*data-key="([^"]+)"[^>]*>/g)) {
       const node = new Element();
       node.dataset = { provider:match[1], key:match[2] };
@@ -54,7 +70,7 @@ class ProviderList extends Element {
       this.reveals.set(match[1], node);
     }
     for (const match of html.matchAll(/data-result="(\d+)"/g)) {
-      const node = new Element();
+      const node = new CodexLoginStatus();
       node.textContent = "Not checked yet";
       this.results.set(match[1], node);
     }
@@ -1252,7 +1268,8 @@ test("Codex login reserves a tab before requesting device authorization and keep
  let app;
  const tab={opener:"console",closed:false,location:{replace(url){tab.url=url;}},close(){tab.closed=true;}};
  let opened=0,polls=0;
- app=consoleFixture((url,options)=>{
+ const copied=[];
+ app=consoleFixture(async(url,options)=>{
   if(options?.method==="POST" && url.endsWith("/login")){
    assert.equal(opened,1);assert.equal(tab.opener,null);
    assert.equal(JSON.parse(options.body).login_method,"device");
@@ -1262,12 +1279,32 @@ test("Codex login reserves a tab before requesting device authorization and keep
    polls++;
    if(polls===1)return response({status:"pending",verification_url:"https://auth.openai.com/codex/device",user_code:"ONE-TIME",message:"Sign in"});
    assert.equal(tab.url,"https://auth.openai.com/codex/device");
-   assert.match(app.status(0).innerHTML,/ONE-TIME/);assert.match(app.status(0).innerHTML,/Open OpenAI login/);
+   const status=app.status(0);
+   assert.equal(status.codeInput.value,"ONE-TIME");
+   assert.match(status.innerHTML,/<input[^>]*type="text"[^>]*readonly/);
+   assert.match(status.innerHTML,/type="button" aria-label="Copy one-time code"/);
+   await status.copyButton.listeners.click();
+   assert.deepEqual(copied,["ONE-TIME"]);
+   assert.equal(status.copyButton.textContent,"Copied");
+   assert.equal(status.copyStatus.textContent,"Code copied");
+   // Unchanged polling must retain the controls and their copy feedback.
+   const codeInput=status.codeInput;
+   app.run('renderLoginInstructions(providers[0],{status:"pending",verification_url:"https://auth.openai.com/codex/device",user_code:"ONE-TIME",message:"Sign in"})');
+   assert.equal(status.codeInput,codeInput);
+   assert.equal(status.copyButton.textContent,"Copied");
+   app.context.navigator.clipboard.writeText=async()=>{throw new Error("clipboard denied");};
+   await status.copyButton.listeners.click();
+   assert.equal(codeInput.focused,true);assert.equal(codeInput.selected,true);
+   assert.match(status.copyStatus.textContent,/Copy the selected code/);
+   assert.equal(status.copyButton.textContent,"Copy");
+   assert.equal(app.list.editorStatuses.get("0").codeInput.value,"ONE-TIME");
+   assert.match(status.innerHTML,/Open OpenAI login/);
    assert.match(app.status(0).innerHTML,/noopener noreferrer/);
    return response({status:"success"});
   }
   return response(models(2));
  });
+ app.context.navigator.clipboard={writeText:async code=>{copied.push(code);}};
  app.context.window.open=(url,target)=>{opened++;assert.equal(url,"about:blank");assert.equal(target,"_blank");return tab;};
  app.setProviders([draft("openai-codex")]);
  await app.run(`loginProvider(0,providerList.querySelector('[data-login="0"]'))`);
@@ -1283,7 +1320,7 @@ test("blocked Codex login tabs keep the code and link visible through delayed au
  app=consoleFixture((url)=>{
   if(url.includes("/login?")){
    polls++;
-   if(polls>180){assert.match(app.status(0).innerHTML,/CODE/);assert.match(app.status(0).innerHTML,/Open OpenAI login/);return response({status:"success"});}
+   if(polls>180){assert.equal(app.status(0).codeInput.value,"CODE");assert.match(app.status(0).innerHTML,/Open OpenAI login/);return response({status:"success"});}
   }
   if(url.includes("/login"))return response({status:"pending",verification_url:"https://auth.openai.com/codex/device",user_code:"CODE"});
   return response(models(1));

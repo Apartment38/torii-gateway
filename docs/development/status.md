@@ -25,6 +25,14 @@ is unavailable because Podman and the host SQLite CLI are absent. Live OpenAI
 sign-in and deployment remain unverified; account/workspace device authorization
 must be enabled. No push, merge or deployment was performed.
 
+Follow-up on `fix/codex-login-copy` in `/workspace/work/codex-login-copy`: the
+one-time code appears in a read-only text box with a **Copy** button on both the
+provider card and editor. Copy confirmation survives unchanged login polling;
+clipboard failures select the code for manual copying. The provider guide is
+updated. All 120 console tests and generated asset/diff checks pass, including
+clipboard success, failure and selection preservation. Backend validation above
+remains applicable; this follow-up changes console assets and documentation only.
+
 ## Manual model pricing
 
 Completed gateway-wide `model_pricing` settings and the Models console pricing

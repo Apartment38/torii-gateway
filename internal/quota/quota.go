@@ -16,6 +16,7 @@ type Status struct {
 	AccountID         string          `json:"account_id,omitempty"`
 	AccountIdentity   string          `json:"account_identity,omitempty"`
 	State             string          `json:"status,omitempty"`
+	CollectionState   string          `json:"collection_status,omitempty"`
 	CollectedAt       time.Time       `json:"collected_at,omitempty"`
 	RetryAt           *time.Time      `json:"retry_at,omitempty"`
 	Limits            []LimitGroup    `json:"limits,omitempty"`
@@ -247,7 +248,7 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 			}
 		}
 	}
-	failed := err != nil || value.UnavailableReason != "" && value.State != "available"
+	failed := err != nil || value.Provider == "openai-codex" && value.UnavailableReason != "" && value.State != "available"
 	c.mu.Lock()
 	if failed {
 		c.failures[model]++
@@ -255,7 +256,10 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 		if value.Provider == "openai-codex" {
 			baseDelay = c.ttl
 		}
-		delay := min(baseDelay*time.Duration(1<<min(c.failures[model]-1, 5)), 30*time.Minute)
+		delay := baseDelay
+		if value.Provider == "openai-codex" {
+			delay = min(baseDelay*time.Duration(1<<min(c.failures[model]-1, 5)), 30*time.Minute)
+		}
 		retry := now.Add(delay)
 		if value.State == "stale" && value.RetryAt != nil {
 			retry = *value.RetryAt
@@ -265,6 +269,10 @@ func (c *Cache) get(ctx context.Context, model string) (Status, error) {
 		}
 		if previous.Provider == "openai-codex" && previous.AccountID == value.AccountID && !previous.CollectedAt.IsZero() {
 			previous.State = "stale"
+			previous.CollectionState = value.CollectionState
+			if previous.CollectionState == "" {
+				previous.CollectionState = value.State
+			}
 			previous.UnavailableReason = value.UnavailableReason
 			previous.RetryAt = &retry
 			value = previous
@@ -400,6 +408,35 @@ func (c *Cache) Invalidate(model string) {
 	}
 }
 
+// AuthenticationChanged allows a new OAuth login to retry an authentication
+// failure immediately, without clearing balances, local allowances or 429 backoff.
+func (c *Cache) AuthenticationChanged(model string) {
+	if k, ok := c.fetcher.(Keyer); ok {
+		model = k.QuotaKey(model)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.entries[model]
+	if !ok {
+		return
+	}
+	state := v.CollectionState
+	if state == "" {
+		state = v.State
+	}
+	if state != "auth_expired" && state != "permission_denied" {
+		return
+	}
+	v.ExpiresAt = c.now().UTC()
+	v.RetryAt = nil
+	v.UnavailableReason = ""
+	v.CollectionState = "unavailable"
+	c.entries[model] = v
+	delete(c.errors, model)
+	delete(c.failures, model)
+	delete(c.attempts, model)
+}
+
 // RequestRefresh permits a user refresh after ten seconds, while honoring provider
 // backoff. It preserves the last successful data and concurrent request deduplication.
 func (c *Cache) RequestRefresh(model string) bool {
@@ -455,7 +492,7 @@ func clone(s Status) Status {
 		if g.Metadata != nil {
 			m := make(map[string]any, len(g.Metadata))
 			for k, v := range g.Metadata {
-				m[k] = v
+				m[k] = cloneMetadata(v)
 			}
 			g.Metadata = m
 		}
@@ -506,7 +543,28 @@ func clone(s Status) Status {
 	}
 	return s
 }
+func cloneMetadata(v any) any {
+	switch value := v.(type) {
+	case map[string]any:
+		copy := make(map[string]any, len(value))
+		for k, item := range value {
+			copy[k] = cloneMetadata(item)
+		}
+		return copy
+	case []any:
+		copy := make([]any, len(value))
+		for i, item := range value {
+			copy[i] = cloneMetadata(item)
+		}
+		return copy
+	default:
+		return v
+	}
+}
 func normalize(s *Status) error {
+	if s.Provider == "openai-codex" && s.CollectionState == "" {
+		s.CollectionState = s.State
+	}
 	for i := range s.Limits {
 		group := &s.Limits[i]
 		for j := range group.Windows {

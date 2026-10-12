@@ -1662,3 +1662,12 @@ test("Codex quota groups retain independent windows and unavailable values",()=>
  const html=app.run('modelTrackingMarkup({quota:codexTestQuota})');
  assert.match(html,/user@example.test.*plus/);assert.match(html,/codex_app_server/);assert.match(html,/Last successful update/);assert.match(html,/quota-group/);assert.match(html,/Scope: unknown/);assert.ok(!html.includes('<script>'));
 });
+
+test("Codex quota refresh handles cooldowns and network failure without losing models",async()=>{
+ let fail=false;
+ const app=consoleFixture(async(url)=>{assert.equal(url,"/gateway/v1/quotas/refresh");if(fail)throw new Error("synthetic network failure");return response({},false,'"fixture"',429);});
+ const button=app.context.document.querySelector("#refresh-quotas");
+ await button.listeners.click();
+ assert.match(app.context.document.querySelector("#quota-refresh-status").textContent,/cooling down/);assert.equal(button.disabled,false);
+ fail=true;await button.listeners.click();assert.match(app.context.document.querySelector("#quota-refresh-status").textContent,/unavailable/);assert.equal(button.disabled,false);
+});

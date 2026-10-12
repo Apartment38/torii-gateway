@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -216,5 +217,136 @@ func TestCodexQuotaAccountSwitchDoesNotReuseCache(t *testing.T) {
 	next, _ := cache.Get(context.Background(), "codex/m")
 	if calls != 2 || first.AccountID == next.AccountID {
 		t.Fatal("mixed account snapshots")
+	}
+}
+
+func TestCodexWorkspaceSnapshotsDoNotMixUsers(t *testing.T) {
+	v := CodexCredential{AccessToken: "first-login", AccountID: "workspace", Endpoint: DefaultCodexBaseURL}
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) { return v, nil }, nil)
+	first := c.QuotaKey("m")
+	v.AccessToken = "second-login"
+	if first == c.QuotaKey("m") {
+		t.Fatal("unknown workspace users shared cache")
+	}
+	v.Subject = "same-user"
+	first = c.QuotaKey("m")
+	v.AccessToken = "rotated"
+	if first != c.QuotaKey("m") {
+		t.Fatal("known user rotation lost shared account identity")
+	}
+}
+func TestCodexReportedAccountMismatch(t *testing.T) {
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) {
+		return CodexCredential{AccessToken: "synthetic", AccountID: "selected", Endpoint: DefaultCodexBaseURL}, nil
+	}, &http.Client{Transport: codexTestTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"account_id":"other","rate_limit":{"primary_window":{"used_percent":20}}}`))}, nil
+	})})
+	s, _ := c.Quota(context.Background(), "m")
+	if s.UnavailableReason != "account_context_mismatch" || len(s.Limits) > 0 {
+		t.Fatal("attached another account's quota")
+	}
+}
+
+func TestCodexJWTAccountHintDoesNotPrevent401Refresh(t *testing.T) {
+	claims := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user","https://api.openai.com/auth":{"chatgpt_account_id":"account"}}`))
+	v := CodexCredential{AccessToken: "old." + claims + ".sig", RefreshToken: "synthetic-refresh", Endpoint: DefaultCodexBaseURL, ClientID: CodexOAuthClientID}
+	var refreshed bool
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) { return v, nil }, &http.Client{Transport: codexTestTransport(func(r *http.Request) (*http.Response, error) {
+		body := `{"rate_limit":{"primary_window":{"used_percent":20}}}`
+		status := 200
+		if r.URL.Path == "/oauth/token" {
+			refreshed = true
+			body = `{"access_token":"new.` + claims + `.sig","expires_in":3600}`
+		} else {
+			if r.Header.Get("ChatGPT-Account-ID") != "account" {
+				t.Error("missing account hint")
+			}
+			if !refreshed {
+				status = 401
+			}
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})})
+	c.ConfigureRefresh("https://auth.openai.com", func(_ string, next CodexCredential) error { v = next; return nil })
+	s, _ := c.Quota(context.Background(), "m")
+	if !refreshed || s.State != "available" || s.AccountID != "account" {
+		t.Fatalf("hint/refreshed context=%s %s", s.State, s.AccountID)
+	}
+}
+
+func TestCodexRemainingPercentageClampsOverage(t *testing.T) {
+	s := parseCodexUsage(fixturePayload(t, `{"rateLimits":{"limitId":"codex","primary":{"usedPercent":120,"windowDurationMins":300}}}`), time.Now())
+	w := s.Limits[0].Windows[0]
+	if w.Used != 120 || w.Remaining != 0 || !w.Exhausted || s.Limits[0].State != "exhausted" {
+		t.Fatal("overage was discarded or remaining escaped bounds")
+	}
+}
+
+func TestCodexAuthenticationContextChangesInvalidateQuotaKey(t *testing.T) {
+	v := CodexCredential{AccessToken: "synthetic", AccountID: "account", Subject: "user", ClientID: "first", Scopes: []string{"a", "b"}, Endpoint: DefaultCodexBaseURL}
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) { return v, nil }, nil)
+	first := c.QuotaKey("m")
+	v.Scopes = []string{"b", "a"}
+	if c.QuotaKey("m") != first {
+		t.Fatal("scope order changed identity")
+	}
+	v.ClientID = "second"
+	if c.QuotaKey("m") == first {
+		t.Fatal("incompatible OAuth contexts shared cache")
+	}
+}
+
+func TestCodexMapDoesNotInventScopeFromContradictoryIdentifiers(t *testing.T) {
+	s := parseCodexUsage(fixturePayload(t, `{"rateLimits":{"limitId":"codex","primary":{"usedPercent":20}},"rateLimitsByLimitId":{"codex":{"limitId":"other","primary":{"usedPercent":100}}}}`), time.Now())
+	// The map key conflicts with its reported ID; preserve it independently from legacy codex.
+	if len(s.Limits) != 2 || s.Limits[0].Scope != "unknown" || s.Limits[0].LimitID != "other" || s.Limits[1].Scope != "account" || s.Limits[1].LimitID != "codex" {
+		t.Fatal("contradictory identifiers became account scope")
+	}
+}
+
+func TestCodexReportedExhaustionWithUnavailableWindows(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		raw := `{"rate_limit":{"allowed":` + strconv.FormatBool(allowed) + `,"limit_reached":` + strconv.FormatBool(!allowed) + `}}`
+		c := quota.NewCache(time.Minute, staticCodexStatus{parseCodexUsage(fixturePayload(t, raw), time.Now())})
+		s, _ := c.Get(context.Background(), "m")
+		if s.State != "available" || s.Exhausted == allowed || s.Known || len(s.Limits) != 1 || len(s.Limits[0].Windows) != 0 {
+			t.Fatal("explicit quota state fabricated percentages or became a collection failure")
+		}
+	}
+}
+
+type staticCodexStatus struct{ status quota.Status }
+
+func (f staticCodexStatus) Quota(context.Context, string) (quota.Status, error) { return f.status, nil }
+
+func TestCodexRefreshAcceptsJWTExpiryWithoutExpiresIn(t *testing.T) {
+	exp := time.Now().Add(time.Hour).Unix()
+	claims := base64.RawURLEncoding.EncodeToString([]byte(`{"exp":` + strconv.FormatInt(exp, 10) + `}`))
+	v := CodexCredential{AccessToken: "old", RefreshToken: "refresh", ExpiresAt: time.Now().Add(-time.Minute), Endpoint: DefaultCodexBaseURL}
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) { return v, nil }, &http.Client{Transport: codexTestTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"access_token":"new.` + claims + `.sig","refresh_token":"rotated"}`))}, nil
+	})})
+	c.ConfigureRefresh("https://auth.openai.com", func(_ string, next CodexCredential) error { v = next; return nil })
+	got, err := c.credential(context.Background())
+	if err != nil || got.ExpiresAt.Unix() != exp || v.RefreshToken != "rotated" {
+		t.Fatalf("optional expires_in handling: %v", err)
+	}
+}
+func TestCodexAccountClaimSwitchChangesQuotaIdentity(t *testing.T) {
+	token := func(account string) string {
+		return "h." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user","https://api.openai.com/auth":{"chatgpt_account_id":"`+account+`"}}`)) + ".s"
+	}
+	v := CodexCredential{AccessToken: token("first"), Subject: "user", Endpoint: DefaultCodexBaseURL}
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) { return v, nil }, nil)
+	first := c.QuotaKey("m")
+	v.AccessToken = token("second")
+	if first == c.QuotaKey("m") {
+		t.Fatal("missing saved account ID mixed workspaces")
+	}
+}
+func TestCodexPreservesLongCustomDuration(t *testing.T) {
+	s := parseCodexUsage(fixturePayload(t, `{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":63072000}}}`), time.Now())
+	if s.Limits[0].Windows[0].WindowType != "custom:63072000" {
+		t.Fatal("provider duration discarded")
 	}
 }

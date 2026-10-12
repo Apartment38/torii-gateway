@@ -334,27 +334,29 @@ function quotaWindowText(window    )       {
 function balanceText(q    )        {
  return (q?.balances||[]).map((b    )=>`${b.name.replace(/_/g," ")}: ${b.unlimited?"Unlimited":typeof b.remaining==="number"?(b.unit==="USD"?modelPrice(b.remaining):`${consoleNumber(b.remaining)} ${b.unit}`):"Unknown"}${b.reset_at?` · renews ${new Date(b.reset_at).toLocaleString()}`:""}`).join("; ");
 }
-function trackingReasonText(reason       )       {return ({management_credentials_required:"Billing management credentials required",admin_credentials_required:"Billing admin credential required",oauth_credentials_required:"Subscription OAuth credential required",wallet_balance_not_exposed:"Provider does not expose wallet balance",response_headers_only:"Quota available from response headers",credential_rejected:"Tracking credential rejected",endpoint_unavailable:"Tracking endpoint unavailable",rate_limited:"Tracking rate limited",tracking_unavailable:"Tracking unavailable",no_reported_data:"No reported provider data",spend_unavailable:"Provider spend unavailable",report_incomplete:"Provider report incomplete",no_subscription:"No subscription reported",oauth_login_or_refresh_required:"OAuth login expired or refresh unavailable; reconnect the account",oauth_required_api_key_supplied:"ChatGPT OAuth required; an API key was supplied",account_context_mismatch:"Quota account does not match the configured OAuth account",usage_auth_rejected_after_refresh_check_account_and_oauth_context:"Usage endpoint rejected OAuth authentication; verify account and token permissions",usage_permission_denied:"OAuth account lacks usage permission",oauth_refresh_failed:"OAuth refresh failed; reconnect the account",usage_request_failed:"Quota request failed; cached values may be stale",usage_endpoint_failed:"Usage endpoint failed",invalid_usage_response:"Usage response could not be parsed",account_changed_during_collection:"Account changed during quota collection"}                         )[reason]||"Provider data unavailable";}
+function trackingReasonText(reason       )       {return ({management_credentials_required:"Billing management credentials required",admin_credentials_required:"Billing admin credential required",oauth_credentials_required:"Subscription OAuth credential required",wallet_balance_not_exposed:"Provider does not expose wallet balance",response_headers_only:"Quota available from response headers",credential_rejected:"Tracking credential rejected",endpoint_unavailable:"Tracking endpoint unavailable",rate_limited:"Tracking rate limited",tracking_unavailable:"Tracking unavailable",no_reported_data:"No reported provider data",spend_unavailable:"Provider spend unavailable",report_incomplete:"Provider report incomplete",no_subscription:"No subscription reported",oauth_login_or_refresh_required:"OAuth login expired or refresh unavailable; reconnect the account",oauth_required_api_key_supplied:"ChatGPT OAuth required; an API key was supplied",account_context_mismatch:"Quota account does not match the configured OAuth account",usage_auth_rejected_after_refresh_check_account_and_oauth_context:"Usage endpoint rejected OAuth authentication; verify account and token permissions",usage_auth_rejected_refresh_unavailable:"Usage authentication rejected and refresh unavailable; reconnect OAuth",usage_permission_denied:"OAuth account lacks usage permission",oauth_refresh_failed:"OAuth refresh failed; reconnect the account",usage_request_failed:"Quota request failed; cached values may be stale",usage_endpoint_failed:"Usage endpoint failed",invalid_usage_response:"Usage response could not be parsed",account_changed_during_collection:"Account changed during quota collection"}                         )[reason]||"Provider data unavailable";}
 function codexWindowText(w    )        {
  const name=w.window_type==="5h"?"5-hour":w.window_type==="weekly"?"Weekly":w.window_seconds?`${w.window_seconds/60} minute window`:"Unknown duration";
  if(w.status==="unavailable")return `${name}: usage unavailable · ${quotaResetLabel(w.reset_at)}`;
  return `${name}: ${Number(w.used).toFixed(1)}% used · ${Number(w.remaining).toFixed(1)}% remaining · ${quotaResetLabel(w.reset_at)}`;
 }
+function codexGroupLabel(g    )       {return g.limit_name||(g.map_key&&g.limit_id&&g.map_key!==g.limit_id?`${g.limit_id} (${g.map_key})`:g.limit_id||g.map_key)||"Unidentified quota pool";}
 function codexGroupText(g    )        {
  const windows=g.windows||[];
- return [g.limit_name||g.limit_id||g.map_key||"Unidentified quota pool",...windows.map(codexWindowText),...['5h','weekly'].filter(type=>!windows.some((w    )=>w.window_type===type)).map(type=>`${type==="5h"?"5-hour":"Weekly"}: unavailable`)].join(" · ");
+ return [codexGroupLabel(g),...(g.status==="exhausted"?["Exhausted"]:[]),...windows.map(codexWindowText),...['5h','weekly'].filter(type=>!windows.some((w    )=>w.window_type===type)).map(type=>`${type==="5h"?"5-hour":"Weekly"}: unavailable`)].join(" · ");
 }
 function codexQuotaMarkup(q    )        {
  if(q.provider!=="openai-codex")return "";
- return `<p>Account: ${escapeHTML(q.account_identity||q.account_id||"Unknown identity")} · ${escapeHTML(q.plan||"Unknown plan")}<br>Status: ${escapeHTML(q.status||"unavailable")}${q.unavailable_reason?` · ${escapeHTML(trackingReasonText(q.unavailable_reason))}`:""}<br>Last successful update: ${q.collected_at&&q.collected_at!=="0001-01-01T00:00:00Z"?escapeHTML(new Date(q.collected_at).toLocaleString()):"Unavailable"} · ${escapeHTML(q.source||"Unknown source")}</p>${(q.limits||[]).map((g    )=>`<details class="quota-group"><summary>${escapeHTML(g.limit_name||g.limit_id||g.map_key||"Unidentified quota pool")} · ${escapeHTML(g.status||"unavailable")}</summary><p>${escapeHTML(codexGroupText(g))}</p><small>Scope: ${escapeHTML(g.scope||"unknown")}${g.limit_id?` · ID: ${escapeHTML(g.limit_id)}`:""}</small></details>`).join("")}`;
+ return `<p>Account: ${escapeHTML(q.account_identity||q.account_id||"Unknown identity")} · ${escapeHTML(q.plan||"Unknown plan")}<br>Status: ${escapeHTML(q.status||"unavailable")}${q.collection_status&&q.collection_status!==q.status?` · Collection: ${escapeHTML(q.collection_status.replace(/_/g," "))}`:""}${q.unavailable_reason?` · ${escapeHTML(trackingReasonText(q.unavailable_reason))}`:""}<br>Last successful update: ${q.collected_at&&q.collected_at!=="0001-01-01T00:00:00Z"?escapeHTML(new Date(q.collected_at).toLocaleString()):"Unavailable"} · ${escapeHTML(q.source||"Unknown source")}</p>${(q.limits||[]).map((g    )=>`<details class="quota-group"><summary>${escapeHTML(codexGroupLabel(g))} · ${escapeHTML(g.status||"unavailable")}</summary><p>${escapeHTML(codexGroupText(g))}</p><small>Scope: ${escapeHTML(g.scope||"unknown")}${g.limit_id?` · ID: ${escapeHTML(g.limit_id)}`:""}</small></details>`).join("")}`;
 }
 function modelQuotaText(model    )       {
  const q=model.quota;
+ const extras=[balanceText(q),typeof q?.reset_credits==="number"?`${q.reset_credits} banked resets`:""].filter(Boolean).join(" · ");
  if(q?.provider==="openai-codex") {
   const groups=q.limits||[];
-  return `${q.status==="stale"?"Stale · ":""}${groups.length?groups.map(codexGroupText).join("; "):"5-hour: unavailable · Weekly: unavailable"}${q.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
+  return `${q.status==="stale"?"Stale · ":""}${groups.length?groups.map(codexGroupText).join("; "):"5-hour: unavailable · Weekly: unavailable"}${extras?` · ${extras}`:""}${q.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
  }
- const extras=[balanceText(q),typeof q?.reset_credits==="number"?`${q.reset_credits} banked resets`:""].filter(Boolean).join(" · ");
+
  if(extras&&!q?.known&&!q?.windows?.length&&!q?.reset_at)return `${q.blocked?"Quota exhausted · ":""}${extras}${q?.unavailable_reason?` · ${trackingReasonText(q.unavailable_reason)}`:""}`;
  if(!q?.known&&q?.windows?.length)return q.windows.map(quotaWindowText).join("; ")+`${extras?` · ${extras}`:""}`;
  if(!q?.known&&q?.reset_at)return `Quota unknown · resets ${new Date(q.reset_at).toLocaleString()}${extras?` · ${extras}`:""}`;
@@ -416,12 +418,15 @@ async function loadModelsPage()              {
 document.querySelector("#refresh-models") .addEventListener("click",()=>{void loadModelsPage();});
 
 document.querySelector("#refresh-quotas")?.addEventListener("click",async()=>{
+ const login=consoleSession;
+ const status=document.querySelector             ("#quota-refresh-status");if(status)status.textContent="Refreshing quotas…";
  const button=document.querySelector                   ("#refresh-quotas") ;button.disabled=true;
  try {
   const response=await gatewayFetch("/gateway/v1/quotas/refresh",{method:"POST",headers:await authProvider.headers()});
-  if(response.ok) { const data=await response.json();physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview(); }
-  else document.querySelector             ("#models-list") .insertAdjacentHTML("afterbegin",`<p role="status">${response.status===429?"Quota refresh is cooling down. Try again after the next poll.":"Quota refresh unavailable."}</p>`);
- }finally {button.disabled=false;}
+  if(login!==consoleSession)return;
+  if(response.ok) { const data=await response.json();if(login!==consoleSession)return;if(status)status.textContent="Quota check completed";physicalModels=data.models||[];overviewModels=physicalModels;renderModelsPage();renderOverview(); }
+  else if(status)status.textContent=response.status===429?"Quota refresh is cooling down. Try again after the next poll.":"Quota refresh unavailable.";
+ }catch {if(login===consoleSession&&status)status.textContent="Quota refresh unavailable.";}finally {button.disabled=false;}
 });
 
 let budgetsDraft                   ={};
@@ -466,7 +471,7 @@ for(const period of ["daily","monthly"])for(const metric of ["requests","tokens"
 });}
 document.querySelector("#refresh-usage") .addEventListener("click",()=>{void loadUsagePage();});
 
-function quotaResetLabel(raw        )       {const date=new Date(String(raw||""));if(Number.isNaN(date.getTime())||date.getUTCFullYear()<2000)return "Reset time unavailable";const seconds=Math.max(0,Math.ceil((date.getTime()-Date.now())/1000));const hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60);return `Resets in ${hours}h ${minutes}m · ${date.toLocaleString()}`;}
+function quotaResetLabel(raw        )       {const date=new Date(String(raw||""));if(Number.isNaN(date.getTime())||date.getUTCFullYear()<2000)return "Reset time unavailable";const seconds=Math.max(0,Math.ceil((date.getTime()-Date.now())/1000));if(seconds===0)return `Reported reset passed · awaiting quota refresh · ${date.toLocaleString()}`;const hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60);return `Resets in ${hours}h ${minutes}m · ${date.toLocaleString()}`;}
 function renderProviderQuotas(quotas                   )       {return `<section class="overview-panel"><h3>Provider quotas</h3>${Object.entries(quotas).map(([id,q])=>`<div class="budget-summary"><strong>${escapeHTML(id)}</strong>${q.known?`<span>${Number(q.fraction_remaining*100).toFixed(1)}% remaining${q.exhausted?" · Exhausted":""}</span>${(q.windows||[]).map((w    )=>`<span class="data-secondary">${escapeHTML(w.name)} · ${Number(100-w.used_percent).toFixed(1)}% remaining · <span data-quota-reset="${escapeHTML(w.reset_at)}">${escapeHTML(quotaResetLabel(w.reset_at))}</span></span>`).join("")}`:`<span class="data-secondary">${escapeHTML(q.error||"Provider account telemetry unavailable")}</span>`}</div>`).join("")}</section>`;}
 window.setInterval?.(()=>{document.querySelectorAll             ("[data-quota-reset]").forEach(element=>{element.textContent=quotaResetLabel(element.dataset.quotaReset);});},30000);
 

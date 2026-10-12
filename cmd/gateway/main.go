@@ -549,16 +549,17 @@ func (r *handlerRuntime) swap(handler http.Handler) {
 // rejected configuration save cannot redirect login refreshes to a discarded one.
 type catalogHandler struct {
 	http.Handler
-	refresh         func(context.Context) error
-	pollQuotas      func(context.Context)
-	quotaInterval   time.Duration
-	intelligence    *intelligence.Manager
-	ownedUsage      *usage.Store
-	ownedAccounting *accounting.Store
-	onActivate      func()
-	workerMu        sync.Mutex
-	workerCancel    context.CancelFunc
-	workerDone      chan struct{}
+	refresh            func(context.Context) error
+	pollQuotas         func(context.Context)
+	quotaInterval      time.Duration
+	credentialsChanged func(string)
+	intelligence       *intelligence.Manager
+	ownedUsage         *usage.Store
+	ownedAccounting    *accounting.Store
+	onActivate         func()
+	workerMu           sync.Mutex
+	workerCancel       context.CancelFunc
+	workerDone         chan struct{}
 }
 
 func (h *catalogHandler) RefreshCatalog(ctx context.Context) error {
@@ -576,6 +577,12 @@ func (r *handlerRuntime) refreshCatalog(ctx context.Context) error {
 }
 
 func (r *handlerRuntime) setLoginSuccess(providerID string) {
+	r.mu.RLock()
+	active := r.handler
+	r.mu.RUnlock()
+	if h, ok := active.(*catalogHandler); ok && h.credentialsChanged != nil {
+		h.credentialsChanged(providerID)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	err := r.refreshCatalog(ctx)
 	cancel()
@@ -828,28 +835,62 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		pollInterval, _ = time.ParseDuration(cfg.Router.Quota.PollInterval)
 	}
 	handler := &catalogHandler{Handler: api.RequestIDMiddleware(nil, mux), refresh: openAI.RefreshCatalog, intelligence: benchmarkManager, quotaInterval: pollInterval}
-	handler.pollQuotas = func(ctx context.Context) {
-		seen := map[string]bool{}
+	handler.credentialsChanged = func(id string) {
 		for _, d := range openAI.CatalogModels() {
-			if seen[d.ProviderID] {
-				continue
+			if d.ProviderID == id {
+				if p := quotaFetchers[id]; p != nil {
+					p.AuthenticationChanged(d.PublicID)
+				}
+				for _, cache := range quotaCaches {
+					cache.AuthenticationChanged(d.PublicID)
+				}
+				break
 			}
-			seen[d.ProviderID] = true
-			p := quotaFetchers[d.ProviderID]
-			if p == nil {
-				continue
-			}
-			for _, pc := range cfg.Providers {
-				if pc.ID == d.ProviderID && pc.Type == "openai-codex" {
-					p.RequestRefresh(d.PublicID)
-					_, _ = p.Get(ctx, d.PublicID)
-					for _, cache := range quotaCaches {
-						cache.RequestRefresh(d.PublicID)
-						_, _ = cache.Get(ctx, d.PublicID)
+		}
+	}
+	hasCodex := false
+	for _, pc := range cfg.Providers {
+		if pc.Type == "openai-codex" && quotaFetchers[pc.ID] != nil {
+			hasCodex = true
+		}
+	}
+	if hasCodex {
+		handler.pollQuotas = func(ctx context.Context) {
+			seen := map[string]bool{}
+			var wg sync.WaitGroup
+			slots := make(chan struct{}, 8)
+			for _, d := range openAI.CatalogModels() {
+				if seen[d.ProviderID] {
+					continue
+				}
+				seen[d.ProviderID] = true
+				p := quotaFetchers[d.ProviderID]
+				if p == nil {
+					continue
+				}
+				for _, pc := range cfg.Providers {
+					if pc.ID == d.ProviderID && pc.Type == "openai-codex" {
+						wg.Add(1)
+						go func(model string, cache *quota.Cache) {
+							defer wg.Done()
+							select {
+							case slots <- struct{}{}:
+							case <-ctx.Done():
+								return
+							}
+							defer func() { <-slots }()
+							cache.RequestRefresh(model)
+							_, _ = cache.Get(ctx, model)
+							for _, routerCache := range quotaCaches {
+								routerCache.RequestRefresh(model)
+								_, _ = routerCache.Get(ctx, model)
+							}
+						}(d.PublicID, p)
+						break
 					}
-					break
 				}
 			}
+			wg.Wait()
 		}
 	}
 

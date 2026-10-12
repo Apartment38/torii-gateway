@@ -65,3 +65,17 @@ func TestCodexCacheDoesNotMixResponseHeaders(t *testing.T) {
 		t.Fatal("mixed sources")
 	}
 }
+
+func TestOAuthReconnectClearsOnlyAuthenticationBackoff(t *testing.T) {
+	now := time.Now().UTC()
+	for _, state := range []string{"auth_expired", "permission_denied", "rate_limited"} {
+		f := &codexCacheFetcher{status: Status{Provider: "openai-codex", State: state, AccountID: "a", UnavailableReason: state}}
+		c := NewCache(time.Minute, f)
+		c.now = func() time.Time { return now }
+		c.Get(context.Background(), "p/m")
+		c.AuthenticationChanged("p/m")
+		if c.RequestRefresh("p/m") != (state != "rate_limited") {
+			t.Fatalf("login/backoff state=%s", state)
+		}
+	}
+}

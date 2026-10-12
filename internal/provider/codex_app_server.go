@@ -17,8 +17,8 @@ type CodexAppServerConfig struct{ Path, Home string }
 func (c *Codex) ConfigureAppServer(cfg CodexAppServerConfig) { c.appServer = cfg }
 
 func (c *Codex) appServerQuota(ctx context.Context, credential CodexCredential) (map[string]any, error) {
-	if credential.AccountID == "" {
-		return nil, errors.New("CLI quota account identity cannot be verified")
+	if credential.AccountID == "" || credential.Email == "" {
+		return nil, errors.New("CLI quota user/workspace identity cannot be verified")
 	}
 	cmd := exec.CommandContext(ctx, c.appServer.Path, "app-server")
 	cmd.WaitDelay = time.Second

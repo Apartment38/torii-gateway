@@ -130,10 +130,13 @@ func (c *Codex) DiscoverModels(ctx context.Context) ([]Model, error) {
 		c.authenticate(request, credential)
 		response, err := c.doAuthenticated(ctx, request, credential)
 		if err != nil {
-			return nil, errors.New("Codex catalog request failed (network or timeout)")
+			return nil, err
 		}
 		models, err := c.decodeModels(response)
 		_ = response.Body.Close()
+		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+			return nil, err
+		}
 		if err == nil {
 			return models, nil
 		}
@@ -286,7 +289,14 @@ func (c *Codex) refreshCredential(ctx context.Context, previous CodexCredential,
 	if err = c.validateCredential(latest); err != nil {
 		return CodexCredential{}, err
 	}
-	if latest.AccountID != previous.AccountID || latest.Subject != previous.Subject {
+	latestAccount, previousAccount := latest.AccountID, previous.AccountID
+	if latestAccount == "" {
+		latestAccount = codexTokenAccount(latest.AccessToken)
+	}
+	if previousAccount == "" {
+		previousAccount = codexTokenAccount(previous.AccessToken)
+	}
+	if latestAccount != previousAccount || latest.Subject != previous.Subject {
 		return CodexCredential{}, errors.New("Codex account changed during authentication; retry the request")
 	}
 	if latest.AccessToken != previous.AccessToken {
@@ -382,6 +392,10 @@ func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model
 	if err != nil {
 		return nil, err
 	}
+	if resp.Request == nil {
+		resp.Request = req
+	}
+	resp.Request = resp.Request.WithContext(context.WithValue(resp.Request.Context(), codexQuotaContextKey{}, c.quotaIdentityKey(credential)))
 	if stream || resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if stream && endpoint == "/v1/chat/completions" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			resp.Body = &codexStreamReader{reader: bufio.NewReader(resp.Body), closer: resp.Body}
@@ -577,7 +591,7 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	var refreshed struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
+		ExpiresIn    *int   `json:"expires_in"`
 		IDToken      string `json:"id_token"`
 		Scope        string `json:"scope"`
 	}
@@ -594,11 +608,17 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	if refreshed.Scope != "" {
 		credential.Scopes = strings.Fields(refreshed.Scope)
 	}
-	if refreshed.ExpiresIn > 0 {
-		credential.ExpiresAt = time.Now().Add(time.Duration(refreshed.ExpiresIn) * time.Second)
+	credential.ExpiresAt = time.Time{}
+	if refreshed.ExpiresIn != nil {
+		if *refreshed.ExpiresIn <= 0 || int64(*refreshed.ExpiresIn) > int64((time.Duration(1<<63-1))/time.Second) {
+			return previous, errors.New("Codex refresh response has invalid expiration")
+		}
+		credential.ExpiresAt = time.Now().Add(time.Duration(*refreshed.ExpiresIn) * time.Second)
+	} else {
+		credential = codexExpiryHint(credential)
 	}
-	if refreshed.ExpiresIn <= 0 {
-		return previous, errors.New("Codex refresh response has no valid expiration")
+	if !credential.ExpiresAt.IsZero() && !credential.ExpiresAt.After(time.Now()) {
+		return previous, errors.New("Codex refresh returned an expired access token")
 	}
 	var saveErr error
 	if c.commit != nil {

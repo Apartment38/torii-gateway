@@ -167,18 +167,24 @@ func (h *OpenAIHandler) ModelQuota(ctx context.Context, id string) (quota.Status
 	} else {
 		status, err = h.quota.Get(ctx, id)
 	}
-	if !status.Known && h.observedQuotas != nil {
+	hasPolledBuckets := status.Provider == "openai-codex" && status.State == "available" && len(status.Limits) > 0
+	if !status.Known && !hasPolledBuckets && h.observedQuotas != nil {
 		if providerID, _, parseErr := provider.ParseModelID(id); parseErr == nil {
 			if codex, ok := h.byID[providerID].(*provider.Codex); ok {
 				providerID = codex.QuotaKey(id)
 			}
-			if observed, observeErr := h.observedQuotas.Get(ctx, providerID); observeErr == nil && observed.Known {
+			if observed, exists := h.observedQuotas.Peek(providerID); exists && (observed.Known || len(observed.Limits) > 0) {
 				if status.Provider == "openai-codex" {
 					observed.Provider = status.Provider
 					observed.AccountID = status.AccountID
 					observed.AccountIdentity = status.AccountIdentity
 					observed.UnavailableReason = status.UnavailableReason
-					observed.State = status.State
+					if status.State != "" && status.State != "available" {
+						observed.CollectionState = status.CollectionState
+					}
+					if observed.State == "" {
+						observed.State = "available"
+					}
 					return observed, nil
 				}
 				// Account headers supplement polling; retain independently collected

@@ -109,7 +109,7 @@ tracking:
   `codex_home` optionally selects that CLI's existing authentication directory and
   requires `codex_app_server_path`. CLI reads have a three-second budget within
   the ten-second collection deadline. CLI identity must match the configured
-  OAuth workspace; missing/mismatched identities fall back to HTTP. The container
+  OAuth workspace and stored email; missing/mismatched identities fall back to HTTP. The container
   does not need a Codex executable. These settings are available through the
   configuration API/import, and console saves preserve them.
 - `nous` requires HTTPS and a `bearer_token` API key; it disallows

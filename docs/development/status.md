@@ -8,8 +8,14 @@ Implemented on `fix/codex-quota` in `/workspace/work/codex-quota`: shared OAuth
 refresh/retry and conditional encrypted rotation, verified upstream endpoint
 selection, optional account-verified app-server reads, multi-bucket/duration
 normalization, stale cache/backoff, background polling and console manual refresh.
-Mocked lifecycle, protocol, failure-isolation and console checks are passing;
-final full checks are in progress. The original live HTTP 401 remains unverified:
+Validation passes: Go package tests, changed-subsystem race tests, vet, build,
+module/format checks, console/generated assets, release-validator tests and
+modified documentation links. The full race suite fails the unchanged benchmark
+`TestSharedLaneSpacesRequestsAndSerializesAcrossAdapters`; the same failure was
+reproduced on the original checkout. The production container build and five
+helper target builds pass. A disposable non-root image with the final gateway
+binary passes startup, management authentication, console assets and restart
+persistence. Podman-specific full credential/container checks were not run. The original live HTTP 401 remains unverified:
 no affected credential or authenticated service is available in this environment.
 
 ## v1 implementation and rollout

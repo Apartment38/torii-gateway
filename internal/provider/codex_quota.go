@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -22,12 +23,41 @@ func (c *Codex) QuotaKey(string) string {
 	if err != nil {
 		return c.id + "/@signed-out"
 	}
-	identity := v.AccountID + "/" + v.Subject
-	if identity == "/" {
-		identity = v.AccessToken
+	return c.quotaIdentityKey(v)
+}
+func (c *Codex) quotaIdentityKey(v CodexCredential) string {
+	subject := v.Subject
+	if subject == "" {
+		claims := codexClaims(v.AccessToken)
+		subject = textValue(object(claims["https://api.openai.com/auth"])["chatgpt_user_id"])
+		if subject == "" {
+			subject = textValue(claims["sub"])
+		}
 	}
+	scopes := append([]string(nil), v.Scopes...)
+	sort.Strings(scopes)
+	account := v.AccountID
+	if account == "" {
+		account = codexTokenAccount(v.AccessToken)
+	}
+	identity := account + "/" + subject + "/" + v.ClientID + "/" + v.Issuer + "/" + strings.Join(scopes, " ")
+	if subject == "" || account == "" {
+		identity += "/" + v.AccessToken
+	} // Unknown user: isolate logins, including shared workspaces.
 	hash := sha256.Sum256([]byte(identity))
 	return fmt.Sprintf("%s/@account/%x", c.id, hash[:12])
+}
+
+// QuotaResponseKey carries internal account association without adding HTTP headers.
+// It contains an opaque cache key, never tokens or login metadata.
+type codexQuotaContextKey struct{}
+
+func CodexQuotaResponseKey(response *http.Response) string {
+	if response == nil || response.Request == nil {
+		return ""
+	}
+	key, _ := response.Request.Context().Value(codexQuotaContextKey{}).(string)
+	return key
 }
 
 type codexAuthError struct{ error }
@@ -98,6 +128,9 @@ func (c *Codex) Quota(ctx context.Context, _ string) (quota.Status, error) {
 		case 401:
 			fail.State = "auth_expired"
 			fail.UnavailableReason = "usage_auth_rejected_after_refresh_check_account_and_oauth_context"
+			if v.RefreshToken == "" || c.save == nil || c.issuer == "" {
+				fail.UnavailableReason = "usage_auth_rejected_refresh_unavailable"
+			}
 		case 403:
 			fail.State = "permission_denied"
 			fail.UnavailableReason = "usage_permission_denied"
@@ -130,10 +163,13 @@ func (c *Codex) Quota(ctx context.Context, _ string) (quota.Status, error) {
 		fail.UnavailableReason = "account_changed_during_collection"
 		return fail, nil
 	}
-	if reported := textValue(payload["account_id"]); reported != "" && reported != v.AccountID {
+	if reported := textValue(payload["account_id"]); reported != "" && v.AccountID != "" && reported != v.AccountID {
 		fail.State = "permission_denied"
 		fail.UnavailableReason = "account_context_mismatch"
 		return fail, nil
+	}
+	if v.AccountID == "" {
+		v.AccountID = textValue(payload["account_id"])
 	}
 	s := parseCodexUsage(payload, time.Now().UTC())
 	s.Source = "codex_usage_endpoint"
@@ -141,16 +177,18 @@ func (c *Codex) Quota(ctx context.Context, _ string) (quota.Status, error) {
 	return s, nil
 }
 
-func codexTokenAccount(token string) string {
+func codexClaims(token string) map[string]any {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return ""
+		return nil
 	}
-	// authenticate uses the same unverified routing hint; not proof of identity.
 	raw, _ := base64.RawURLEncoding.DecodeString(parts[1])
 	var payload map[string]any
 	_ = json.Unmarshal(raw, &payload)
-	return textValue(object(payload["https://api.openai.com/auth"])["chatgpt_account_id"])
+	return payload
+}
+func codexTokenAccount(token string) string {
+	return textValue(object(codexClaims(token)["https://api.openai.com/auth"])["chatgpt_account_id"])
 }
 func stampCodex(s *quota.Status, v CodexCredential) {
 	s.Provider = "openai-codex"
@@ -185,7 +223,19 @@ func parseCodexUsage(payload map[string]any, now time.Time) quota.Status {
 			}
 		}
 		g.Metadata = map[string]any{}
-		for _, k := range []string{"normalModelSlug", "normal_model_slug", "metered_feature", "spendControlReached", "individualLimit", "rateLimitReachedType"} {
+		if _, ok := m["allowed"].(bool); ok {
+			g.State = "available"
+		}
+		if _, ok := m["limit_reached"].(bool); ok {
+			g.State = "available"
+		}
+		if m["allowed"] == false || m["limit_reached"] == true || m["spendControlReached"] == true {
+			g.State = "exhausted"
+		}
+		if scope == "account" && m["spendControlReached"] == true {
+			s.Blocked = true
+		}
+		for _, k := range []string{"normalModelSlug", "normal_model_slug", "metered_feature", "spendControlReached", "individualLimit", "rateLimitReachedType", "planType", "credits", "allowed", "limit_reached"} {
 			if v, ok := m[k]; ok {
 				g.Metadata[k] = v
 			}
@@ -203,23 +253,23 @@ func parseCodexUsage(payload map[string]any, now time.Time) quota.Status {
 				continue
 			}
 			seconds := int64(0)
-			if n := numeric(w[durationKey]); n != nil && *n > 0 && *n <= float64(31536000/multiplier) {
+			if n := numeric(w[durationKey]); n != nil && *n > 0 && *n < float64(math.MaxInt64/multiplier) {
 				seconds = int64(*n) * multiplier
 			}
 			reset := codexReset(w[resetKey])
 			if reset == nil && !camel {
-				if n := numeric(w["reset_after_seconds"]); n != nil && *n >= 0 && *n <= 31536000 {
+				if n := numeric(w["reset_after_seconds"]); n != nil && *n >= 0 && *n < float64(math.MaxInt64)/float64(time.Second) {
 					t := now.Add(time.Duration(*n) * time.Second).UTC()
 					reset = &t
 				}
 			}
 			window := quota.Window{Name: slot, Slot: slot, WindowType: quota.WindowType(seconds), WindowSeconds: seconds, Unit: "percent", ResetAt: reset, Source: s.Source, LastUpdated: now, State: "unavailable", Informational: scope != "account"}
-			if n := numeric(w[usedKey]); n != nil && *n >= 0 && *n <= 100 {
+			if n := numeric(w[usedKey]); n != nil && *n >= 0 {
 				window.Limit = 100
 				window.Used = *n
-				window.Remaining = 100 - *n
+				window.Remaining = math.Max(0, math.Min(100, 100-*n))
 				window.FractionRemaining = window.Remaining / 100
-				window.Exhausted = *n == 100
+				window.Exhausted = *n >= 100
 				window.State = "available"
 				if g.State != "exhausted" {
 					g.State = "available"
@@ -246,7 +296,8 @@ func parseCodexUsage(payload map[string]any, now time.Time) quota.Status {
 		sort.Strings(keys)
 		for _, key := range keys {
 			scope := "unknown"
-			if key == "codex" {
+			id := textValue(object(groups[key])["limitId"])
+			if key == "codex" && (id == "" || id == "codex") {
 				scope = "account"
 			}
 			add(object(groups[key]), key, key, "", scope, true)
@@ -256,12 +307,16 @@ func parseCodexUsage(payload map[string]any, now time.Time) quota.Status {
 			id := textValue(legacy["limitId"])
 			duplicate := false
 			for _, g := range s.Limits {
-				if id != "" && (g.LimitID == id || g.MapKey == id) {
+				if id != "" && (g.LimitID == id && (g.MapKey == "" || g.MapKey == id)) {
 					duplicate = true
 				}
 			}
 			if !duplicate {
-				add(legacy, id, "", "", "unknown", true)
+				scope := "unknown"
+				if id == "codex" {
+					scope = "account"
+				}
+				add(legacy, id, "", "", scope, true)
 			}
 		}
 	} else if legacy := object(payload["rateLimits"]); legacy != nil {
@@ -309,7 +364,16 @@ func parseCodexUsage(payload map[string]any, now time.Time) quota.Status {
 	if n := numeric(object(payload["rateLimitResetCredits"])["availableCount"]); n != nil && *n >= 0 {
 		s.ResetCredits = n
 	}
-	if len(s.Windows) == 0 && len(s.Balances) == 0 && s.ResetCredits == nil {
+	reportedState := s.Blocked
+	if _, ok := payload["ordinaryUsageAllowed"].(bool); ok {
+		reportedState = true
+	}
+	for _, g := range s.Limits {
+		if g.State == "available" || g.State == "exhausted" {
+			reportedState = true
+		}
+	}
+	if len(s.Windows) == 0 && len(s.Balances) == 0 && s.ResetCredits == nil && !reportedState {
 		s.State = "unavailable"
 		s.UnavailableReason = "no_reported_data"
 		s.CollectedAt = time.Time{}

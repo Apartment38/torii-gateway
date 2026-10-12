@@ -269,7 +269,8 @@ remains unverified. A working inference call does not establish usage permission
 
 Before this change, polling already loaded the inference credential and refreshed
 known expirations, but did not retry a 401. Missing expiry could also hide an
-expired JWT. Source inspection found no independent quota credential copy. No
+expired JWT. Refresh now accepts optional expires_in, clears the old expiry and
+uses the new token expiry hint when available; it does not persist expired tokens. Source inspection found no independent quota credential copy. No
 credential or request trace for the original 401 is available, so expiry, account
 selection, audience/permission mismatch and upstream changes remain possible.
 
@@ -288,7 +289,8 @@ Credits and banked reset counts are read-only; no reset is redeemed.
 
 An optional configured `codex app-server` performs initialize/initialized,
 account/read and account/rateLimits/read over bounded JSON lines. Quota accountId
-must match Torii, and email must match when stored. Older snapshots without
+and email must both match Torii. A missing stored email cannot prove user
+identity within a shared workspace, so the HTTP collector is used instead. Older snapshots without
 accountId, notifications without account proof, mismatched/unauthenticated CLI
 logins and unavailable executables fall back to HTTP. Torii neither copies nor
 refreshes CLI credential files itself. Inference headers are separate supplementary

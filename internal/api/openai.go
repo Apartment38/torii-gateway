@@ -370,7 +370,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fault.Wrap(fault.ProviderUnavailable, "forward request", err))
 		return
 	}
-	h.recordQuotaHeaders(requestedModel, response.Header)
+	h.recordQuotaHeadersForAccount(requestedModel, response.Header, provider.CodexQuotaResponseKey(response))
 	defer response.Body.Close()
 	CopyResponseHeaders(w.Header(), response.Header)
 	routing.writeHeaders(w.Header(), requestedModel)
@@ -416,6 +416,14 @@ func (h *OpenAIHandler) actualCost(model string, input, output uint64) float64 {
 }
 
 func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
+	h.recordQuotaHeadersForAccount(model, headers, "")
+}
+func (h *OpenAIHandler) recordQuotaHeadersForAccount(model string, headers http.Header, accountKey string) {
+	if id, _, err := provider.ParseModelID(model); err == nil {
+		if codex, ok := h.byID[id].(*provider.Codex); ok && accountKey != "" && accountKey != codex.QuotaKey(model) {
+			return
+		}
+	}
 	if h.quota == nil {
 		return
 	}
@@ -428,14 +436,33 @@ func (h *OpenAIHandler) recordQuotaHeaders(model string, headers http.Header) {
 				}
 			}
 		}
-		_ = h.quota.Observe(model, status)
+		isCodex := false
+		if id, _, err := provider.ParseModelID(model); err == nil {
+			_, isCodex = h.byID[id].(*provider.Codex)
+		}
+		if !isCodex {
+			_ = h.quota.Observe(model, status)
+		} else {
+			// These headers identify windows, not an account-wide pool or model scope.
+			for i := range status.Windows {
+				status.Windows[i].Informational = true
+			}
+			for i := range status.Limits {
+				for j := range status.Limits[i].Windows {
+					status.Limits[i].Windows[j].Informational = true
+				}
+			}
+		}
 
 		// Share account windows across independently configured routers without
 		// replacing their cached billing snapshots or model-scoped limits.
 		if h.observedQuotas != nil && (headers.Get("X-Codex-Primary-Used-Percent") != "" || headers.Get("X-Codex-Secondary-Used-Percent") != "") {
 			if id, _, err := provider.ParseModelID(model); err == nil {
 				if codex, ok := h.byID[id].(*provider.Codex); ok {
-					id = codex.QuotaKey(model)
+					id = accountKey
+					if id == "" {
+						id = codex.QuotaKey(model)
+					}
 				}
 				_ = h.observedQuotas.Observe(id, status)
 			}

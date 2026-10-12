@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,5 +80,53 @@ func TestCodexFactorySharesEncryptedRotationAcrossHandlerInstances(t *testing.T)
 	stored, err := db.Load("codex")
 	if err != nil || stored.AccessToken != "rotated-synthetic" || stored.RefreshToken != "next-refresh-synthetic" {
 		t.Fatal("encrypted rotation not persisted")
+	}
+}
+
+func TestCodexQuotaManagementRefreshBoundaryAndPublicPrivacy(t *testing.T) {
+	r, db := credentialRuntime(t)
+	if err := db.Save("codex", &state.Credential{AccessToken: "access-synthetic", AccountID: "account", Subject: "user", Email: "synthetic@example.test", Endpoint: provider.DefaultCodexBaseURL}); err != nil {
+		t.Fatal(err)
+	}
+	previous := http.DefaultTransport
+	http.DefaultTransport = codexLifecycleTransport(func(req *http.Request) (*http.Response, error) {
+		body := `{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":35,"limit_window_seconds":18000},"secondary_window":{"used_percent":62,"limit_window_seconds":604800}},"additional_rate_limits":[{"metered_feature":"extra","limit_name":"Extra","rate_limit":{"primary_window":{"used_percent":42,"limit_window_seconds":18000}}}]}`
+		if strings.HasSuffix(req.URL.Path, "/models") {
+			body = `{"models":[{"slug":"m","visibility":"list"}]}`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	cfg := &config.Config{Credentials: db, Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{{ID: "codex", Type: "openai-codex", BaseURL: provider.DefaultCodexBaseURL}}}
+	handler, err := buildHandlerWithRuntime(cfg, "database", r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.swap(handler)
+	request := func(method, path string, admin bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		if admin {
+			req.SetBasicAuth("chosen-admin", "administrator-password")
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	if w := request("POST", "/gateway/v1/quotas/refresh", false); w.Code != 401 {
+		t.Fatalf("unauthorized refresh=%d", w.Code)
+	}
+	w := request("POST", "/gateway/v1/quotas/refresh", true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"limit_id":"extra"`) || !strings.Contains(w.Body.String(), "synthetic@example.test") {
+		t.Fatalf("management snapshot=%d %s", w.Code, w.Body.String())
+	}
+	if w := request("POST", "/gateway/v1/quotas/refresh", true); w.Code != 429 || w.Header().Get("Retry-After") == "" {
+		t.Fatal("manual refresh not rate limited")
+	}
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer admin-sentinel")
+	public := httptest.NewRecorder()
+	r.ServeHTTP(public, req)
+	if public.Code != 200 || strings.Contains(public.Body.String(), "synthetic@example.test") || strings.Contains(public.Body.String(), "access-synthetic") {
+		t.Fatalf("public metadata privacy: HTTP %d", public.Code)
 	}
 }

@@ -61,7 +61,7 @@ func TestCodexAppServerIdentityAndFallback(t *testing.T) {
 	for _, tt := range []struct {
 		name, path, account, email string
 		direct                     bool
-	}{{"matching", script, "account", "synthetic@example.test", false}, {"wrong workspace", script, "other", "synthetic@example.test", true}, {"missing workspace", script, "", "synthetic@example.test", true}, {"wrong email", script, "account", "other@example.test", true}, {"missing executable", script + "-missing", "account", "synthetic@example.test", true}} {
+	}{{"matching", script, "account", "synthetic@example.test", false}, {"wrong workspace", script, "other", "synthetic@example.test", true}, {"missing workspace", script, "", "synthetic@example.test", true}, {"wrong email", script, "account", "other@example.test", true}, {"missing Torii user identity", script, "account", "", true}, {"missing executable", script + "-missing", "account", "synthetic@example.test", true}} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("TORII_TEST_APP_ACCOUNT", tt.account)
 			var direct int
@@ -93,12 +93,14 @@ func TestCodexAppServerTimeout(t *testing.T) {
 	script := filepath.Join(t.TempDir(), "codex")
 	// The child leaves a descendant holding stdout; cancellation must still bound reads.
 	os.WriteFile(script, []byte("#!/bin/sh\nsleep 1 &\nwait\n"), 0700)
-	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) { return CodexCredential{AccountID: "account"}, nil }, nil)
+	c, _ := NewCodex("codex", DefaultCodexBaseURL, nil, func(string) (CodexCredential, error) {
+		return CodexCredential{AccountID: "account", Email: "synthetic@example.test"}, nil
+	}, nil)
 	c.ConfigureAppServer(CodexAppServerConfig{Path: script})
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := c.appServerQuota(ctx, CodexCredential{AccountID: "account"})
+	_, err := c.appServerQuota(ctx, CodexCredential{AccountID: "account", Email: "synthetic@example.test"})
 	if err == nil || time.Since(start) > 500*time.Millisecond {
 		t.Fatal("subprocess deadline was not enforced")
 	}

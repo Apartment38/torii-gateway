@@ -1638,7 +1638,7 @@ test("changing provider type restores keyboard focus to the replacement chooser"
 });
 
 test("benchmark evidence groups readable UTC dates and preserves exact provenance",()=>{
- const app=consoleFixture(()=>response({}));app.context.evidenceRow={id:"fixture/model",scores:{overall:.9},latest_retrieval:"2026-10-08T14:23:12.123456789Z",latest_evaluation:"2026-10-01",age_seconds:123.456789};
+ const app=consoleFixture(()=>response({}));app.run('consoleTimezone="UTC"');app.context.evidenceRow={id:"fixture/model",scores:{overall:.9},latest_retrieval:"2026-10-08T14:23:12.123456789Z",latest_evaluation:"2026-10-01",age_seconds:123.456789};
  const html=app.run('benchmarkEvidence(evidenceRow)');
  for(const heading of ["Capability scores","Operating metrics","Provenance & freshness"])assert.ok(html.includes(`<h3>${heading}</h3>`));
  assert.match(html,/title="2026-10-08T14:23:12\.123456789Z">Oct 8, 2026 · 14:23 UTC/);
@@ -1920,4 +1920,55 @@ test("Codex quota refresh handles cooldowns and network failure without losing m
  assert.match(app.context.document.querySelector("#quota-refresh-status").textContent,/cooling down/);assert.equal(button.disabled,false);
  fail=true;await button.listeners.click();assert.match(app.context.document.querySelector("#quota-refresh-status").textContent,/unavailable/);assert.equal(button.disabled,false);
 
+});
+
+test("server monitoring settings round trip with debug capture off by default",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('applyConfig({server:{listen:"127.0.0.1:8080",timezone:"America/New_York"},activity:{max_bytes:8192,retention_days:2,prompt_logging:true,jev_decision_logging:true},providers:[],router:{classifier:{type:"disabled"}}})');
+ let saved=app.run('readConfig()');
+ assert.equal(saved.server.timezone,"America/New_York");
+ assert.equal(saved.activity.max_bytes,8192);assert.equal(saved.activity.retention_days,2);
+ assert.equal(saved.activity.prompt_logging,true);assert.equal(saved.activity.jev_decision_logging,true);
+ app.run('applyConfig({server:{listen:"127.0.0.1:8080"},providers:[],router:{classifier:{type:"disabled"}}})');
+ saved=app.run('readConfig()');
+ assert.equal(saved.server.timezone,"");assert.equal(saved.activity.prompt_logging,false);assert.equal(saved.activity.jev_decision_logging,false);
+ assert.equal(saved.activity.max_bytes,104857600);assert.equal(saved.activity.retention_days,7);
+ app.run('form.elements.namedItem("activity.retention_days").value="0"');assert.throws(()=>app.run('readConfig()'),/Activity/);
+ app.run('form.elements.namedItem("activity.retention_days").value="7";form.elements.namedItem("server.timezone").value="Mars/Olympus"');assert.throws(()=>app.run('readConfig()'),/IANA timezone/);
+});
+test("saved timezone applies across date boundaries, quotas and benchmark timestamps",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('consoleTimezone="America/New_York"');
+ assert.match(app.run('consoleDate("2026-10-09T01:30:00Z")'),/Oct 8, 2026/);
+ assert.match(app.run('consoleTime("2026-10-09T01:30:00Z")'),/09:30:00/);
+ assert.match(app.run('benchmarkDate("2026-10-09T01:30:00Z")'),/Oct 8, 2026 · 21:30 America\/New_York/);
+ assert.match(app.run('benchmarkDate("2026-10-09")'),/Oct 9, 2026/);
+ assert.match(app.run('quotaWindowText({name:"daily",remaining:10,unit:"tokens",reset_at:"2026-10-09T01:30:00Z"})'),/10\/8\/2026/);
+ assert.equal(app.run('consoleDate("invalid")'),"—");
+});
+test("activity debug inspectors show raw bodies safely and clear content on dismissal",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.debugRow={id:123,kind:"request_complete",prompt:'{\n "messages": [{"role":"user","content":"<script>private</script>"}]\n}',jev_request:'{"state":"<unsafe>","questions":{}}',jev_response:'{"answers":{"choice":"<unsafe>"}}',debug_truncated:true};
+ app.run('activityRows=[debugRow];loadedConfiguration.activity={prompt_logging:true,jev_decision_logging:true};renderActivity()');
+ const rows=app.run('document.querySelector("#activity-results").innerHTML');
+ assert.match(rows,/data-inspect-activity="123" data-inspect-kind="prompt"/);assert.match(rows,/data-inspect-kind="jev"/);
+ app.run('openActivityInspector(123,"prompt")');
+ let html=app.run('document.querySelector("#activity-inspector-content").innerHTML');
+ assert.match(html,/&lt;script&gt;private&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>/);assert.ok(html.includes('{\n &quot;messages&quot;'));
+ assert.equal(app.run('document.querySelector("#activity-inspector-dialog").open'),true);
+ assert.match(app.run('document.querySelector("#activity-inspector-note").textContent'),/truncated/);
+ app.run('openActivityInspector(123,"jev")');html=app.run('document.querySelector("#activity-inspector-content").innerHTML');
+ assert.match(html,/Request sent to Jev/);assert.match(html,/Jev response/);assert.match(html,/&lt;unsafe&gt;/);assert.doesNotMatch(html,/<unsafe>/);
+ app.run('document.querySelector("#close-activity-inspector").listeners.click()');
+ assert.equal(app.run('document.querySelector("#activity-inspector-dialog").open'),false);assert.equal(app.run('document.querySelector("#activity-inspector-content").textContent'),"");
+ app.run('loadedConfiguration.activity={};renderActivity()');assert.doesNotMatch(app.run('document.querySelector("#activity-results").innerHTML'),/data-inspect-activity/);
+ app.run('loadedConfiguration.activity={jev_decision_logging:true};activityRows=[{id:124,kind:"request_complete"}];renderActivity()');assert.match(app.run('document.querySelector("#activity-results").innerHTML'),/data-inspect-kind="jev" disabled/);
+});
+test("activity cleanup refresh removes pruned rows and ignores stale session responses",async()=>{
+ const app=consoleFixture(()=>response({events:[]}));
+ app.run('consoleSession="active";activityRows=[{id:1,kind:"request_complete"}]');
+ await app.run('refreshActivityHistory()');assert.equal(app.run('activityRows.length'),0);
+ let finish;app.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
+ const refresh=app.run('refreshActivityHistory()');await new Promise(resolve=>setImmediate(resolve));app.run('consoleSession="different"');finish(response({events:[{id:2}]}));await refresh;
+ assert.equal(app.run('activityRows.length'),0);
 });

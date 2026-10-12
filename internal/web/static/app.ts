@@ -46,9 +46,12 @@ let overviewClientModel="";
 let overviewPeriod="daily";
 let overviewLoading=false;
 let overviewError="";
+let consoleTimezone="";
+function consoleTimezoneLabel():string{return consoleTimezone||"browser timezone";}
+function consoleDateTime(raw:unknown):string{const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleString([], {timeZone:consoleTimezone||undefined});}
 function consoleNumber(raw:unknown):string{return typeof raw==="number" && Number.isFinite(raw)?raw.toLocaleString():"—";}
-function consoleDate(raw:unknown):string{const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleDateString([], {month:"short",day:"numeric",year:"numeric"});}
-function consoleTime(raw:unknown):string{const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});}
+function consoleDate(raw:unknown):string{const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleDateString([], {timeZone:consoleTimezone||undefined,month:"short",day:"numeric",year:"numeric"});}
+function consoleTime(raw:unknown):string{const date=new Date(String(raw||""));return Number.isNaN(date.getTime())?"—":date.toLocaleTimeString([], {timeZone:consoleTimezone||undefined,hour:"2-digit",minute:"2-digit",second:"2-digit"});}
 function overviewPeriodMatches(period:string):boolean{return overviewPeriod==="daily"?/^\d{4}-\d{2}-\d{2}$/.test(period):/^\d{4}-\d{2}$/.test(period);}
 function overviewModelUsage():any[]{
  const grouped=new Map<string,any>();
@@ -60,7 +63,7 @@ function overviewRequestSucceeded(event:any):boolean{return event.outcome==="suc
 function renderOverviewMonitoring():string{
  const usage=overviewModelUsage();const tokens=usage.reduce((sum,row)=>sum+row.tokens,0);const cost=usage.reduce((sum,row)=>sum+row.cost,0);const unknown=usage.reduce((sum,row)=>sum+row.unknown,0);
  const completed=overviewCompletedRequests();const successes=completed.filter(overviewRequestSucceeded).length;const errors=completed.filter(e=>e.outcome==="error"||e.status>=400).length;const recent=completed.slice(-5).reverse();
- return `<div class="overview-monitor-grid"><section class="overview-panel"><div class="section-heading"><div><h3>Model usage ${overviewPeriod==="daily"?"today":"this month"}</h3><span class="data-secondary">Current UTC ${overviewPeriod==="daily"?"day":"month"} · input + output tokens</span></div><a href="#state">View usage →</a></div><div class="usage-distribution-summary"><strong>${overviewUsage?consoleNumber(tokens):"—"}<span> tokens</span></strong><span>${overviewUsage?`$${cost.toFixed(4)} estimated${unknown?" + unknown costs":""}`:"Usage not loaded"}</span></div><div class="usage-distribution">${usage.length?usage.slice(0,5).map((row,index)=>`<div class="distribution-row"><div class="distribution-row-label"><strong>${escapeHTML(row.model)}</strong><span>${consoleNumber(row.tokens)} tokens</span></div><div class="distribution-bar"><span style="width:${tokens?row.tokens/tokens*100:0}%;--bar-index:${index}" aria-label="${escapeHTML(row.model)}: ${consoleNumber(row.tokens)} of ${consoleNumber(tokens)} tokens"></span></div></div>`).join(""):`<div class="monitor-empty"><strong>${overviewUsage?"No model usage yet":"Usage data not loaded"}</strong><p>${overviewUsage?"Send a request through Torii to see your model distribution.":"Gateway accounting will appear when it is available."}</p></div>`}</div></section><section class="overview-panel"><div class="section-heading"><div><h3>Recent requests</h3><span class="data-secondary">Latest completed requests · local time</span>${overviewRecent?`<span class="recent-request-summary">${completed.length} completed · ${successes} successful · ${errors} errors in last ${overviewRecent.length} recorded events</span>`:""}</div><a href="#activity">View activity →</a></div>${recent.length?recent.map(e=>`<div class="recent-request-row"><div><strong>${escapeHTML(e.selected_model||e.requested_model||"Unknown model")}</strong><span class="data-secondary">${consoleTime(e.at)} · ${escapeHTML(e.key_name||"Client request")}</span></div><span class="status-badge ${overviewRequestSucceeded(e)?"success":"failure"}">${escapeHTML(e.outcome||"Completed")}</span><span class="data-secondary">${consoleNumber(e.duration_ms)} ms</span></div>`).join(""):`<div class="monitor-empty"><strong>${overviewRecent?"Waiting for your first request":"Activity data not loaded"}</strong><p>Completed request outcomes will appear here.</p></div>`}</section></div>`;
+ return `<div class="overview-monitor-grid"><section class="overview-panel"><div class="section-heading"><div><h3>Model usage ${overviewPeriod==="daily"?"today":"this month"}</h3><span class="data-secondary">Current UTC ${overviewPeriod==="daily"?"day":"month"} · input + output tokens</span></div><a href="#state">View usage →</a></div><div class="usage-distribution-summary"><strong>${overviewUsage?consoleNumber(tokens):"—"}<span> tokens</span></strong><span>${overviewUsage?`$${cost.toFixed(4)} estimated${unknown?" + unknown costs":""}`:"Usage not loaded"}</span></div><div class="usage-distribution">${usage.length?usage.slice(0,5).map((row,index)=>`<div class="distribution-row"><div class="distribution-row-label"><strong>${escapeHTML(row.model)}</strong><span>${consoleNumber(row.tokens)} tokens</span></div><div class="distribution-bar"><span style="width:${tokens?row.tokens/tokens*100:0}%;--bar-index:${index}" aria-label="${escapeHTML(row.model)}: ${consoleNumber(row.tokens)} of ${consoleNumber(tokens)} tokens"></span></div></div>`).join(""):`<div class="monitor-empty"><strong>${overviewUsage?"No model usage yet":"Usage data not loaded"}</strong><p>${overviewUsage?"Send a request through Torii to see your model distribution.":"Gateway accounting will appear when it is available."}</p></div>`}</div></section><section class="overview-panel"><div class="section-heading"><div><h3>Recent requests</h3><span class="data-secondary">Latest completed requests · ${escapeHTML(consoleTimezoneLabel())}</span>${overviewRecent?`<span class="recent-request-summary">${completed.length} completed · ${successes} successful · ${errors} errors in last ${overviewRecent.length} recorded events</span>`:""}</div><a href="#activity">View activity →</a></div>${recent.length?recent.map(e=>`<div class="recent-request-row"><div><strong>${escapeHTML(e.selected_model||e.requested_model||"Unknown model")}</strong><span class="data-secondary">${consoleTime(e.at)} · ${escapeHTML(e.key_name||"Client request")}</span></div><span class="status-badge ${overviewRequestSucceeded(e)?"success":"failure"}">${escapeHTML(e.outcome||"Completed")}</span><span class="data-secondary">${consoleNumber(e.duration_ms)} ms</span></div>`).join(""):`<div class="monitor-empty"><strong>${overviewRecent?"Waiting for your first request":"Activity data not loaded"}</strong><p>Completed request outcomes will appear here.</p></div>`}</section></div>`;
 }
 function renderClientConnection():string{
  const baseURL=location.origin?`${location.origin}/v1`:"/v1";const smart=loadedConfiguration.router?.model_name||"smart";const enabled=(overviewModels||[]).filter(model=>model.enabled);
@@ -468,6 +471,10 @@ function isSetupPlaceholder(provider: Record<string, any>): boolean {
 
 function applyConfig(config: Record<string, any>, revision = ""): void {
   configurationRevision = revision;
+  consoleTimezone=config.server?.timezone||"";
+  for(const name of ["prompt_logging","jev_decision_logging"])(form.elements.namedItem(`activity.${name}`) as HTMLInputElement).checked=Boolean(config.activity?.[name]);
+  for(const name of ["max_bytes","retention_days"])(form.elements.namedItem(`activity.${name}`) as HTMLInputElement).value=String(config.activity?.[name]||({max_bytes:104857600,retention_days:7} as Record<string,number>)[name]);
+  (form.elements.namedItem("server.timezone") as HTMLInputElement).value=consoleTimezone;
   loadedConfiguration=structuredClone(config);modelPricingDraft=structuredClone(config.model_pricing||{});modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
@@ -533,6 +540,9 @@ function applyConfig(config: Record<string, any>, revision = ""): void {
     }
   });
   fill(config);
+  renderActivity();
+  if(overviewRecent)renderOverview();
+  if(physicalModels.length)renderModelsPage();
   const allowances = config.router?.quota?.allowances || {};
   (form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement).value = Object.entries(allowances).map(([key, raw]) => `${key} = ${raw}`).join("\n");
   const quality = config.router?.selection?.minimum_quality;
@@ -683,7 +693,12 @@ function readProviderConfig(provider: Record<string, string | boolean>): Record<
 function readConfig(): Record<string, any> {
   const config: Record<string, any> = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router=structuredClone(smartRouterDrafts[selectedSmartRouter]||config.router||{});config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
+  config.activity={...config.activity};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality" || name==="router.intelligence_weights") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
+  config.server.timezone=String((form.elements.namedItem("server.timezone") as HTMLInputElement)?.value||"").trim();
+  if(config.server.timezone){try{new Intl.DateTimeFormat("en-US",{timeZone:config.server.timezone});}catch{throw new Error("Enter a valid IANA timezone, such as America/New_York or UTC");}}
+  for(const name of ["prompt_logging","jev_decision_logging"])config.activity[name]=Boolean((form.elements.namedItem(`activity.${name}`) as HTMLInputElement)?.checked);
+  for(const name of ["max_bytes","retention_days"]){const raw=String((form.elements.namedItem(`activity.${name}`) as HTMLInputElement)?.value||"").trim();const value=raw?Number(raw):({max_bytes:104857600,retention_days:7} as Record<string,number>)[name];if(!Number.isSafeInteger(value)||value<({max_bytes:8192,retention_days:1} as Record<string,number>)[name]||name==="retention_days"&&value>3650)throw new Error("Enter valid Activity size and retention limits");config.activity[name]=value;}
   config.model_pricing=structuredClone(modelPricingDraft);config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly

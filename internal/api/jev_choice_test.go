@@ -1,12 +1,19 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/Apartment38/torii-gateway/internal/activity"
+	"github.com/Apartment38/torii-gateway/internal/state"
 	"io"
+	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
@@ -79,4 +86,68 @@ func TestJevSelectedDestinationHonorsConfiguredPoolAndReevaluatesPrompts(t *test
 	if fixture.calls != 2 {
 		t.Fatalf("Jev did not evaluate each new prompt: %d", fixture.calls)
 	}
+}
+
+func TestActivityJevCaptureIndependentOfPromptLogging(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			p := &criticProvider{models: []string{"only"}}
+			h := criticHandler(t, p, criticModel("only"))
+			db, err := state.OpenDatabase(filepath.Join(t.TempDir(), "activity.db"), bytes.Repeat([]byte{2}, 32))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			events, err := activity.Open(db, activity.Options{JevDecisionLogging: enabled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer events.Close()
+			h.SetActivity(events)
+			ch, cancel := events.Subscribe()
+			defer cancel()
+			// A malformed provider response must still be inspectable for debugging.
+			rawResponse := `{"provider_error":"invalid decision fixture"}`
+			jev, err := classifier.NewJevTransport(rawDecisionFixture(rawResponse), "jev-latest")
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.SetClassifier(classifier.Runner{Classifier: jev, OnFailure: classifier.FailureFail})
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+			defer slog.SetDefault(previous)
+			criticPost(h, "/v1/chat/completions", criticGreeting)
+			for range 2 {
+				select {
+				case e := <-ch:
+					if e.Prompt != "" {
+						t.Fatal("Jev setting enabled API prompt logging")
+					}
+					if e.Kind == "request_complete" {
+						if enabled {
+							var request map[string]any
+							if json.Unmarshal([]byte(e.JevRequest), &request) != nil || request["state"] != "hi" || e.JevResponse != rawResponse {
+								t.Fatal("missing exact Jev request/response", e)
+							}
+						} else if e.JevRequest != "" || e.JevResponse != "" {
+							t.Fatal("Jev capture defaulted on")
+						}
+					}
+				case <-time.After(time.Second):
+					t.Fatal("event missing")
+				}
+			}
+			events.Close()
+			if strings.Contains(logs.String(), "smart_routing_decision") != enabled || strings.Contains(logs.String(), "invalid decision fixture") {
+				t.Fatal("decision logging opt-in or redaction failed", logs.String())
+			}
+		})
+	}
+}
+
+type rawDecisionFixture string
+
+func (f rawDecisionFixture) ForwardDecision(context.Context, []byte) (*http.Response, error) {
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(f)))}, nil
 }

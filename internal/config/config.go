@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/Apartment38/torii-gateway/internal/accounting"
 	"github.com/Apartment38/torii-gateway/internal/activity"
@@ -87,6 +88,7 @@ type SelectionConfig struct {
 // ServerConfig controls the gateway listener.
 type ServerConfig struct {
 	Listen          string   `yaml:"listen"`
+	Timezone        string   `yaml:"timezone,omitempty"`
 	AdminSessionTTL string   `yaml:"admin_session_ttl,omitempty"`
 	TrustedProxies  []string `yaml:"trusted_proxies,omitempty"`
 }
@@ -234,6 +236,14 @@ func (c Config) Validate() error {
 		}
 		if !enabled && id == physical && c.Router.Classifier.Type != "disabled" {
 			return errors.New("change the active classifier before disabling its model")
+		}
+	}
+	if c.Server.Timezone != "" {
+		if c.Server.Timezone == "Local" {
+			return errors.New("server.timezone must be an IANA timezone")
+		}
+		if _, err := time.LoadLocation(c.Server.Timezone); err != nil {
+			return errors.New("server.timezone must be an IANA timezone")
 		}
 	}
 	if c.Server.AdminSessionTTL != "" {

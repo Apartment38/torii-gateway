@@ -269,6 +269,7 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	r = h.withActivityDebug(r, body)
 	activityStarted := time.Now()
 	activitySelected := ""
 	activityInterrupted := false
@@ -289,7 +290,9 @@ func (h *OpenAIHandler) forward(w http.ResponseWriter, r *http.Request) {
 	var routing *smartRouting
 	if requestedModel == h.smartName() {
 		routing, err = h.prepareSmartRouting(r, body)
-		defer routing.logEvidence(r.Context())
+		if h.activity != nil && h.activity.Options().JevDecisionLogging {
+			defer routing.logEvidence(r.Context())
+		}
 		if subject := accounting.SubjectFrom(r.Context()); subject != nil && subject.BudgetFailure() != nil {
 			err = subject.BudgetFailure()
 		}

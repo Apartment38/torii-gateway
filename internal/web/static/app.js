@@ -47,7 +47,11 @@ function applyBenchmarkConfig(config                      = {})       {
   updateBenchmarkControls();
 }
 function clearBenchmarkConsole()       {
-  clearBenchmarkRecords();closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
+  clearBenchmarkRecords();closeBenchmarkEvidence();
+  benchmarkEditing=false;benchmarkInlineDrafts={};benchmarkInlineSaving=false;benchmarkSummaryEnabled=["model","overall","capabilities","sources","freshness","evidence"];benchmarkMeasurementEnabled=benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
+  for(const id of ["benchmark-configuration","benchmark-upload-dialog","benchmark-fields-dialog"])document.querySelector                   (`#${id}`)?.close?.();
+  document.querySelector("#benchmark-edit-data") .textContent="Edit data";document.querySelector("#benchmark-edit-data") .setAttribute("aria-pressed","false");
+  document.querySelector("#benchmark-inline-status") .textContent="";inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
   benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
@@ -149,8 +153,124 @@ function openBenchmarkEvidence(id       )     {
  if(dialog)dialog.scrollTop=0;
 }
 function closeBenchmarkEvidence()     {document.querySelector                   ("#benchmark-evidence-dialog")?.close?.();}
+
+const benchmarkSummaryFields                        = [
+ {key:"model",label:"Model"},{key:"overall",label:"Overall %"},{key:"capabilities",label:"Capability scores"},{key:"sources",label:"Sources"},{key:"freshness",label:"Match / freshness"},{key:"evidence",label:"Evidence"},
+ {key:"id",label:"Model ID"},{key:"display_name",label:"Display name"},{key:"provider_ids",label:"Providers"},{key:"external_ids",label:"External model IDs"},
+ ...benchmarkCapabilities.map(key=>({key:`score:${key}`,label:`${benchmarkLabel(key)} %`})),
+ ...Object.keys(benchmarkOperations).map(key=>({key:`operation:${key}`,label:benchmarkLabel(key)})),
+ {key:"match",label:"Match"},{key:"stale",label:"Data status"},{key:"observation_count",label:"Observations"},{key:"latest_evaluation",label:"Latest evaluation"},{key:"latest_retrieval",label:"Last retrieval"},{key:"age_seconds",label:"Age seconds"},{key:"valid_until",label:"Valid until"}
+];
+const benchmarkMeasurementFields                        = [
+ {key:"external_model_id",label:"Model ID"},{key:"benchmark",label:"Benchmark"},{key:"category",label:"Category"},{key:"original_score",label:"Original score"},{key:"normalized_score",label:"Normalized score (0–1)"},{key:"unit",label:"Unit"},{key:"version",label:"Version"},{key:"evaluated_at",label:"Evaluation time"},
+ {key:"source",label:"Source"},{key:"model_id",label:"Matched model ID"},{key:"retrieved_at",label:"Retrieved at"},{key:"date_basis",label:"Date basis"}
+];
+let benchmarkEditing = false;
+let benchmarkSummaryEnabled = ["model","overall","capabilities","sources","freshness","evidence"];
+let benchmarkMeasurementEnabled = benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
+let benchmarkInlineDrafts                                                                                          = {};
+let benchmarkInlineSaving = false;
+function benchmarkActiveFields()                      {return benchmarkEditing?benchmarkMeasurementFields:benchmarkSummaryFields;}
+function benchmarkEnabledFields()         {return benchmarkEditing?benchmarkMeasurementEnabled:benchmarkSummaryEnabled;}
+function renderBenchmarkFields()     {
+ const enabled=benchmarkEnabledFields(),fields=benchmarkActiveFields();
+ const option=(key       )       =>`<option value="${escapeHTML(key)}">${escapeHTML(fields.find(field=>field.key===key) .label)}</option>`;
+ document.querySelector("#benchmark-fields-available") .innerHTML=fields.filter(field=>!enabled.includes(field.key)).map(field=>option(field.key)).join("");
+ document.querySelector("#benchmark-fields-enabled") .innerHTML=enabled.map(option).join("");
+ document.querySelector("#benchmark-fields-status") .textContent=`${enabled.length} fields enabled`;
+}
+function transferBenchmarkFields(add        ,one        )     {
+ const select=document.querySelector                   (add?"#benchmark-fields-available":"#benchmark-fields-enabled") ;
+ const selected=one?[one]:Array.from(select.selectedOptions).map(option=>option.value);
+ let enabled=benchmarkEnabledFields().slice();
+ for(const key of selected){if(!benchmarkActiveFields().some(field=>field.key===key))continue;if(add){if(!enabled.includes(key))enabled.push(key);}else enabled=enabled.filter(field=>field!==key);}
+ if(!enabled.length){document.querySelector("#benchmark-fields-status") .textContent="Keep at least one field enabled.";return;}
+ if(benchmarkEditing)benchmarkMeasurementEnabled=enabled;else benchmarkSummaryEnabled=enabled;
+ renderBenchmarkFields();renderBenchmarkTable();
+}
+function benchmarkSummaryCell(row    ,key       )       {
+ const text=(raw    )=>escapeHTML(String(raw??"—"));
+ if(key==="model")return text(row.display_name||row.id);
+ if(key==="overall")return benchmarkNumber(row.scores?.overall,true);
+ if(key.startsWith("score:"))return benchmarkNumber(row.scores?.[key.slice(6)],true);
+ if(key.startsWith("operation:"))return benchmarkNumber(row.operations?.[key.slice(10)]);
+ if(key==="capabilities"){
+  const known=benchmarkCapabilities.filter(name=>typeof row.scores?.[name]==="number"&&Number.isFinite(row.scores[name]));
+  const pills=known.slice(0,3).map(name=>`<span class="benchmark-score-pill"><span>${escapeHTML(benchmarkLabel(name))}</span><strong>${benchmarkNumber(row.scores[name],true)}%</strong></span>`).join("");
+  return `<div class="benchmark-capability-summary">${pills||'<span class="data-secondary">No comparable scores</span>'}</div>${known.length>3?`<span class="data-secondary">${known.length-3} more in evidence</span>`:""}`;
+ }
+ if(key==="freshness"||key==="match"){
+  const match=["approximate","ambiguous","unmatched"].includes(row.match)?benchmarkLabel(row.match):"Matched";
+  return `<span class="status-badge ${match==="Matched"?"success":"neutral"}">${match}</span>${key==="freshness"?`<span class="data-secondary">${row.stale?"Stale":"Current"}${match!=="Matched"?" · display only":""}</span>`:""}`;
+ }
+ if(key==="stale")return row.stale?"Stale":"Current";
+ if(["sources","provider_ids","external_ids"].includes(key))return text((row[key]||[]).join(", ")||"—");
+ if(["latest_evaluation","latest_retrieval","valid_until"].includes(key))return `<span title="${text(row[key]||"")}">${benchmarkDate(row[key])}</span>`;
+ if(key==="age_seconds")return benchmarkNumber(row[key]);
+ if(key==="evidence")return `<button type="button" class="button quiet benchmark-inspect" data-benchmark-inspect="${text(row.id)}" aria-label="Inspect evidence for ${text(row.display_name||row.id)}">Inspect →</button>`;
+ return text(row[key]);
+}
+function benchmarkRecordKey(record                   )       {return `${record.source}:${record.index}`;}
+function benchmarkRecordValues(record                   )                      {
+ return Object.fromEntries(benchmarkMeasurementFields.slice(0,8).map(({key})=>[key,key==="evaluated_at"&&String(record.observation[key]).startsWith("0001-")?"":String(record.observation[key]??"")]));
+}
+function renderBenchmarkMeasurements()     {
+ const fields=benchmarkEnabledFields().map(key=>benchmarkMeasurementFields.find(field=>field.key===key) );
+ document.querySelector("#benchmark-table-head") .innerHTML=`<tr>${fields.map(field=>`<th scope="col">${escapeHTML(field.label)}</th>`).join("")}<th scope="col">Actions</th></tr>`;
+ document.querySelector("#benchmark-table-body") .innerHTML=benchmarkRecords.map((record,index)=>{
+  const draft=benchmarkInlineDrafts[benchmarkRecordKey(record)];const values=draft?.values||benchmarkRecordValues(record);
+  const cells=fields.map(field=>{
+   const attrs=`data-benchmark-record="${index}" data-benchmark-cell="${field.key}" aria-label="${escapeHTML(field.label)} for ${escapeHTML(record.observation.external_model_id)}" ${benchmarkInlineSaving?"disabled":""}`;
+   let cell       ;
+   if(field.key==="category")cell=`<select class="benchmark-inline-input" ${attrs}>${[...benchmarkCapabilities,"operational","unknown"].map(category=>`<option ${values.category===category?"selected":""}>${category}</option>`).join("")}</select>`;
+   else if(field.key in values)cell=`<input class="benchmark-inline-input" ${attrs} value="${escapeHTML(values[field.key])}" ${["original_score","normalized_score"].includes(field.key)?`type="number" step="any" ${field.key==="normalized_score"?'min="0" max="1"':""}`:'type="text" maxlength="512"'} ${["external_model_id","benchmark","original_score"].includes(field.key)?"required":""} />`;
+   else cell=escapeHTML(String(record.observation[field.key]||record[field.key]||"—"));
+   return `<td data-label="${escapeHTML(field.label)}">${cell}</td>`;
+  }).join("");
+  return `<tr>${cells}<td data-label="Actions"><button class="button quiet" type="button" data-benchmark-save-row="${index}" ${!draft||benchmarkInlineSaving?"disabled":""}>Save</button><button class="button quiet" type="button" data-benchmark-cancel-row="${index}" ${!draft||benchmarkInlineSaving?"disabled":""}>Cancel</button><span class="data-secondary" role="status">${escapeHTML(draft?.error||"")}</span></td></tr>`;
+ }).join("")||`<tr><td colspan="${fields.length+1}">No measurements found.</td></tr>`;
+ document.querySelector("#benchmark-data-count") .textContent=`${benchmarkRecordTotal} measurements`;
+ const pages=Math.max(1,Math.ceil(benchmarkRecordTotal/benchmarkPageSize));
+ document.querySelector("#benchmark-page-label") .textContent=`Page ${benchmarkPage+1} of ${pages}`;
+ document.querySelector                   ("#benchmark-previous") .disabled=benchmarkPage===0||benchmarkInlineSaving;
+ document.querySelector                   ("#benchmark-next") .disabled=(benchmarkPage+1)*benchmarkPageSize>=benchmarkRecordTotal||benchmarkInlineSaving;
+}
+function updateBenchmarkInlineDraft(event      )     {
+ const input=event.target                    ;const index=Number(input.dataset.benchmarkRecord),field=input.dataset.benchmarkCell;
+ const record=benchmarkRecords[index];if(!benchmarkEditing||benchmarkInlineSaving||!record||!field)return;
+ const key=benchmarkRecordKey(record);
+ const draft=benchmarkInlineDrafts[key]||(benchmarkInlineDrafts[key]={record:structuredClone(record),values:benchmarkRecordValues(record),error:""});
+ draft.values[field]=input.value;draft.error="";
+ const row=input.closest("tr");row?.querySelectorAll                   ("button").forEach(button=>button.disabled=false);
+}
+async function saveBenchmarkInlineRow(index       )              {
+ const record=benchmarkRecords[index];if(!record||benchmarkInlineSaving)return;
+ const key=benchmarkRecordKey(record),draft=benchmarkInlineDrafts[key];if(!draft)return;
+ const values=draft.values;const observation                   ={};
+ try{
+  for(const {key:field} of benchmarkMeasurementFields.slice(0,8)){
+   const value=values[field].trim();
+   if(["external_model_id","benchmark","original_score"].includes(field)&&!value)throw new Error(`${benchmarkLabel(field)} is required.`);
+   if(["original_score","normalized_score"].includes(field)){if(value){const n=Number(value);if(!Number.isFinite(n)||(field==="normalized_score"&&(n<0||n>1)))throw new Error(`${benchmarkLabel(field)} must be ${field==="normalized_score"?"between 0 and 1":"finite"}.`);observation[field]=n;}}
+   else if(field==="evaluated_at"){if(value){if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value)||Number.isNaN(new Date(value).getTime()))throw new Error("Enter a valid RFC3339 evaluation time.");observation[field]=new Date(value).toISOString();}}
+   else observation[field]=value;
+  }
+ }catch(error){draft.error=error instanceof Error?error.message:"Invalid measurement";renderBenchmarkTable();return;}
+ const login=consoleSession,sequence=benchmarkRecordSequence;benchmarkInlineSaving=true;renderBenchmarkTable();
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/observations/edit",{method:"PUT",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({...draft.record,observation})});
+  const result=await response.json();if(login!==consoleSession||sequence!==benchmarkRecordSequence)return;
+  if(!response.ok)throw new Error(result.error?.message||"Unable to save measurement");
+  delete benchmarkInlineDrafts[key];document.querySelector("#benchmark-inline-status") .textContent="Measurement saved.";
+  await loadBenchmarkData();
+ }catch(error){if(login===consoleSession&&sequence===benchmarkRecordSequence)draft.error=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to save measurement");}
+ finally{if(login===consoleSession){benchmarkInlineSaving=false;renderBenchmarkTable();}}
+}
+
 function renderBenchmarkTable()       {
- const headers=["Model","Overall %","Capability scores","Sources","Match / freshness","Evidence"];
+ if(benchmarkEditing){renderBenchmarkMeasurements();return;}
+ const fields=benchmarkEnabledFields().map(key=>benchmarkSummaryFields.find(field=>field.key===key) );
+ const headers=fields.map(field=>field.label);
  const query=benchmarkFilter.toLowerCase();
  const models=Object.entries(benchmarkModels).sort(([a,left],[b,right])=>String(left.display_name||a).localeCompare(String(right.display_name||b))||a.localeCompare(b))
    .filter(([id,model])=>`${id} ${model.display_name||""} ${(model.external_ids||[]).join(" ")} ${(model.provider_ids||[]).join(" ")} ${(model.sources||[]).join(" ")}`.toLowerCase().includes(query));
@@ -160,12 +280,7 @@ function renderBenchmarkTable()       {
  const body=document.querySelector("#benchmark-table-body") ;
  document.querySelector("#benchmark-table")?.classList.add("benchmark-scorecard");
  document.querySelector("#benchmark-table-head") .innerHTML=`<tr>${headers.map(header=>`<th scope="col">${escapeHTML(header)}</th>`).join("")}</tr>`;
- body.innerHTML=rows.length?rows.map(row=>{
-   const match=row.match==="approximate"?"Approximate":row.match==="ambiguous"?"Ambiguous":row.match==="unmatched"?"Unmatched":"Matched";
-   const known=benchmarkCapabilities.filter(name=>typeof row.scores?.[name]==="number"&&Number.isFinite(row.scores[name]));
-   const capabilities=known.slice(0,3).map(name=>`<span class="benchmark-score-pill"><span>${escapeHTML(benchmarkLabel(name))}</span><strong>${benchmarkNumber(row.scores[name],true)}%</strong></span>`).join("");
-   return `<tr><td data-label="Model">${escapeHTML(row.display_name||row.id)}</td><td data-label="Overall %" class="benchmark-overall">${benchmarkNumber(row.scores?.overall,true)}</td><td data-label="Capability scores"><div class="benchmark-capability-summary">${capabilities||'<span class="data-secondary">No comparable scores</span>'}</div>${known.length>3?`<span class="data-secondary">${known.length-3} more in evidence</span>`:""}</td><td data-label="Sources">${escapeHTML((row.sources||[]).join(", ")||"—")}</td><td data-label="Match / freshness"><span class="status-badge ${match==="Matched"?"success":"neutral"}">${match}</span><span class="data-secondary">${row.stale?"Stale":"Current"}${match!=="Matched"?" · display only":""}</span></td><td data-label="Evidence"><button type="button" class="button quiet benchmark-inspect" data-benchmark-inspect="${escapeHTML(row.id)}" aria-label="Inspect evidence for ${escapeHTML(row.display_name||row.id)}">Inspect →</button></td></tr>`;
- }).join(""):`<tr><td colspan="${headers.length}"><div class="empty-state"><strong>No benchmark evidence in this view</strong><p>Enable a source, then refresh to import published results. Try another filter if data is already cached.</p></div></td></tr>`;
+ body.innerHTML=rows.length?rows.map(row=>`<tr>${fields.map(field=>`<td data-label="${escapeHTML(field.label)}"${field.key==="overall"?' class="benchmark-overall"':""}>${benchmarkSummaryCell(row,field.key)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${headers.length}"><div class="empty-state"><strong>No benchmark evidence in this view</strong><p>Enable a source, then refresh to import published results. Try another filter if data is already cached.</p></div></td></tr>`;
  body.querySelectorAll                   ("[data-benchmark-inspect]").forEach(button=>button.addEventListener("click",()=>openBenchmarkEvidence(button.dataset.benchmarkInspect )));
  const pages=Math.max(1,Math.ceil(total/benchmarkPageSize));
  document.querySelector("#benchmark-data-count") .textContent=`${total} models`;
@@ -198,6 +313,7 @@ async function loadBenchmarkData()                   {
     }));
     if (sequence !== benchmarkReloadSequence || login !== consoleSession) return false;
     [benchmarkSourceStatus, benchmarkModels] = replies;
+    if(benchmarkEditing)await loadBenchmarkRecords();
     renderBenchmarkSourceStatus(); renderBenchmarkTable(); updateBenchmarkControls();
     if (!benchmarkRefreshRunning) document.querySelector("#benchmark-status") .textContent = "Saved evidence · missing scores are unknown.";
     return true;
@@ -301,40 +417,36 @@ function initializeBenchmarks()       {
  evidence?.addEventListener("keydown",event=>{if(event.key==="Tab"){event.preventDefault();document.querySelector                   ("#close-benchmark-evidence")?.focus?.();}});
   const list = document.querySelector("#benchmark-sources-list") ;
   list.addEventListener("input", updateBenchmarkSource); list.addEventListener("click", benchmarkSourceAction);
-  document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![5,10,25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;renderBenchmarkTable();});
+  document.querySelector("#benchmark-page-size") .addEventListener("change",()=>{const size=Number(document.querySelector                   ("#benchmark-page-size") .value);if(![5,10,25,50,100].includes(size))return;benchmarkPageSize=size;benchmarkPage=0;if(benchmarkEditing)void loadBenchmarkRecords();else renderBenchmarkTable();});
   document.querySelector("#benchmark-table-view") .addEventListener("change",()=>{benchmarkTableView=document.querySelector                   ("#benchmark-table-view") .value;benchmarkPage=0;void loadBenchmarkData();});
-  document.querySelector("#benchmark-table-filter") .addEventListener("input",()=>{benchmarkFilter=document.querySelector                  ("#benchmark-table-filter") .value;benchmarkPage=0;renderBenchmarkTable();});
-  document.querySelector("#benchmark-previous") .addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;renderBenchmarkTable();}});
-  document.querySelector("#benchmark-next") .addEventListener("click",()=>{benchmarkPage++;renderBenchmarkTable();});
+  document.querySelector("#benchmark-table-filter") .addEventListener("input",()=>{benchmarkFilter=document.querySelector                  ("#benchmark-table-filter") .value;benchmarkPage=0;if(benchmarkEditing)void loadBenchmarkRecords();else renderBenchmarkTable();});
+  document.querySelector("#benchmark-previous") .addEventListener("click",()=>{if(benchmarkPage>0){benchmarkPage--;if(benchmarkEditing)void loadBenchmarkRecords();else renderBenchmarkTable();}});
+  document.querySelector("#benchmark-next") .addEventListener("click",()=>{benchmarkPage++;if(benchmarkEditing)void loadBenchmarkRecords();else renderBenchmarkTable();});
   renderBenchmarkTable();
 }
 
 let benchmarkRecords                     =[];
-let benchmarkRecordPage=0;
 let benchmarkRecordTotal=0;
 let benchmarkRecordSequence=0;
-let editingBenchmarkRecord                        =null;
 async function loadBenchmarkRecords()              {
  if(!benchmarksEnabledSaved||!consoleSession)return;
- const sequence=++benchmarkRecordSequence;const login=consoleSession;
- const query=document.querySelector                  ("#benchmark-record-filter")?.value||"";
+ const sequence=++benchmarkRecordSequence,login=consoleSession;
  try{
-  const response=await gatewayFetch(`/gateway/v1/intelligence/records?limit=25&offset=${benchmarkRecordPage*25}&q=${encodeURIComponent(query)}`,{headers:await authProvider.headers()});
+  const response=await gatewayFetch(`/gateway/v1/intelligence/records?limit=${benchmarkPageSize}&offset=${benchmarkPage*benchmarkPageSize}&q=${encodeURIComponent(benchmarkFilter)}${benchmarkTableView==="routable"?"&configured_only=true":""}`,{headers:await authProvider.headers()});
   const result=await response.json();if(!response.ok)throw new Error(result.error?.message||"Unable to load measurements");
-  if(sequence!==benchmarkRecordSequence||login!==consoleSession)return;
+  if(sequence!==benchmarkRecordSequence||login!==consoleSession||!benchmarkEditing)return;
   benchmarkRecords=result.records||[];benchmarkRecordTotal=result.total||0;
-  document.querySelector("#benchmark-records-body") .innerHTML=benchmarkRecords.map((record,index)=>{const o=record.observation;return `<tr><td>${escapeHTML(o.external_model_id)}<span class="data-secondary">${escapeHTML(record.source)}</span></td><td>${escapeHTML(o.benchmark)}<span class="data-secondary">${escapeHTML(o.category)}</span></td><td>${benchmarkNumber(o.original_score)}</td><td>${benchmarkNumber(o.normalized_score)}</td><td><button type="button" class="button quiet" data-edit-benchmark="${index}">Edit</button></td></tr>`;}).join("")||'<tr><td colspan="5">No measurements found.</td></tr>';
-  document.querySelector("#benchmark-records-page") .textContent=`${benchmarkRecordTotal?benchmarkRecordPage*25+1:0}–${Math.min((benchmarkRecordPage+1)*25,benchmarkRecordTotal)} of ${benchmarkRecordTotal}`;
-  document.querySelector                   ("#benchmark-records-previous") .disabled=benchmarkRecordPage===0;
-  document.querySelector                   ("#benchmark-records-next") .disabled=(benchmarkRecordPage+1)*25>=benchmarkRecordTotal;
- }catch(error){document.querySelector("#benchmark-custom-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to load measurements");}
+  const last=Math.max(0,Math.ceil(benchmarkRecordTotal/benchmarkPageSize)-1);
+  if(benchmarkPage>last){benchmarkPage=last;await loadBenchmarkRecords();return;}
+  // Own row saves change a source revision. Rebase untouched row drafts only
+  // when their original measurement still agrees with the fresh server row.
+  for(const record of benchmarkRecords){const draft=benchmarkInlineDrafts[benchmarkRecordKey(record)];if(draft&&JSON.stringify(draft.record.observation)===JSON.stringify(record.observation))draft.record.revision=record.revision;}
+  renderBenchmarkTable();
+ }catch(error){if(sequence===benchmarkRecordSequence&&login===consoleSession)document.querySelector("#benchmark-inline-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to load measurements");}
 }
 function clearBenchmarkRecords()     {
- benchmarkRecords=[];editingBenchmarkRecord=null;benchmarkRecordPage=0;benchmarkRecordTotal=0;benchmarkRecordSequence++;
- document.querySelector                   ("#benchmark-edit-dialog")?.close?.();
- document.querySelector                 ("#benchmark-edit-form")?.reset?.();
- for(const id of ["benchmark-records-body","benchmark-records-page","benchmark-custom-status","benchmark-edit-status"]){const node=document.querySelector(`#${id}`);if(node)node.textContent="";}
- const filter=document.querySelector                  ("#benchmark-record-filter");if(filter)filter.value="";
+ benchmarkRecords=[];benchmarkInlineDrafts={};benchmarkRecordTotal=0;benchmarkRecordSequence++;
+ for(const id of ["benchmark-custom-status","benchmark-inline-status"]){const node=document.querySelector(`#${id}`);if(node)node.textContent="";}
  const file=document.querySelector                  ("#benchmark-csv-file");if(file)file.value="";
 }
 async function uploadBenchmarkCSV()              {
@@ -345,37 +457,42 @@ async function uploadBenchmarkCSV()              {
  try{
   const response=await gatewayFetch("/gateway/v1/intelligence/import",{method:"POST",headers:{"Content-Type":"text/csv",...await authProvider.headers()},body:file});
   const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"CSV upload failed");
-  status.textContent="Custom benchmarks saved.";benchmarkRecordPage=0;await loadBenchmarkData();await loadBenchmarkRecords();
+  status.textContent="Custom benchmarks saved.";benchmarkPage=0;await loadBenchmarkData();
  }catch(error){status.textContent=benchmarkSafeMessage(error instanceof Error?error.message:"CSV upload failed");}finally{button.disabled=false;}
 }
-function openBenchmarkEdit(index       )     {
- const record=benchmarkRecords[index];if(!record)return;editingBenchmarkRecord=structuredClone(record);
- const form=document.querySelector                 ("#benchmark-edit-form") ;
- for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const input=form.elements.namedItem(name)                    ;const value=record.observation[name];input.value=name==="evaluated_at"&&String(value).startsWith("0001-")?"":String(value??"");}
- document.querySelector("#benchmark-edit-status") .textContent="";
- document.querySelector                   ("#benchmark-edit-dialog")?.showModal?.();
-}
-async function saveBenchmarkEdit(event      )              {
- event.preventDefault();if(!editingBenchmarkRecord)return;
- const form=document.querySelector                 ("#benchmark-edit-form") ;if(!form.reportValidity())return;
- const record=structuredClone(editingBenchmarkRecord);const o                   ={};
- for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const value=(form.elements.namedItem(name)                    ).value.trim();if(name==="original_score")o[name]=Number(value);else if(name==="normalized_score"){if(value!=="")o[name]=Number(value);}else if(name==="evaluated_at"){if(value!==""){const date=new Date(value);if(Number.isNaN(date.getTime())){document.querySelector("#benchmark-edit-status") .textContent="Enter a valid RFC3339 evaluation time.";return;}o[name]=date.toISOString();}}else o[name]=value;}
- record.observation=o;const login=consoleSession;const button=form.querySelector                   ('button[type="submit"]') ;button.disabled=true;
- try{
-  const response=await gatewayFetch("/gateway/v1/intelligence/observations/edit",{method:"PUT",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify(record)});
-  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"Unable to save measurement");
-  document.querySelector                   ("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;
-  document.querySelector("#benchmark-custom-status") .textContent="Measurement saved.";await loadBenchmarkData();await loadBenchmarkRecords();
- }catch(error){document.querySelector("#benchmark-edit-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to save measurement");}finally{button.disabled=false;}
-}
 document.querySelector("#benchmark-csv-upload")?.addEventListener("click",()=>void uploadBenchmarkCSV());
-document.querySelector("#benchmark-records-load")?.addEventListener("click",()=>void loadBenchmarkRecords());
-document.querySelector("#benchmark-record-filter")?.addEventListener("change",()=>{benchmarkRecordPage=0;void loadBenchmarkRecords();});
-document.querySelector("#benchmark-records-previous")?.addEventListener("click",()=>{if(benchmarkRecordPage>0){benchmarkRecordPage--;void loadBenchmarkRecords();}});
-document.querySelector("#benchmark-records-next")?.addEventListener("click",()=>{if((benchmarkRecordPage+1)*25<benchmarkRecordTotal){benchmarkRecordPage++;void loadBenchmarkRecords();}});
-document.querySelector("#benchmark-records-body")?.addEventListener("click",event=>{const button=(event.target               ).closest                   ("[data-edit-benchmark]");if(button)openBenchmarkEdit(Number(button.dataset.editBenchmark));});
-document.querySelector("#benchmark-edit-form")?.addEventListener("submit",event=>void saveBenchmarkEdit(event));
-document.querySelector("#benchmark-edit-cancel")?.addEventListener("click",()=>{document.querySelector                   ("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;});
+for(const [button,id] of [["benchmark-configure","benchmark-configuration"],["benchmark-upload","benchmark-upload-dialog"],["benchmark-display-fields","benchmark-fields-dialog"]]){
+ document.querySelector(`#${button}`)?.addEventListener("click",()=>{if(id==="benchmark-fields-dialog")renderBenchmarkFields();document.querySelector                   (`#${id}`)?.showModal?.();});
+ document.querySelector(`#${id}-close`)?.addEventListener("click",()=>document.querySelector                   (`#${id}`)?.close?.());
+}
+document.querySelector("#benchmark-sources-list")?.addEventListener("change",()=>void saveConfig());
+document.querySelector("#benchmark-field-add")?.addEventListener("click",()=>transferBenchmarkFields(true));
+document.querySelector("#benchmark-field-remove")?.addEventListener("click",()=>transferBenchmarkFields(false));
+for(const [id,add] of [["benchmark-fields-available",true],["benchmark-fields-enabled",false]]         ){
+ document.querySelector(`#${id}`)?.addEventListener("dblclick",event=>{const option=event.target                     ;if(option.tagName==="OPTION")transferBenchmarkFields(add,option.value);});
+ document.querySelector(`#${id}`)?.addEventListener("keydown",event=>{if((event                 ).key==="Enter"){event.preventDefault();transferBenchmarkFields(add);}});
+}
+document.querySelector("#benchmark-edit-data")?.addEventListener("click",async()=>{
+ if(benchmarkInlineSaving)return;
+ if(benchmarkEditing&&Object.keys(benchmarkInlineDrafts).length&&!confirm("Discard unsaved measurement edits?"))return;
+ benchmarkEditing=!benchmarkEditing;benchmarkInlineDrafts={};benchmarkPage=0;
+ document.querySelector("#benchmark-edit-data") .textContent=benchmarkEditing?"Done editing":"Edit data";
+ document.querySelector("#benchmark-edit-data") .setAttribute("aria-pressed",String(benchmarkEditing));
+ document.querySelector("#benchmark-inline-status") .textContent=benchmarkEditing?"Edit measurement fields, then Save each row. A source refresh can replace downloaded measurements; custom uploads are retained.":"";
+ renderBenchmarkFields();if(benchmarkEditing)await loadBenchmarkRecords();renderBenchmarkTable();
+});
+document.querySelector("#benchmark-table-body")?.addEventListener("input",updateBenchmarkInlineDraft);
+document.querySelector("#benchmark-table-body")?.addEventListener("change",updateBenchmarkInlineDraft);
+document.querySelector("#benchmark-table-body")?.addEventListener("click",event=>{
+ const button=(event.target               ).closest                   ("[data-benchmark-save-row],[data-benchmark-cancel-row]");if(!button||benchmarkInlineSaving)return;
+ if(button.dataset.benchmarkSaveRow!==undefined)void saveBenchmarkInlineRow(Number(button.dataset.benchmarkSaveRow));
+ else{const record=benchmarkRecords[Number(button.dataset.benchmarkCancelRow)];if(record){delete benchmarkInlineDrafts[benchmarkRecordKey(record)];renderBenchmarkTable();}}
+});
+
+document.querySelector("#benchmark-table-body")?.addEventListener("keydown",event=>{
+ const input=event.target                    ;
+ if((event                 ).key==="Enter"&&input.dataset.benchmarkCell){event.preventDefault();void saveBenchmarkInlineRow(Number(input.dataset.benchmarkRecord));}
+});
 
 const modelLoadingMarkup='<div class="empty-state" role="status"><strong>Loading model catalog…</strong><p>Discovering models from configured providers.</p></div>';
 let modelEnabledDraft                       ={};
@@ -1478,7 +1595,9 @@ function updateBenchmarkControls()       {
   const enabled = document.querySelector                  ("#intelligence-enabled") .checked;
   document.querySelector                   ("#refresh-benchmarks") .disabled = !benchmarksEnabledSaved || !enabled || benchmarkDirty || benchmarkRefreshRunning;
   document.querySelector("#refresh-benchmarks") .textContent = benchmarkRefreshRunning ? "Refreshing…" : "Refresh benchmarks";
-  document.querySelector                ("#benchmark-configuration") .hidden = !enabled;
+  document.querySelector                   ("#benchmark-configure") .disabled=!enabled||!consoleSession;
+  for(const id of ["benchmark-upload","benchmark-edit-data","benchmark-display-fields"])document.querySelector                   (`#${id}`) .disabled=!benchmarksEnabledSaved||!enabled||!consoleSession;
+  if(!enabled||!consoleSession)for(const id of ["benchmark-configuration","benchmark-upload-dialog","benchmark-fields-dialog"])document.querySelector                   (`#${id}`)?.close?.();
   document.querySelector                ("#benchmark-data") .hidden = !benchmarksEnabledSaved;
   document.querySelector             ("#benchmark-status") .hidden=!enabled;
   const sourceNotice=document.querySelector             ("#benchmark-source-notice");if(sourceNotice)sourceNotice.hidden=enabled&&benchmarksEnabledSaved&&!benchmarkDirty&&Object.keys(benchmarkModels).length>0;
@@ -1620,7 +1739,7 @@ document.querySelector("#inspect-benchmarks") .addEventListener("click", () => {
 document.querySelector("#save-button") .addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle") .addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-providers-available","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-providers-available","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size","benchmark-fields-available","benchmark-fields-enabled"].includes(target.id)||Boolean(target.dataset?.benchmarkCell);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target               ))markDirty();});
 form.addEventListener("change",event=>{const target=event.target               ;if(!(selectedSmartRouter===""&&(target.closest("#routing")||(target                    ).name?.startsWith("router."))) && !isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);

@@ -136,6 +136,29 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 			writeAPIError(w, 400, "Invalid benchmark pagination", "invalid_request_error", "invalid_pagination")
 			return
 		}
+		var configuredIdentities map[string]bool
+		if raw := r.URL.Query().Get("configured_only"); raw != "" {
+			configured, parseErr := strconv.ParseBool(raw)
+			if parseErr != nil {
+				writeAPIError(w, 400, "Invalid benchmark model scope", "invalid_request_error", "invalid_scope")
+				return
+			}
+			if configured {
+				if err := h.ensureCatalog(r.Context()); err != nil && len(h.byID) > 0 {
+					writeAPIError(w, 503, "Model catalog unavailable", "invalid_request_error", "catalog_unavailable")
+					return
+				}
+				snapshot = h.intelligence.Snapshot()
+				configuredIdentities = map[string]bool{}
+				for _, model := range h.intelligence.ConfiguredTableModels(snapshot) {
+					for _, source := range model.Sources {
+						for _, externalID := range model.ExternalIDs {
+							configuredIdentities[source+"\x00"+externalID] = true
+						}
+					}
+				}
+			}
+		}
 		ids := make([]string, 0, len(snapshot.Sources))
 		for id := range snapshot.Sources {
 			ids = append(ids, id)
@@ -150,6 +173,9 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 				revision = intelligence.DatasetRevision(snapshot.Sources[id].Observations)
 			}
 			for index, observation := range snapshot.Sources[id].Observations {
+				if configuredIdentities != nil && !configuredIdentities[id+"\x00"+observation.ExternalModelID] {
+					continue
+				}
 				if query != "" && !strings.Contains(strings.ToLower(id+" "+observation.ModelID+" "+observation.ExternalModelID+" "+observation.Benchmark+" "+observation.Category), query) {
 					continue
 				}

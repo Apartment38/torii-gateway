@@ -127,12 +127,29 @@ func TestConfiguredBenchmarkAPIUsesCurrentProvidersAndDoesNotChangeRouting(t *te
 	if w := get(""); strings.TrimSpace(w.Body.String()) != "{}" {
 		t.Fatal("legacy endpoint changed", w.Body.String())
 	}
+	getRecords := func(query string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/gateway/v1/intelligence/records"+query, nil))
+		return w
+	}
+	if w := getRecords("?configured_only=true&limit=5&offset=0"); w.Code != 200 || !strings.Contains(w.Body.String(), `"total":1`) || !strings.Contains(w.Body.String(), `"revision":`) || !strings.Contains(w.Body.String(), "gemma-4-26b-128k-agent") {
+		t.Fatal("configured measurements missing", w.Code, w.Body.String())
+	}
+	if w := getRecords("?configured_only=invalid"); w.Code != 400 {
+		t.Fatal("invalid measurement scope accepted")
+	}
 	p.models = []string{"gemma-4-27b"}
 	if err := h.RefreshCatalog(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if w := get("?configured_only=true"); strings.TrimSpace(w.Body.String()) != "{}" {
 		t.Fatal("provider refresh did not remove association", w.Body.String())
+	}
+	if w := getRecords("?configured_only=true"); w.Code != 200 || !strings.Contains(w.Body.String(), `"total":0`) {
+		t.Fatal("provider refresh did not remove editable association", w.Code, w.Body.String())
+	}
+	if w := getRecords("?configured_only=false"); w.Code != 200 || !strings.Contains(w.Body.String(), `"total":1`) {
+		t.Fatal("all measurements view changed", w.Code, w.Body.String())
 	}
 }
 

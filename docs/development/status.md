@@ -29,7 +29,7 @@ module metadata after tidy, generated-script freshness and 148 console tests
 pass. Go commands use `GOFLAGS=-buildvcs=false` because this executor's VCS
 stamping fails despite valid repository history. Protocol and judge tests use
 controlled fixtures; the live check only reads public catalogs, with no billable
-decision requests. Container/release checks are outside this change's scope.
+decision requests. Container/release checks are outside this change's scope. Review: [PR #33](https://github.com/Apartment38/torii-gateway/pull/33).
 
 ## Console monitoring and routing fixes
 

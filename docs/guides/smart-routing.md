@@ -21,11 +21,11 @@ Jev receives the task prompt and chooses the cheapest model capable of completin
 it. Each candidate's decision criterion contains its prices, verified capabilities,
 context limit, quality metadata, and task-relevant benchmark scores. Jev assesses
 which scores matter for the task; higher scores alone do not justify higher cost
-when a cheaper model can succeed. Typed Jev/Laya decision providers are separate
-from inference providers.
+when a cheaper model can succeed. Decision models can share a provider with chat models; decision-only models
+are excluded from chat routing pools.
 
-1. On **Providers**, add **TypeSafe AI · Jev** for the hosted service, or
-   **Jev compatible · Laya / custom** for a compatible decision server.
+1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev compatible**
+   for a compatible decision server such as Laya.
 2. Supply a reachable URL and the service's key if required; test the connection.
 3. On **Smart routing**, select the discovered classifier model in Smart Routing.
 4. Move models from **Available models** to **Enabled models** by double-clicking,
@@ -34,9 +34,9 @@ from inference providers.
    its allowed providers; pools over 250 must be narrowed explicitly.
 5. Wait for **Saved**, then send a `smart` request.
 
-Discovery uses `/models`; compatible Laya services may advertise loaded
-checkpoints via `/health`. A successful connection test is discovery evidence,
-not a classification test. Configure at least one inference provider too.
+Discovery uses `/models`; OpenRouter also queries its decision-model catalog,
+and compatible Laya services may advertise loaded checkpoints via `/health`. A successful connection test is discovery evidence,
+not a classification test. Configure at least one chat-capable model too.
 If no classifier models are available, the console explains how to add one on
 **Providers**; deterministic policy settings remain available.
 Disable classification to retain deterministic routing without classifier calls.

@@ -94,8 +94,9 @@ downstream bytes commit. Client disconnect cancels upstream work.
 Public IDs split at the first slash. Catalog metadata merges bundled records,
 live authoritative values, then operator overrides. Tri-state endpoint/feature
 support stays unknown until verified. Catalog snapshots are sorted/immutable;
-failed providers retain stale previous entries independently. Classifier-only
-providers are excluded from inference candidates. Refreshes run at startup,
+failed providers retain stale previous entries independently. Decision-only
+models expose System One passthrough and judge selection but are excluded from
+chat inference candidates, including on mixed providers. Refreshes run at startup,
 after login, and lazily on requests after one minute.
 
 ## Cross-cutting security and state

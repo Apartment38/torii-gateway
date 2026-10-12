@@ -16,8 +16,7 @@ import (
 
 const DefaultJevAPIURL = "https://api.typesafe.ai/v1"
 
-// JevProvider is classifier-only. It speaks the typed System One protocol;
-// registering it never advertises its models as chat/inference models.
+// JevProvider discovers and forwards typed System One decision models.
 type JevProvider struct {
 	id, root, apiPath        string
 	client                   *http.Client
@@ -165,7 +164,9 @@ func (p *JevProvider) publicModels(ids []string) ([]Model, error) {
 				break
 			}
 		}
-		models = append(models, Model{ID: p.id + "/" + id, Object: "model", OwnedBy: p.id})
+		model := Model{ID: p.id + "/" + id, Object: "model", OwnedBy: p.id}
+		markDecisionModel(&model)
+		models = append(models, model)
 	}
 	if len(models) == 0 {
 		return nil, errors.New("no classifier models are available; load a checkpoint or configure provider models")
@@ -204,8 +205,14 @@ func (p *JevProvider) ForwardDecision(ctx context.Context, body []byte) (*http.R
 	}
 	return p.transport.Do(ctx, p.apiPath+"/systemone", body, model)
 }
-func (p *JevProvider) Forward(context.Context, string, []byte, string) (*http.Response, error) {
-	return nil, errors.New("classifier-only providers do not serve inference endpoints")
+func (p *JevProvider) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
+	if strings.TrimRight(endpoint, "/") != "/v1/systemone" {
+		return nil, errors.New("decision providers only serve System One")
+	}
+	if upstream, ok := p.rewrites[model]; ok {
+		model = upstream
+	}
+	return p.transport.Do(ctx, p.apiPath+"/systemone", body, model)
 }
 
 var _ OpenAIProvider = (*JevProvider)(nil)

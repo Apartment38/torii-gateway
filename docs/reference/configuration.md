@@ -119,8 +119,12 @@ tracking:
   custom headers/TLS/api_path/transport/organization/project/rewrites.
 - Named API profiles use compatible options with required keys; see the provider
   table for their default API paths.
-- `jev` locks to the HTTPS `api.typesafe.ai` host and requires a key;
-  `jev_compatible` supports alternate origins. Both are classifier-only.
+- `typesafe` (legacy alias `jev`) locks to the HTTPS `api.typesafe.ai` host and
+  requires a key; `jev_compatible` supports alternate origins. Both expose typed
+  decision models for System One passthrough and judge selection, not chat.
+  OpenRouter discovers its decision catalog automatically. Other compatible
+  providers advertise decision support through model metadata; see
+  [decision providers](../guides/providers.md#classifier-providers).
 
 ## Router
 

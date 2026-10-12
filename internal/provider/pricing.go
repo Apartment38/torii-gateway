@@ -23,12 +23,27 @@ func tokenPrice(raw json.RawMessage) *float64 {
 
 func applyCatalogMetadata(raw json.RawMessage, model *Model) {
 	var entry struct {
+		Architecture struct {
+			OutputModalities []string `json:"output_modalities"`
+		} `json:"architecture"`
+		Endpoints     map[string]json.RawMessage                   `json:"endpoints"`
 		ContextLength *int64                                       `json:"context_length"`
 		BillingMode   string                                       `json:"billing_mode"`
 		Pricing       struct{ Prompt, Completion json.RawMessage } `json:"pricing"`
 	}
 	if json.Unmarshal(raw, &entry) != nil {
 		return
+	}
+	for _, modality := range entry.Architecture.OutputModalities {
+		if modality == "decisions" {
+			markDecisionModel(model)
+		}
+	}
+	if raw := entry.Endpoints["systemone"]; string(raw) == "true" || string(raw) == `"supported"` {
+		markDecisionModel(model)
+	}
+	if model.Decision {
+		markDecisionModel(model)
 	}
 	if entry.ContextLength != nil && *entry.ContextLength > 0 {
 		model.ContextWindow = entry.ContextLength

@@ -1896,7 +1896,7 @@ func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*st
 		}
 	}
 	var quotaURL string
-	if cfg.Type == "jev" || cfg.Type == "jev_compatible" {
+	if cfg.Type == "typesafe" || cfg.Type == "jev" || cfg.Type == "jev_compatible" {
 		return provider.NewJevProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout}, cfg.Type == "jev_compatible")
 	}
 	quotaHeaders := make(http.Header)
@@ -1921,7 +1921,7 @@ func buildInferenceProviderWithState(cfg config.ProviderConfig, databases ...*st
 		quotaURL = strings.TrimRight(cfg.BaseURL, "/") + strings.TrimRight(apiPath, "/") + "/credits"
 		quotaHeaders.Set("Authorization", "Bearer "+managementToken)
 	}
-	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, KeyQuotaURL: keyQuotaURL, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
+	return provider.NewOpenAICompatibleProvider(provider.OpenAICompatibleConfig{ID: cfg.ID, BaseURL: cfg.BaseURL, APIPath: apiPath, Client: client, Headers: headers, DiscoverDecisions: cfg.Type == "openrouter", QuotaURL: quotaURL, QuotaHeaders: quotaHeaders, KeyQuotaURL: keyQuotaURL, DiscoverModels: discover, StaticModels: cfg.Models, ModelRewrites: cfg.ModelRewrites, DiscoveryTimeout: discoveryTimeout, RequestTimeout: requestTimeout})
 }
 
 func compatibleHTTPTransport(cfg config.ProviderConfig) (*http.Transport, error) {
@@ -1967,6 +1967,20 @@ func configureSmartRouter(openAI *api.OpenAIHandler, cfg *config.Config, provide
 			decisionProvider, ok := selected.(provider.DecisionProvider)
 			if !ok {
 				return fmt.Errorf("initialize Jev classifier: provider %q does not support decision transport", cfg.Router.Classifier.Provider)
+			}
+			physical := cfg.Router.Classifier.Provider + "/" + cfg.Router.Classifier.Model
+			supported := false
+			for _, model := range openAI.CatalogModels() {
+				if model.PublicID == physical && model.Endpoints.SystemOne == catalog.Supported && model.Availability.Available && !model.Availability.Stale {
+					supported = true
+					break
+				}
+			}
+			if enabled, exists := cfg.ModelEnabled[physical]; exists && !enabled {
+				supported = false
+			}
+			if !supported {
+				return fmt.Errorf("initialize Jev classifier: model %q is not an available decision model", physical)
 			}
 			configuredClassifier, err = classifier.NewJevTransportWithOptions(decisionProvider, cfg.Router.Classifier.Model, decisionOptions)
 			if err != nil {

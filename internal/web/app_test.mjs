@@ -495,12 +495,12 @@ test("a saved classifier choice is preserved while multiple providers are discov
 });
 
 test("legacy direct Jev connections migrate without losing key-file references", async () => {
-  const app = consoleFixture(() => response({ models:[{ id:"jev/jev-latest" }] }));
+  const app = consoleFixture(() => response({ models:[{ id:"typesafe/jev-latest" }] }));
   app.context.legacyConfig = { providers:[], router:{ classifier:{ type:"jev", base_url:"https://api.typesafe.ai", api_key:{ file:"/run/secrets/jev-key" }, model:"jev-latest" } } };
   app.run("applyConfig(legacyConfig, fixtureRevision)");
   await app.run("testAllProviders()");
   const config = app.run("readConfig()");
-  assert.equal(config.providers[0].type, "jev");
+  assert.equal(config.providers[0].type, "typesafe");
   assert.equal(config.providers[0].bearer_token.file, "/run/secrets/jev-key");
   assert.equal(config.router.classifier.transport, "provider");
   assert.equal(config.router.classifier.api_key, undefined);
@@ -521,10 +521,10 @@ test("new classifier provider types set appropriate defaults and custom IDs rema
   app.setProviders([draft("ollama")]);
   const control = new Element();
   control.dataset = { provider:"0", key:"type" };
-  control.value = "jev";
+  control.value = "typesafe";
   app.context.changeEvent = { target:control };
   app.run("updateProvider(changeEvent)");
-  assert.equal(app.run("providers[0].id"), "jev");
+  assert.equal(app.run("providers[0].id"), "typesafe");
   assert.equal(app.run("providers[0].api_url"), "https://api.typesafe.ai/v1");
   assert.equal(app.run("providers[0].api_key_env"), "");
   control.value = "jev_compatible";
@@ -2203,4 +2203,25 @@ test("Routing policy saves do not discard in-flight model discovery",async()=>{
  app.run('applyConfig({providers:[{id:"p",type:"ollama",base_url:"http://local.test"}],router:{providers:["p"]}},"new-revision")');
  reply(response({models:[{id:'p/m',provider_id:'p'}]}));await pending;
  assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/p\/m/);
+});
+
+test("mixed providers expose discovered decision models as judges while keeping chat models in the pool",async()=>{
+ const app=consoleFixture(()=>response({models:[{id:'openrouter/chat'},{id:'openrouter/typesafe/jev-1.13',decision:true},{id:'openrouter/other/decider',decision:true}]}));
+ app.setProviders([draft('openrouter')]);await app.run('testAllProviders()');
+ const options=app.run('classifierSelect.innerHTML');assert.match(options,/openrouter\/typesafe\/jev-1.13/);assert.match(options,/openrouter\/other\/decider/);assert.doesNotMatch(options,/openrouter\/chat/);
+ app.run('classifierSelect.value="openrouter/typesafe/jev-1.13"');const classifier=app.run('readConfig().router.classifier');assert.equal(classifier.provider,'openrouter');assert.equal(classifier.model,'typesafe/jev-1.13');
+ app.run('overviewModels=[{id:"openrouter/chat",provider_id:"openrouter"},{id:"openrouter/typesafe/jev-1.13",provider_id:"openrouter",endpoints:{systemone:"supported"}}];renderSmartRouterScope()');
+ const pool=app.run('document.querySelector("#smart-router-models-available").innerHTML');assert.match(pool,/openrouter\/chat/);assert.doesNotMatch(pool,/jev-1.13/);
+ app.run('providers[0].enabled=false;updateClassifierOptions()');assert.equal(app.run('availableClassifiers().length'),0);
+});
+
+test("built-in provider IDs are editable and TypeSafe defaults use typesafe",()=>{
+ const app=consoleFixture(()=>response({models:[]}));app.setProviders([draft('openrouter'),draft('typesafe'),draft('openai-codex')]);app.run('renderProviders()');
+ const html=app.run('providerList.innerHTML');assert.doesNotMatch(html,/data-key="id"[^>]*readonly/);assert.match(html,/<option value="typesafe"[^>]*>TypeSafe<\/option>/);assert.equal(app.run('knownProviderID("typesafe",1)'),"typesafe");
+});
+
+test("provider ID edits retain credentials and update references across router profiles",()=>{
+ const app=consoleFixture(()=>response({models:[]}));app.context.renameConfig={providers:[{id:'old',type:'jev',base_url:'https://api.typesafe.ai',api_path:'/v1',bearer_token:{credential:'stored-key'}}],router:{providers:['old'],models:['old/chat'],classifier:{type:'jev',transport:'provider',provider:'old',model:'decision'}},smart_routers:[{model_name:'coding',providers:['old'],models:['old/chat'],classifier:{type:'jev',transport:'provider',provider:'old',model:'decision'}}],model_enabled:{'old/decision':true},model_pricing:{'old/decision':{input_per_million:.1}}};
+ app.run('applyConfig(renameConfig,fixtureRevision);providers[0].id="new"');const config=app.run('readConfig()');
+ assert.equal(config.providers[0].id,'new');assert.equal(config.providers[0].type,'typesafe');assert.equal(config.providers[0].bearer_token.credential,'stored-key');assert.equal(config.router.classifier.provider,'new');assert.deepEqual(Array.from(config.router.providers),['new']);assert.deepEqual(Array.from(config.router.models),['new/chat']);assert.equal(config.smart_routers[0].classifier.provider,'new');assert.equal(config.model_enabled['new/decision'],true);assert.equal(config.model_enabled['old/decision'],undefined);assert.equal(config.model_pricing['new/decision'].input_per_million,.1);
 });

@@ -54,8 +54,8 @@ Catalog sources:
 - https://docs.x.ai/developers/pricing
 
 The smart router can use a configured Jev-compatible physical provider for
-self-hosted Laya typed decisions. These models are classifier-only and are not
-advertised as chat inference models.
+self-hosted Laya typed decisions. These models use System One for public typed-decision passthrough and judge
+selection; they are never advertised as chat-capable models.
 
 ## Self-hosted Laya classifier
 
@@ -89,6 +89,28 @@ must use the separate Chat Completions classifier contract.
 - https://github.com/LeonaDavinci/laya-system-one/blob/main/laya/agent.py
 
 ---
+
+## Decision API discovery and passthrough
+
+Verified 2026-10-12 against primary API documentation and read-only public catalogs.
+OpenRouter's default `/api/v1/models` excludes decision output. Querying
+`output_modalities=decisions` returns Jev (`typesafe/jev-1.13`, latest aliases) and
+other decision families. Their `architecture.output_modalities` contains
+`decisions`; the similarly named `typesafe/jev-router` emits text and must not be
+classified by name. Input prices are USD per token, output prices can be zero.
+`POST /api/v1/systemone` accepts the TypeSafe `model`, `state`, `questions` shape
+and bearer inference key, with provider-qualified IDs or upstream bare aliases.
+Torii forwards this protocol without normalizing questions, answers or extensions.
+The TypeSafe model-list response uses `models` entries containing `name`,
+`description`, `release_date`; Torii adds this array beside OpenAI `data`.
+No authenticated or billable live decision requests were used for validation.
+
+Sources:
+
+- https://openrouter.ai/docs/guides/community/typesafe-sdk
+- https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties
+- https://openrouter.ai/api/v1/models?output_modalities=decisions
+- https://docs.typesafe.ai/sdk/python/api/types/responses
 
 ## OpenRouter
 

@@ -284,3 +284,16 @@ func TestDisplayTimezoneValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestTypeSafeProfilePreservesLegacyJevSupport(t *testing.T) {
+	for _, profile := range []string{"typesafe", "jev"} {
+		cfg := config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{{ID: "typesafe", Type: profile, BaseURL: "https://api.typesafe.ai", BearerToken: &config.SecretRef{Value: "fixture-key"}}}}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("%s: %v", profile, err)
+		}
+		cfg.Providers[0].BaseURL = "https://other.example"
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("%s accepted unrelated hosted origin", profile)
+		}
+	}
+}

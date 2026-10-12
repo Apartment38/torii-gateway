@@ -30,6 +30,7 @@ permissions. There is one administrator; named client keys do not create users.
 | `POST /v1/chat/completions` | `model`, `messages`, optional `stream` and supported upstream fields | Chat JSON or SSE |
 | `POST /v1/completions` | `model`, `prompt`, supported upstream fields | Completion JSON or SSE if upstream supports it |
 | `POST /v1/embeddings` | `model`, `input`, supported upstream fields | Embedding JSON |
+| `POST /v1/systemone` (optional trailing slash) | Provider-qualified decision `model`, `state`, `questions`, upstream extensions | Transparent typed-decision response; virtual routers and non-decision models rejected |
 | `POST /v1/responses` | `model`, `input`, optional instructions/tools/stream | Stateless response JSON or adapted SSE |
 
 Bodies are JSON objects and limited to 32 MiB. Transparent forwarding replaces
@@ -37,6 +38,17 @@ only the top-level model value, preserving other fields/bytes. The model may be
 `smart`, or a provider-qualified ID. `previous_response_id` and `conversation`
 on Responses are rejected with `unsupported_parameter`. Context must be supplied
 in each request. Provider-specific endpoint, tool, vision, and format limits apply.
+
+### Decision model discovery
+
+`GET /v1/models` includes decision models in its OpenAI `data` array with
+`decision: true`. The same response also contains a TypeSafe-compatible `models`
+array of decision entries with `name` (the provider-qualified ID), `description`,
+and `release_date` (empty when unavailable). Disabled models are omitted from
+both arrays. Management discovery reports `endpoints.systemone: supported`;
+decision-only models mark chat, completions, embeddings and Responses unsupported.
+All client routes use the usual gateway inference-key authentication, model
+controls and accounting. Upstream bearer keys remain scoped to the chosen provider.
 
 ### Model cost, usage and provider quota metadata
 

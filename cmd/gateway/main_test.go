@@ -811,3 +811,48 @@ func waitForHealthy(t *testing.T, url string, processOutput *strings.Builder) {
 	}
 	t.Fatalf("gateway did not become healthy; process output: %s", processOutput)
 }
+
+func TestMixedProviderDecisionModelRunsSmartJudge(t *testing.T) {
+	var decisions, chats int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mixed/v1/models":
+			io.WriteString(w, `{"data":[{"id":"typesafe/jev-1.13","architecture":{"output_modalities":["decisions"]}},{"id":"chat-only"}]}`)
+		case "/mixed/v1/systemone":
+			decisions++
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			if body["model"] != "typesafe/jev-1.13" || r.Header.Get("Authorization") != "Bearer mixed-key" {
+				t.Errorf("judge transport lost identity: %+v", body)
+			}
+			io.WriteString(w, testTypedDecision)
+		case "/v1/chat/completions":
+			chats++
+			io.WriteString(w, `{"choices":[{"message":{"content":"hello back"}}]}`)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	discover := false
+	cfg := &config.Config{Server: config.ServerConfig{Listen: "127.0.0.1:8080"}, Providers: []config.ProviderConfig{
+		{ID: "chat", Type: "openai_compatible", BaseURL: server.URL, DiscoverModels: &discover, Models: []string{"chat-model"}},
+		{ID: "mixed", Type: "openai_compatible", BaseURL: server.URL, APIPath: "/mixed/v1", ModelRewrites: map[string]string{"judge": "typesafe/jev-1.13"}, BearerToken: &config.SecretRef{Value: "mixed-key"}},
+	}, Router: config.RouterConfig{CatalogFile: typedFixtureChatCatalog(t), Classifier: config.ClassifierConfig{Type: "jev", Transport: "provider", Provider: "mixed", Model: "judge", OnFailure: "fail"}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := buildHandlerWithRuntime(cfg, "", &handlerRuntime{usageStore: testUsage(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"smart","messages":[{"role":"user","content":"hello"}]}`)))
+	if w.Code != 200 || decisions != 1 || chats != 1 {
+		t.Fatalf("mixed provider judge not used: %d %s decisions=%d chats=%d", w.Code, w.Body.String(), decisions, chats)
+	}
+	cfg.Router.Classifier.Model = "chat-only"
+	if _, err := buildHandlerWithRuntime(cfg, "", &handlerRuntime{usageStore: testUsage(t)}); err == nil || !strings.Contains(err.Error(), "not an available decision model") {
+		t.Fatalf("chat-only judge accepted: %v", err)
+	}
+}

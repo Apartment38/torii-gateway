@@ -28,6 +28,8 @@ This replaces the historical Version 1 implementation specification.
 
 Provider IDs form namespaces; split `provider/model` at the first slash so
 upstream model IDs may contain slashes. Explicit IDs always target that provider.
+Decision models expose System One passthrough and judge selection; mixed providers
+use catalog decision metadata and decision-only models cannot join chat pools.
 Catalog endpoint/features use supported/unsupported/unknown states; unknown is
 not affirmative evidence. Context/pricing/quality/locality/availability carry
 provenance. Merge bundled → live authoritative → operator overrides. Gateway-wide

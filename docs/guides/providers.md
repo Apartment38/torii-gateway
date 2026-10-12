@@ -170,15 +170,26 @@ provider runs on the host, use a host-reachable address such as
 
 ## Classifier providers
 
-Add **TypeSafe AI · Jev** (`type: jev`) on the Providers page for the hosted
+Add **TypeSafe** (`type: typesafe`, default provider ID `typesafe`) on the Providers page for the hosted
 TypeSafe service. Its default API URL is `https://api.typesafe.ai/v1`; paste your
 key into **API key**, or use a stored credential reference under Advanced.
 Add **Jev compatible · Laya / custom**
 (`type: jev_compatible`) for a self-hosted decision server; supply your own
 provider ID and API URL, with an optional bearer key. These providers use the
 [typed System One protocol](https://docs.typesafe.ai/api), not Chat Completions.
-They are excluded from the gateway's public inference model list and from
-smart-routing inference candidates.
+They appear in the public model catalog with `decision: true` and accept
+`POST /v1/systemone` (also `/v1/systemone/`). Use a provider-qualified model ID,
+such as `typesafe/jev-latest` or `laya/english`, with the upstream `state` and
+`questions` fields. Torii replaces only the model value and passes through the
+upstream response. Decision-only models remain excluded from chat routing pools.
+
+OpenRouter decision discovery also reads `/models?output_modalities=decisions`;
+this includes Jev and other decision models missing from its default text catalog.
+Compatible providers can advertise `architecture.output_modalities: [decisions]`
+or `endpoints.systemone: true` (or `supported`) in their model catalogs. Torii
+uses that evidence rather than model names to enable passthrough and judge selection.
+The chat model `typesafe/jev-router` is not a typed-decision judge.
+Discovery must be enabled to detect capabilities on a mixed provider.
 
 Connection checks discover models from `/v1/models` (or the configured API
 path's `/models`). For current Laya servers that return 404/405 there, Torii
@@ -199,8 +210,8 @@ the migration.
 
 ```yaml
 providers:
-  - id: jev
-    type: jev
+  - id: typesafe
+    type: typesafe
     base_url: https://api.typesafe.ai
     api_path: /v1
     bearer_token:

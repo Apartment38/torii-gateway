@@ -131,8 +131,8 @@ tracking:
 | `allow_paid_models` | Boolean, true | Allows paid and unknown-price candidates; explicit physical-model requests bypass smart |
 | `allow_free_models` | Boolean, true | Allows models positively known to have zero input/output cost; independent of paid permission |
 | `providers` | Provider ID list, empty | Empty allows all; otherwise only listed providers are eligible |
-| `models` | Provider-qualified model ID list, empty | Empty allows all; otherwise narrows the eligible provider pool to these models |
-| `intelligence_weights` | Routing weights object, absent | Per-router override of `intelligence.routing`; same validated categories and units; absence inherits gateway weights |
+| `models` | Provider-qualified model ID list, empty | At most 250 entries. Empty allows all from the provider pool, subject to a 250-candidate runtime limit; otherwise only these models become choices |
+| `intelligence_weights` | Routing weights object, absent | Per-router override of deterministic `intelligence.routing` weights; Jev receives usable benchmark evidence even without ranking weights |
 | `classifier.type` | String, absent | `disabled`, `model`, `laya`, `embedding`, `jev`; absent means no configured classifier |
 | `classifier.model` | String, conditional | Physical `provider/model` for connected `model`/`laya`; provider-local model for typed/embedding transport; never `smart` |
 | `classifier.provider` | String, conditional | Required for embedding and Jev provider transport |
@@ -153,6 +153,12 @@ tracking:
 | `selection.default_expected_output_tokens` | Integer, 1024 | Positive values override estimate; zero/nonpositive uses default |
 | `selection.location_preference` | String, `neutral` | `neutral`, `local`, `cloud` |
 | `selection.minimum_quality` | Complexity → number map | Default `low: 0.55`, `medium: 0.70`, `high: 0.82`; finite 0–1. Supply all needed complexity labels when replacing map |
+
+Jev adds a dynamic `model` choice question whose criteria come from the configured
+model pool's prices, capabilities and usable benchmarks. Its selected physical
+model is validated before dispatch. This question is generated from catalog data
+and cannot be replaced through `classifier.questions`. Other classifier types
+retain task classification followed by deterministic selection.
 
 Disabled classifiers must not specify connection/model fields; tuning can remain.
 For embedding type, `provider` identifies an embedding-capable provider and
@@ -308,6 +314,28 @@ See [Intelligence internals](../development/intelligence.md) for weighting and
 freshness equations, raw-data retention, identity safeguards, and provenance.
 
 ## Model controls
+
+`model_pricing` is a gateway-wide map from provider-qualified model ID to a pricing
+object. `input_per_million` and `output_per_million` are optional finite nonnegative
+USD rates per million tokens. Missing fields retain automatic catalog rates; zero
+means free. Removing an entry restores automatic pricing. These manual rates take
+precedence over provider, bundled and per-router catalog prices and are shared by
+Jev, deterministic routing, discovery and accounting (including classifier models).
+An explicit provider `treat_models_as_free: true` remains authoritative and forces
+zero effective rates. Existing usage totals are not recalculated.
+
+Example excerpt:
+
+```yaml
+model_pricing:
+  cloud/example:
+    input_per_million: 0.25
+    output_per_million: 1.00
+```
+
+Use the [console pricing editor or CSV import](../guides/console.md#enter-model-pricing)
+for missing rates. Pricing entries persist across restart and discovery.
+
 
 `model_enabled` maps provider-qualified model IDs to booleans; omitted IDs are enabled. Disabled IDs survive rediscovery/restarts, disappear from inference discovery, and cannot be dispatched directly or selected by Smart. Change an active classifier before disabling its model. `providers[].enabled` defaults to true. `providers[].treat_models_as_free` defaults to true for native Ollama and false otherwise. When true, routing and quotas use explicit zero estimated cost; false retains individual catalog pricing overrides. Locality alone does not make a model free or override its prices.
 

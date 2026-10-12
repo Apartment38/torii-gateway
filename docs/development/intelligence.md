@@ -161,19 +161,22 @@ inspectable.
 The selector's existing availability, quota, verified endpoint/features,
 quality floors, and context checks remain hard gates. Benchmark scores never
 grant tool or vision support or overwrite existing static quality floors.
-When routing weights are enabled, intelligence may fill unknown pricing/context
+When deterministic routing weights are enabled, or Jev chooses a model,
+intelligence may fill unknown pricing/context
 metadata; a smaller reported context limit tightens, never relaxes, an existing
 limit. Known local/free/subscription pricing remains authoritative.
 
-Eligible candidates get a weighted utility from task capability scores, lower
+Deterministic routing gives eligible candidates a weighted utility from task
+capability scores, lower
 estimated request cost, lower latency/TTFT, higher throughput and context
 headroom. Cost and lower-latency utilities are `reference / (reference + value)`;
 throughput uses `value / (reference + value)`. Observed gateway latency takes
 precedence over external latency. Missing measurements use `missing_score`
 (default 0.5), not a fake observed zero. With no relevant usable intelligence,
 ranking reverts to existing cost/quota/location/latency/context/ID ordering.
-Ties always use that existing deterministic ordering. Existing session affinity
-remains intact; a benchmark refresh does not switch an ongoing pinned session.
+Ties use that deterministic ordering. Jev receives the usable scores and chooses
+the cheapest capable model on each new prompt, independently of ranking weights.
+Tool continuations retain their originating model.
 
 ## Cache, management and refresh
 
@@ -246,3 +249,17 @@ TORII_LIVE_BENCHMARK_SMOKE=1 go test ./internal/intelligence -run '^TestLivePubl
 
 The test refreshes both sources through the manager, reports observation counts
 and request counts, and rejects `/rows` requests. It uses no provider credentials.
+
+## Custom measurements and manual edits
+
+CSV uploads are fully validated before merging into the reserved `custom` source.
+That source stays enabled across manager reconstruction/configuration reload and
+is not fetched or replaced by external refreshes. All data uses the existing
+SQLite source-generation store; no schema migration or separate database is needed.
+Imports and edits share the refresh writer mutex, save the full next snapshot,
+then publish/rematch only after durable storage succeeds. Record editing uses a
+SHA-256 revision of the source observations and an index, rejecting stale edits
+rather than overwriting a newer source generation. Source metadata remains intact;
+manual edits mark the observation and stamp retrieval time. Read routes retain
+existing authentication; uploads and edits require administrator authentication.
+See [CSV fields and editing](../guides/benchmarks.md#upload-custom-benchmarks).

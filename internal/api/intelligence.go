@@ -21,7 +21,7 @@ func (h *OpenAIHandler) SetIntelligence(manager *intelligence.Manager) {
 }
 
 func (h *OpenAIHandler) modelIntelligence(publicID string) *intelligence.Model {
-	if h.intelligence == nil || !h.policy.Intelligence.Enabled() {
+	if h.intelligence == nil || (!h.policy.Intelligence.Enabled() && !h.jevChoosesModel()) {
 		return nil
 	}
 	model, ok := h.intelligence.Lookup(publicID)
@@ -32,8 +32,18 @@ func (h *OpenAIHandler) modelIntelligence(publicID string) *intelligence.Model {
 }
 
 func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && r.URL.Path == "/gateway/v1/intelligence/template.csv" {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename=benchmark-template.csv")
+		_, _ = w.Write([]byte(intelligence.CSVTemplate))
+		return
+	}
 	if h.intelligence == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "Benchmark intelligence is disabled", "invalid_request_error", "intelligence_disabled")
+		return
+	}
+	if r.URL.Path == "/gateway/v1/intelligence/import" || r.URL.Path == "/gateway/v1/intelligence/observations/edit" {
+		h.customBenchmarkMutation(w, r)
 		return
 	}
 	if r.Method == http.MethodPost && r.URL.Path == "/gateway/v1/intelligence/refresh" {
@@ -106,7 +116,7 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 			models[id] = model
 		}
 		response = models
-	case r.URL.Path == "/gateway/v1/intelligence/observations":
+	case r.URL.Path == "/gateway/v1/intelligence/observations" || r.URL.Path == "/gateway/v1/intelligence/records":
 		limit, offset := 100, 0
 		var err error
 		includeMetadata := false
@@ -132,9 +142,14 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 		}
 		sort.Strings(ids)
 		observations := []intelligence.Observation{}
+		records := []map[string]any{}
 		total := 0
 		for _, id := range ids {
-			for _, observation := range snapshot.Sources[id].Observations {
+			revision := ""
+			if r.URL.Path == "/gateway/v1/intelligence/records" {
+				revision = intelligence.DatasetRevision(snapshot.Sources[id].Observations)
+			}
+			for index, observation := range snapshot.Sources[id].Observations {
 				if query != "" && !strings.Contains(strings.ToLower(id+" "+observation.ModelID+" "+observation.ExternalModelID+" "+observation.Benchmark+" "+observation.Category), query) {
 					continue
 				}
@@ -143,11 +158,15 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 						observation.Metadata = nil
 					}
 					observations = append(observations, observation)
+					records = append(records, map[string]any{"source": id, "index": index, "revision": revision, "observation": observation})
 				}
 				total++
 			}
 		}
 		response = map[string]any{"observations": observations, "total": total, "offset": offset, "limit": limit}
+		if r.URL.Path == "/gateway/v1/intelligence/records" {
+			response = map[string]any{"records": records, "total": total, "offset": offset, "limit": limit}
+		}
 	case strings.HasPrefix(r.URL.Path, "/gateway/v1/intelligence/models/"):
 		id := strings.TrimPrefix(r.URL.Path, "/gateway/v1/intelligence/models/")
 		model, ok := snapshot.Models[id]

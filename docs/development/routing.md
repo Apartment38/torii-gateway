@@ -1,9 +1,10 @@
 # Smart routing end to end: Jev decisions and gateway selection
 
-When a client requests `model: "smart"`, Torii asks Jev to describe the task,
-uses its own selector to choose an eligible physical model, and dispatches the
-original request to that model's provider. Jev receives task text and questions;
-Torii owns the catalog, policy, quota checks, session affinity, and dispatch.
+When a client requests `model: "smart"`, Torii asks Jev to choose the cheapest
+capable model from the configured pool, validates that choice, and dispatches
+the original request to that model's provider. Jev receives task text and questions;
+Torii supplies catalog prices, capabilities and benchmark evidence as per-model
+criteria and owns policy, quota checks, session affinity, and dispatch.
 The selected inference model produces the user-facing answer.
 
 Here, **router** means Torii's selection logic. It chooses a provider-qualified
@@ -30,13 +31,13 @@ sequenceDiagram
     C->>G: Inference request with model = smart
     G->>G: Inspect requirements, catalog, and session
     opt Classifier configured; generation endpoint; new task
-        G->>J: System One: model, state, seven questions
+        G->>J: System One: prompt, model choices + seven task questions
         J-->>G: Typed choices, probabilities, and noul scores
         G->>G: Validate answers and apply confidence policy
     end
     G->>G: Merge decisions with objective requirements
     G->>S: Candidates, requirements, complexity, policy
-    S-->>G: Eligible pin or ranked physical model
+    S-->>G: Validate Jev choice or use eligible pin/fallback
     G->>P: Original request with selected upstream model
     P-->>G: JSON response or SSE stream
     G-->>C: Provider response plus routing headers
@@ -106,7 +107,7 @@ does not include the candidate catalog, prices, quotas, or session identifier.
 See [`smartText`](../../internal/api/smart.go) and
 [context tests](../../internal/api/smart_context_test.go).
 
-## 3. Ask Jev seven typed questions
+## 3. Ask Jev to choose a model and assess the task
 
 The JSON request has `model`, `state`, and `questions`. `model` selects the
 classifier checkpoint/service model. Direct Jev posts to `/v1/systemone` using
@@ -122,6 +123,7 @@ answers:
 
 | Question | Type and default rubric | Gateway use |
 | --- | --- | --- |
+| `model` | `choice`: cheapest model capable of successful task completion; dynamic physical IDs with price, capability, context, quality and task-relevant benchmark evidence | Inference destination, validated against eligible configured models |
 | `task_type` | `choice`: which task best describes the request? | Task identity; matching task-specific benchmark weights when configured |
 | `complexity` | `choice`: low = simple/direct; medium = several steps/moderate judgment; high = deep reasoning/extensive context/difficult execution | General-quality floor |
 | `tools` | `noul`: requires tool or function calling? | Add tool-support requirement |
@@ -166,16 +168,16 @@ Each `noul` answer must have the expected type and a finite numeric `noul` in
 
 ```text
 feature_required = noul >= configured_threshold
-classification_confidence = min(task_type.confidence, complexity.confidence)
+classification_confidence = min(task_type.confidence, complexity.confidence, model.confidence)
 ```
 
 Every yes/no threshold defaults to 0.5; equality counts as yes. Overall
-confidence uses only the two choice confidences, not an average of seven
-answers, and need not equal the chosen probability. Optional `noul` confidence
+confidence uses the three choice confidences, and need not equal the chosen probability. Optional `noul` confidence
 and upstream `action` / `routing` metadata do not control destination selection.
 These scores describe classifier decisions, not inference model quality.
 
-All seven answers are required. Missing/wrong types, invalid labels or
+All eight answers are required for a model decision. Task-only classifier calls
+retain the seven-question contract. Missing/wrong types, invalid labels or
 probabilities, malformed JSON, non-success HTTP responses, responses over
 1 MiB, and network/timeouts cause failure. Optional usage is accepted only when
 both input/output counts are nonnegative integers; bad or absent telemetry stays
@@ -211,8 +213,8 @@ required.structured_output = objective.structured_output OR classification.struc
 
 A tools score below threshold cannot remove a requirement created by the
 original `tools` field. Endpoint, streaming, input estimate, and output reserve
-survive classification unchanged. Requirements and the routing policy snapshot
-remain fixed through any retry.
+survive classification unchanged. Objective requirements and the routing policy
+snapshot remain fixed through retries; Jev can reassess semantic requirements.
 
 Candidates come from discovered inference models. Metadata combines bundled
 records, authoritative live facts, and operator overrides. Disabled models and
@@ -252,8 +254,16 @@ failures can instead return the applicable budget error. See
 
 ## 6. Choose among eligible models
 
-An eligible session pin is reused first. Without a usable pin, Torii compares
-eligible models in this order, proceeding only when the earlier rule ties:
+Tool continuations reuse their eligible originating pin. Jev evaluates every new
+prompt; generic routing reuses eligible pins first. Torii compares
+eligible models using Jev's dynamic `model` choice. Objective gates first remove
+incompatible models; the answer must be a supplied ID and pass semantic quality
+and feature gates before dispatch. Jev sees usable benchmark evidence even when
+operator ranking weights are zero. Unknown prices and scores remain unknown.
+The pool is limited to 250, with an explicit error for larger unrestricted pools.
+
+For non-Jev classifiers, disabled classification, or configured failure fallback,
+Torii compares models in this order, proceeding only when the earlier rule ties:
 
 1. For a latency-sensitive task, lower measured gateway latency; known beats
    unknown latency.
@@ -289,7 +299,8 @@ Utility is a weighted average of normalized scores; missing values use
 `missing_score` (default 0.5). All-zero weights preserve deterministic selection.
 Without usable intelligence evidence, scoring also falls back to deterministic
 ordering. Scores cannot grant unverified features or override any eligibility
-gate. Eligible pins and the latency-sensitive comparison still take precedence.
+gate. In deterministic routing, eligible pins and the latency-sensitive comparison
+still take precedence.
 See [Benchmarks](../guides/benchmarks.md), [Intelligence](intelligence.md),
 [ordering](../../internal/router/selector.go), and
 [task-weight tests](../../internal/router/intelligence_test.go).
@@ -302,13 +313,15 @@ summary, not a complete wire response):
 
 | Answer | Value | Interpretation |
 | --- | --- | --- |
-| Task | coding, confidence 0.90 | Coding weights if configured |
+| Model | cloud/coder, confidence 0.95 | Cheapest candidate judged capable |
+| Task | coding, confidence 0.90 | Task-relevant coding evidence |
 | Complexity | high, confidence 0.85 | Known general quality must meet 0.82 |
 | Tools | noul 0.20 | Below threshold, but tools still required by the request |
 | Reasoning | noul 0.80 | Reasoning required |
 | Vision/structured output/latency | Each below 0.5 | No additional requirement or latency preference |
 
-Overall confidence is `min(0.90, 0.85) = 0.85`, accepted at the default minimum
+Suppose the model choice confidence is 0.95. Overall confidence is
+`min(0.90, 0.85, 0.95) = 0.85`, accepted at the default minimum
 of zero. Assume these illustrative candidates all have known prices, adequate
 context, available quota, and verified Chat Completions support:
 
@@ -319,10 +332,12 @@ context, available quota, and verified Chat Completions support:
 | cloud/coder | 0.88 | Supported / supported | $0.002 | Eligible |
 | cloud/premium | 0.95 | Supported / supported | $0.010 | Eligible |
 
-Assume both survivors pass specialized-quality gates. With intelligence disabled,
-`cloud/coder` wins on cost. Sufficiently higher coding utility could select
-`cloud/premium` with benchmark weights enabled. An already eligible
-`cloud/premium` pin would also be reused. Jev does not directly choose either.
+Assume both survivors pass specialized-quality gates and coding benchmarks
+show that `cloud/coder` can complete the job. Jev should choose `cloud/coder`
+because it is the cheaper capable option. It should choose `cloud/premium` only
+when task-relevant capability evidence indicates the cheaper option is inadequate.
+Torii validates the returned choice; it does not override a valid Jev answer
+with its deterministic ranking.
 
 If minimum confidence becomes 0.90 with capability fallback, the task becomes
 general/medium. Objective tools survive; classifier-only reasoning is removed,
@@ -341,10 +356,10 @@ Affinity is in memory, bounded to 10,000 records, with a default 30-minute
 inactivity timeout. Restarting loses pins. Only a successfully relayed 2xx
 inference response establishes the model/classification pin.
 
-An ordinary follow-up is classified again. Torii checks its pin against current
-features, quality, paid-model policy, quota, and budget eligibility. A valid pin
-wins over a newly cheaper model; an invalid pin is removed and ordinary selection
-can choose another. Pins are evaluated individually, so the selector's
+Jev evaluates ordinary follow-ups again and can choose a cheaper capable model.
+Generic classifiers retain affinity: Torii checks the pin against current
+features, quality, paid-model policy, quota and budget eligibility. A valid pin
+wins over a newly cheaper model; an invalid pin is removed. Pins are evaluated individually, so the selector's
 unknown-general-quality fallback can admit a pin with no general-quality score.
 
 A tool continuation normally reuses the originating classification and merges
@@ -374,7 +389,8 @@ With `sessions.on_model_failure: reroute` (default), an ordinary smart request
 can retry once after transport failure, missing response body, HTTP 429, or HTTP
 5xx. Invalid-request transport errors are not retryable. Torii removes the pin,
 excludes the failed model, and selects again under the same classification,
-requirements, and policy without calling Jev again. At most two physical
+requirements, and policy. Jev routing asks for another model decision with the
+failed model excluded; generic classification is reused. At most two physical
 inference attempts occur. If no alternate qualifies, the original failure
 remains. `fail` disables rerouting.
 

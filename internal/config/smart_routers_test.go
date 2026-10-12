@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"github.com/Apartment38/torii-gateway/internal/config"
 	"strings"
 	"testing"
@@ -28,5 +29,18 @@ func TestNousRequiresAPIKey(t *testing.T) {
 	}
 	if _, err := config.Decode(strings.NewReader(input + "    bearer_token: {value: fixture-key}\n")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSmartRouterModelLimit(t *testing.T) {
+	for _, count := range []int{250, 251} {
+		cfg := config.RouterConfig{}
+		for i := 0; i < count; i++ {
+			cfg.Models = append(cfg.Models, fmt.Sprintf("local/model-%d", i))
+		}
+		err := cfg.Validate()
+		if (count == 251) != (err != nil) {
+			t.Fatalf("count %d: %v", count, err)
+		}
 	}
 }

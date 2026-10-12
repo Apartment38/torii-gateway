@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -209,8 +210,33 @@ func TestGauntletCriticClassifierCurrentInput(t *testing.T) {
 
 type criticDecisionTransport struct{ body string }
 
-func (p criticDecisionTransport) ForwardDecision(context.Context, []byte) (*http.Response, error) {
-	return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(p.body))}, nil
+func (p criticDecisionTransport) ForwardDecision(_ context.Context, body []byte) (*http.Response, error) {
+	var request struct {
+		Questions map[string]struct {
+			Criteria map[string]string `json:"criteria"`
+		} `json:"questions"`
+	}
+	_ = json.Unmarshal(body, &request)
+	var response map[string]any
+	_ = json.Unmarshal([]byte(p.body), &response)
+	criteria := request.Questions["model"].Criteria
+	if len(criteria) > 0 {
+		choice := "critic/a"
+		for id := range criteria {
+			choice = id
+			if strings.HasSuffix(id, "/b") {
+				break
+			}
+		}
+		probabilities := map[string]float64{}
+		for id := range criteria {
+			probabilities[id] = 0
+		}
+		probabilities[choice] = 1
+		response["answers"].(map[string]any)["model"] = map[string]any{"type": "choice", "choice": choice, "confidence": 1, "probabilities": probabilities}
+	}
+	encoded, _ := json.Marshal(response)
+	return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(encoded))}, nil
 }
 
 // This separate response is derived from the documented TypeSafe Choice/Noul

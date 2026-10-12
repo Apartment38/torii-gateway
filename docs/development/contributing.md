@@ -145,7 +145,8 @@ transport is sufficient.
 
 1. Implement the `Classifier` interface.
 2. Return the fixed internal `Classification` structure.
-3. Do not return physical model names.
+3. Generic classifiers do not return physical model names. Jev uses a validated
+   dynamic choice drawn only from the configured candidate pool.
 4. Do not recursively invoke the `smart` model.
 5. Add malformed-output and failure tests.
 6. Document configuration.

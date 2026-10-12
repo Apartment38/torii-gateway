@@ -151,7 +151,9 @@ See [Credentials](../guides/credentials.md) for consequences of rotation/deletio
 ## Benchmark intelligence
 
 All routes below use the `/gateway/v1/intelligence` prefix and accept admin Basic
-or gateway bearer authentication. Disabled intelligence returns 503.
+or gateway bearer authentication for reads/refresh. Uploads and edits require
+administrator authentication. Disabled intelligence returns 503, except for the
+CSV template download.
 
 | Method/suffix | Result and parameters |
 | --- | --- |
@@ -161,6 +163,10 @@ or gateway bearer authentication. Disabled intelligence returns 503.
 | `GET /observations` | Raw paginated observations; `offset` ≥0, `limit` 1–500 (default 100), optional `q` ≤256 characters; `include_metadata=true` includes captured metadata |
 | `GET /models/{id}` | Canonical/physical model details with raw observations/provenance |
 | `GET /unmatched` | Unmatched/ambiguous IDs and candidate identities |
+| `GET /template.csv` | Download CSV header and sample; also available when intelligence is disabled |
+| `POST /import` | Administrator-only CSV body, ≤8 MiB/10,000 rows; atomically merge into reserved `custom` source |
+| `GET /records` | Paginated editable records using observation pagination/filter parameters; each has `source`, `index`, `revision`, `observation` |
+| `PUT /observations/edit` | Administrator-only JSON `{source,index,revision,observation}` from `/records`; validates and saves one row, HTTP 409 for stale revisions |
 | `POST /refresh` | JSON `updated`, `partial_failure`, `sources`, model/unmatched counts; failed sources retain cache |
 
 ```sh
@@ -173,6 +179,11 @@ observations/message, 15-second heartbeats, and a final `result` summary.
 An existing worker is observed rather than duplicated. Reverse proxies need
 streaming and sufficiently long read timeouts (`X-Accel-Buffering: no` is set).
 Both JSON and SSE callers must check partial-source failure, not HTTP 200 alone.
+
+CSV fields and edit behavior are documented in [Custom benchmarks](../guides/benchmarks.md#upload-custom-benchmarks).
+Upload/edit success returns `{"updated":true}`. Invalid data returns HTTP 400;
+cookie mutations require the CSRF token. Editing a publisher source can be
+replaced by its next refresh; custom measurements survive refresh and restart.
 
 ## Errors and correlation
 
@@ -215,7 +226,19 @@ Cookies are Secure on direct HTTPS and when the immediate peer belongs to an exp
 
 ## Model management
 
-Administrator `GET /gateway/v1/models` returns discovered physical models, enabled state, catalog capabilities/pricing, and safely matched benchmark intelligence with source, freshness and missing-score metadata. It uses the existing identity/alias resolver; approximate display matches supply no scores. `PUT` accepts `{id,enabled}` and requires the configuration `If-Match` revision; its successful `ETag` is the newly committed settings revision. Full config changes can also set `model_enabled`.
+Administrator `GET /gateway/v1/models` returns discovered physical models, enabled state, catalog capabilities/pricing, and safely matched benchmark intelligence with source, freshness and missing-score metadata. It uses the existing identity/alias resolver; approximate display matches supply no scores. `PUT` accepts `{id,enabled}` and/or `{id,pricing:{input_per_million,output_per_million}}`; at least one of `enabled` or `pricing` is required. Pricing rates are finite nonnegative USD per million tokens; `pricing:{}` removes that model's manual rates. It requires the configuration `If-Match` revision; its successful `ETag` is the newly committed settings revision. Full config changes can also set `model_enabled` and gateway-wide `model_pricing`.
+
+Pricing CSV tools require administrator authentication:
+
+| Route | Behavior |
+| --- | --- |
+| `GET /gateway/v1/models/pricing/template.csv` | Download the header and sample model rates |
+| `POST /gateway/v1/models/pricing/parse` | CSV body ≤1 MiB / 1,000 rows; validate every row and return `model_pricing` replacements without writing settings. Invalid files return 400. |
+
+The console merges validated rates into its draft and submits the full configuration
+with `If-Match`. API callers do the same using `GET`/`PUT /gateway/v1/config`, or use
+the per-model `PUT`. Blank CSV rates restore automatic pricing; other models remain
+unchanged. See [CSV fields](../guides/console.md#enter-model-pricing).
 
 ## Usage and quotas
 

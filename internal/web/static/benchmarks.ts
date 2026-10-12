@@ -45,7 +45,7 @@ function applyBenchmarkConfig(config: Record<string, any> = {}): void {
   updateBenchmarkControls();
 }
 function clearBenchmarkConsole(): void {
-  closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content")!.textContent="";
+  clearBenchmarkRecords();closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content")!.textContent="";
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
   benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
@@ -306,3 +306,71 @@ function initializeBenchmarks(): void {
   document.querySelector("#benchmark-next")!.addEventListener("click",()=>{benchmarkPage++;renderBenchmarkTable();});
   renderBenchmarkTable();
 }
+
+let benchmarkRecords:Record<string,any>[]=[];
+let benchmarkRecordPage=0;
+let benchmarkRecordTotal=0;
+let benchmarkRecordSequence=0;
+let editingBenchmarkRecord:Record<string,any>|null=null;
+async function loadBenchmarkRecords():Promise<void>{
+ if(!benchmarksEnabledSaved||!consoleSession)return;
+ const sequence=++benchmarkRecordSequence;const login=consoleSession;
+ const query=document.querySelector<HTMLInputElement>("#benchmark-record-filter")?.value||"";
+ try{
+  const response=await gatewayFetch(`/gateway/v1/intelligence/records?limit=25&offset=${benchmarkRecordPage*25}&q=${encodeURIComponent(query)}`,{headers:await authProvider.headers()});
+  const result=await response.json();if(!response.ok)throw new Error(result.error?.message||"Unable to load measurements");
+  if(sequence!==benchmarkRecordSequence||login!==consoleSession)return;
+  benchmarkRecords=result.records||[];benchmarkRecordTotal=result.total||0;
+  document.querySelector("#benchmark-records-body")!.innerHTML=benchmarkRecords.map((record,index)=>{const o=record.observation;return `<tr><td>${escapeHTML(o.external_model_id)}<span class="data-secondary">${escapeHTML(record.source)}</span></td><td>${escapeHTML(o.benchmark)}<span class="data-secondary">${escapeHTML(o.category)}</span></td><td>${benchmarkNumber(o.original_score)}</td><td>${benchmarkNumber(o.normalized_score)}</td><td><button type="button" class="button quiet" data-edit-benchmark="${index}">Edit</button></td></tr>`;}).join("")||'<tr><td colspan="5">No measurements found.</td></tr>';
+  document.querySelector("#benchmark-records-page")!.textContent=`${benchmarkRecordTotal?benchmarkRecordPage*25+1:0}–${Math.min((benchmarkRecordPage+1)*25,benchmarkRecordTotal)} of ${benchmarkRecordTotal}`;
+  document.querySelector<HTMLButtonElement>("#benchmark-records-previous")!.disabled=benchmarkRecordPage===0;
+  document.querySelector<HTMLButtonElement>("#benchmark-records-next")!.disabled=(benchmarkRecordPage+1)*25>=benchmarkRecordTotal;
+ }catch(error){document.querySelector("#benchmark-custom-status")!.textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to load measurements");}
+}
+function clearBenchmarkRecords():void{
+ benchmarkRecords=[];editingBenchmarkRecord=null;benchmarkRecordPage=0;benchmarkRecordTotal=0;benchmarkRecordSequence++;
+ document.querySelector<HTMLDialogElement>("#benchmark-edit-dialog")?.close?.();
+ document.querySelector<HTMLFormElement>("#benchmark-edit-form")?.reset?.();
+ for(const id of ["benchmark-records-body","benchmark-records-page","benchmark-custom-status","benchmark-edit-status"]){const node=document.querySelector(`#${id}`);if(node)node.textContent="";}
+ const filter=document.querySelector<HTMLInputElement>("#benchmark-record-filter");if(filter)filter.value="";
+ const file=document.querySelector<HTMLInputElement>("#benchmark-csv-file");if(file)file.value="";
+}
+async function uploadBenchmarkCSV():Promise<void>{
+ const file=document.querySelector<HTMLInputElement>("#benchmark-csv-file")?.files?.[0];const status=document.querySelector("#benchmark-custom-status")!;
+ if(!file){status.textContent="Choose a CSV file first.";return;}
+ if(file.size>8*1024*1024){status.textContent="CSV files must be at most 8 MiB.";return;}
+ const login=consoleSession;const button=document.querySelector<HTMLButtonElement>("#benchmark-csv-upload")!;button.disabled=true;status.textContent="Validating and saving CSV…";
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/import",{method:"POST",headers:{"Content-Type":"text/csv",...await authProvider.headers()},body:file});
+  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"CSV upload failed");
+  status.textContent="Custom benchmarks saved.";benchmarkRecordPage=0;await loadBenchmarkData();await loadBenchmarkRecords();
+ }catch(error){status.textContent=benchmarkSafeMessage(error instanceof Error?error.message:"CSV upload failed");}finally{button.disabled=false;}
+}
+function openBenchmarkEdit(index:number):void{
+ const record=benchmarkRecords[index];if(!record)return;editingBenchmarkRecord=structuredClone(record);
+ const form=document.querySelector<HTMLFormElement>("#benchmark-edit-form")!;
+ for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const input=form.elements.namedItem(name) as HTMLInputElement;const value=record.observation[name];input.value=name==="evaluated_at"&&String(value).startsWith("0001-")?"":String(value??"");}
+ document.querySelector("#benchmark-edit-status")!.textContent="";
+ document.querySelector<HTMLDialogElement>("#benchmark-edit-dialog")?.showModal?.();
+}
+async function saveBenchmarkEdit(event:Event):Promise<void>{
+ event.preventDefault();if(!editingBenchmarkRecord)return;
+ const form=document.querySelector<HTMLFormElement>("#benchmark-edit-form")!;if(!form.reportValidity())return;
+ const record=structuredClone(editingBenchmarkRecord);const o:Record<string,any>={};
+ for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const value=(form.elements.namedItem(name) as HTMLInputElement).value.trim();if(name==="original_score")o[name]=Number(value);else if(name==="normalized_score"){if(value!=="")o[name]=Number(value);}else if(name==="evaluated_at"){if(value!==""){const date=new Date(value);if(Number.isNaN(date.getTime())){document.querySelector("#benchmark-edit-status")!.textContent="Enter a valid RFC3339 evaluation time.";return;}o[name]=date.toISOString();}}else o[name]=value;}
+ record.observation=o;const login=consoleSession;const button=form.querySelector<HTMLButtonElement>('button[type="submit"]')!;button.disabled=true;
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/observations/edit",{method:"PUT",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify(record)});
+  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"Unable to save measurement");
+  document.querySelector<HTMLDialogElement>("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;
+  document.querySelector("#benchmark-custom-status")!.textContent="Measurement saved.";await loadBenchmarkData();await loadBenchmarkRecords();
+ }catch(error){document.querySelector("#benchmark-edit-status")!.textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to save measurement");}finally{button.disabled=false;}
+}
+document.querySelector("#benchmark-csv-upload")?.addEventListener("click",()=>void uploadBenchmarkCSV());
+document.querySelector("#benchmark-records-load")?.addEventListener("click",()=>void loadBenchmarkRecords());
+document.querySelector("#benchmark-record-filter")?.addEventListener("change",()=>{benchmarkRecordPage=0;void loadBenchmarkRecords();});
+document.querySelector("#benchmark-records-previous")?.addEventListener("click",()=>{if(benchmarkRecordPage>0){benchmarkRecordPage--;void loadBenchmarkRecords();}});
+document.querySelector("#benchmark-records-next")?.addEventListener("click",()=>{if((benchmarkRecordPage+1)*25<benchmarkRecordTotal){benchmarkRecordPage++;void loadBenchmarkRecords();}});
+document.querySelector("#benchmark-records-body")?.addEventListener("click",event=>{const button=(event.target as HTMLElement).closest<HTMLButtonElement>("[data-edit-benchmark]");if(button)openBenchmarkEdit(Number(button.dataset.editBenchmark));});
+document.querySelector("#benchmark-edit-form")?.addEventListener("submit",event=>void saveBenchmarkEdit(event));
+document.querySelector("#benchmark-edit-cancel")?.addEventListener("click",()=>{document.querySelector<HTMLDialogElement>("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;});

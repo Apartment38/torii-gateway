@@ -1,6 +1,51 @@
 # Project status
 
-Updated 2026-10-11. This is the sole project progress and backlog tracker.
+Updated 2026-10-12. This is the sole project progress and backlog tracker.
+
+## Manual model pricing
+
+Completed gateway-wide `model_pricing` settings and the Models console pricing
+editor/CSV upload. Input/output rates use USD per million tokens; partial rates
+preserve automatic pricing for the other field, blank rates restore automatic
+metadata, and explicit zero means free. Rates survive restart/rediscovery and
+apply to Jev, deterministic selection, named routers and accounting, including
+classifier models. Explicit provider free-model policy still takes precedence.
+CSV import validates up to 1 MiB / 1,000 rows before the console's existing
+revision-protected save; unlisted models remain unchanged. Administrator-only
+API tools provide CSV validation/template download and per-model updates.
+
+Validation: targeted baseline, full Go tests/race checks, build, vet, module
+metadata, formatting, all 116 console tests, generated assets and affected
+reference/guide links pass. Tests cover durable rates, revision conflicts,
+CSV atomic validation, automatic-rate restoration, named routing/accounting and
+administrator-only access. No database migration or dependency was needed.
+Container verification remains unavailable because Podman and the host SQLite
+CLI are absent. No deployment was performed.
+
+## Jev model decisions and custom benchmarks
+
+Implemented on `feat/jev-model-selection`. Jev now chooses a physical model for
+each new prompt using dynamic criteria containing configured model prices,
+capabilities, quality floors, context and usable task-relevant benchmark evidence.
+The gateway validates the choice; tool continuations keep their originating model.
+Generic classifiers and configured failure fallback retain deterministic selection.
+Both configured pools and unrestricted runtime candidate pools are limited to 250.
+The console uses available/enabled columns with double-click and button transfers.
+
+Administrator CSV uploads merge durable custom measurements with an 8 MiB,
+10,000-row upload limit and a downloadable documented template. Loaded measurements
+can be edited individually with source-revision conflict checks. Custom data survives
+restart/configuration reload and external refresh; publisher refreshes may replace
+manual edits to publisher sources. No database migration or new dependency is needed.
+
+Validation: targeted baseline checks passed before editing. Full Go tests, race
+tests, vet, build, module metadata, formatting, console behavior/generated assets,
+and affected documentation links pass. Tests cover actual Jev destination dispatch,
+configured scope, zero-weight benchmark evidence, repeated prompt decisions, tool
+continuity, administrator-only mutations, CSV rejection, persistence and stale edits.
+Worktree builds used `GOFLAGS=-buildvcs=false` because sandboxed VCS stamping failed.
+The Podman container verification remains unavailable: Podman and the host SQLite
+CLI are absent. No live Jev quality evaluation or deployment was performed.
 
 ## Codex subscription quota tracking
 

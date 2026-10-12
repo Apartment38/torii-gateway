@@ -52,6 +52,9 @@ func (c IntelligenceConfig) Validate() error {
 		if provider.ValidateID(source.ID) != nil || seen[source.ID] {
 			return errors.New("source IDs must be valid and unique")
 		}
+		if source.ID == intelligence.CustomSource {
+			return errors.New("benchmark source ID custom is reserved for uploaded data")
+		}
 		seen[source.ID] = true
 		if source.Transport != "" && source.Transport != "auto" && source.Transport != "rows" && source.Transport != "parquet" {
 			return fmt.Errorf("source %q transport must be auto, rows or parquet", source.ID)

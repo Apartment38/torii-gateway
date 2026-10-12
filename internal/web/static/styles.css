@@ -457,3 +457,15 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
 .benchmark-evidence-section+ .benchmark-evidence-section { border-top: 1px solid var(--line); padding-top: 18px; }
 .benchmark-evidence-section h3 { font-size: 12px; margin: 14px 0 8px; }
 .benchmark-evidence-section .benchmark-evidence-grid { margin-top: 12px; margin-bottom: 18px; }
+
+.model-transfer { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 16px; margin-top: 18px; }
+.model-transfer select { min-height: 240px; }
+.model-transfer-actions { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.csv-field-help { display: grid; grid-template-columns: minmax(130px,.4fr) minmax(0,1fr); gap: 8px 16px; font-size: 12px; }
+.csv-field-help dt { font-weight: 600; overflow-wrap: anywhere; }
+.csv-field-help dd { margin: 0; color: var(--muted); }
+#benchmark-edit-dialog { width: min(720px,calc(100vw - 32px)); }
+@media (max-width: 600px) { .model-transfer { gap: 8px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .model-transfer-actions { grid-column: 1/-1; grid-row: 2; flex-direction: row; } .csv-field-help { grid-template-columns: 1fr; } }
+#model-pricing-dialog { width: min(560px,calc(100vw - 32px)); }
+#model-pricing-model { overflow-wrap: anywhere; font-weight: 600; }
+.model-price-edit { display: block; margin-top: 8px; }

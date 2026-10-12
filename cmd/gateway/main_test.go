@@ -137,7 +137,7 @@ func TestConsoleBootstrapWithoutProvidersCanServeAndReload(t *testing.T) {
 	}
 }
 
-const testTypedDecision = `{"model":"english","answers":{"task_type":{"type":"choice","choice":"general","confidence":0.9,"probabilities":{"general":1,"conversation":0,"coding":0,"sysadmin":0,"reasoning":0,"math":0,"research":0,"summarization":0,"extraction":0,"creative":0,"translation":0}},"complexity":{"type":"choice","choice":"low","confidence":0.9,"probabilities":{"low":1,"medium":0,"high":0}},"tools":{"type":"noul","noul":0},"vision":{"type":"noul","noul":0},"reasoning":{"type":"noul","noul":0},"structured_output":{"type":"noul","noul":0},"latency_sensitive":{"type":"noul","noul":0}},"usage":{"input_tokens":100,"output_tokens":0}}`
+const testTypedDecision = `{"model":"english","answers":{"model":{"type":"choice","choice":"chat/chat-model","confidence":0.9,"probabilities":{"chat/chat-model":1}},"task_type":{"type":"choice","choice":"general","confidence":0.9,"probabilities":{"general":1,"conversation":0,"coding":0,"sysadmin":0,"reasoning":0,"math":0,"research":0,"summarization":0,"extraction":0,"creative":0,"translation":0}},"complexity":{"type":"choice","choice":"low","confidence":0.9,"probabilities":{"low":1,"medium":0,"high":0}},"tools":{"type":"noul","noul":0},"vision":{"type":"noul","noul":0},"reasoning":{"type":"noul","noul":0},"structured_output":{"type":"noul","noul":0},"latency_sensitive":{"type":"noul","noul":0}},"usage":{"input_tokens":100,"output_tokens":0}}`
 
 func typedFixtureChatCatalog(t *testing.T) string {
 	t.Helper()

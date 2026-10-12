@@ -15,16 +15,24 @@ metadata. No classifier is required for deterministic selection.
 If no eligible model exists, the request fails rather than ignoring a capability
 or policy restriction. Explicit `provider/model` requests bypass smart selection.
 
-## Add a task classifier
+## Let Jev choose the model
 
-A classifier describes the task; it does not generate the user-facing answer.
-Typed Jev/Laya classifier providers are separate from inference providers.
+Jev receives the task prompt and chooses the cheapest model capable of completing
+it. Each candidate's decision criterion contains its prices, verified capabilities,
+context limit, quality metadata, and task-relevant benchmark scores. Jev assesses
+which scores matter for the task; higher scores alone do not justify higher cost
+when a cheaper model can succeed. Typed Jev/Laya decision providers are separate
+from inference providers.
 
 1. On **Providers**, add **TypeSafe AI · Jev** for the hosted service, or
    **Jev compatible · Laya / custom** for a compatible decision server.
 2. Supply a reachable URL and the service's key if required; test the connection.
 3. On **Smart routing**, select the discovered classifier model in Smart Routing.
-4. Wait for **Saved**, then send a `smart` request.
+4. Move models from **Available models** to **Enabled models** by double-clicking,
+   or select them and press **Enable →**. Use **← Remove** to disable choices.
+   Each router supports at most 250 models. An empty list allows all models from
+   its allowed providers; pools over 250 must be narrowed explicitly.
+5. Wait for **Saved**, then send a `smart` request.
 
 Discovery uses `/models`; compatible Laya services may advertise loaded
 checkpoints via `/health`. A successful connection test is discovery evidence,
@@ -55,9 +63,20 @@ default; the console persists an explicit false when unchecked. Estimated costs
 need known prices and are not actual bills. Quota allowances and cached provider
 limits can remove exhausted models; unknown quota is not assumed unlimited
 verified capacity. [Configuration](../reference/configuration.md) lists defaults.
-Benchmark weighting is optional; see [Benchmarks](benchmarks.md).
+Benchmark weighting is optional; see [Benchmarks](benchmarks.md). Enter missing
+model rates through the [pricing editor or CSV import](console.md#enter-model-pricing)
+on **Models**; saved rates also inform Jev criteria and cost estimates.
 
-## Keep a conversation on one model
+
+Benchmark intelligence supplies evidence to Jev whenever it is enabled, even
+without deterministic ranking weights. Import custom measurements or edit
+loaded scores through [Benchmarks](benchmarks.md#upload-custom-benchmarks).
+Jev choices remain subject to gateway capability, context, quality, quota and
+cost-policy checks. New prompts receive new model decisions; tool continuations
+retain their eligible originating pin. Ordinary retries ask Jev again with the failed model excluded. Other classifier types and
+classifier-disabled routing retain deterministic selection.
+
+## Keep tool calls on their originating model
 
 Send the same `X-Session-ID` (up to 256 characters, without newlines) throughout
 a conversation, especially for tool calls/results. Torii can also use

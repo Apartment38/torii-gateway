@@ -75,7 +75,10 @@ HTTP header reads have a ten-second timeout; idle connections close after 60 sec
 
 Explicit requests cannot be substituted. Smart pins are revalidated against
 current constraints; tool continuation requires its originating eligible pin.
-Classification describes requirements; the selector chooses physical models.
+Generic classification describes requirements. Jev chooses the physical model
+from dynamic criteria for up to 250 configured candidates, using price, verified
+capabilities and relevant benchmark scores. The gateway validates that choice;
+other classifiers and failure fallback retain deterministic selection.
 No benchmark fetching, SQLite writes, or aggregation happens on inference's
 routing path.
 

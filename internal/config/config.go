@@ -27,16 +27,17 @@ import (
 // Additional sections must not be added until their behavior is implemented;
 // the decoder rejects keys that are not represented here.
 type Config struct {
-	Activity     activity.Options    `yaml:"activity,omitempty"`
-	Budgets      accounting.Settings `yaml:"budgets,omitempty"`
-	ModelEnabled map[string]bool     `yaml:"model_enabled,omitempty"`
-	Credentials  *state.Database     `yaml:"-"`
-	Server       ServerConfig        `yaml:"server"`
-	State        StateConfig         `yaml:"state"`
-	Providers    []ProviderConfig    `yaml:"providers"`
-	SmartRouters []RouterConfig      `yaml:"smart_routers,omitempty"`
-	Router       RouterConfig        `yaml:"router,omitempty"`
-	Intelligence IntelligenceConfig  `yaml:"intelligence,omitempty"`
+	Activity     activity.Options           `yaml:"activity,omitempty"`
+	Budgets      accounting.Settings        `yaml:"budgets,omitempty"`
+	ModelPricing map[string]catalog.Pricing `yaml:"model_pricing,omitempty"`
+	ModelEnabled map[string]bool            `yaml:"model_enabled,omitempty"`
+	Credentials  *state.Database            `yaml:"-"`
+	Server       ServerConfig               `yaml:"server"`
+	State        StateConfig                `yaml:"state"`
+	Providers    []ProviderConfig           `yaml:"providers"`
+	SmartRouters []RouterConfig             `yaml:"smart_routers,omitempty"`
+	Router       RouterConfig               `yaml:"router,omitempty"`
+	Intelligence IntelligenceConfig         `yaml:"intelligence,omitempty"`
 }
 
 type RouterConfig struct {
@@ -204,6 +205,9 @@ func Decode(r io.Reader) (*Config, error) {
 // Validate checks configuration invariants without performing network or
 // filesystem access.
 func (c Config) Validate() error {
+	if err := ValidateModelPricing(c.ModelPricing); err != nil {
+		return err
+	}
 	if err := c.Activity.Validate(); err != nil {
 		return err
 	}
@@ -419,6 +423,9 @@ func validateNousProvider(p ProviderConfig) error {
 }
 
 func (r RouterConfig) Validate() error {
+	if len(r.Models) > 250 {
+		return errors.New("smart routers support at most 250 models")
+	}
 	if r.IntelligenceWeights != nil {
 		if err := (IntelligenceConfig{Routing: *r.IntelligenceWeights}).Validate(); err != nil {
 			return fmt.Errorf("intelligence_weights: %w", err)

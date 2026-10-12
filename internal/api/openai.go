@@ -37,6 +37,7 @@ type OpenAIHandler struct {
 	routerName          string
 	allowedProviders    map[string]bool
 	allowedModels       map[string]bool
+	modelPricing        map[string]catalog.Pricing
 	activity            *activity.Store
 	accounting          *accounting.Store
 	accountingOverrides []catalog.Descriptor
@@ -631,6 +632,7 @@ func (h *OpenAIHandler) NewRouter(providers []provider.OpenAIProvider, overrides
 	child.intelligence = h.intelligence
 	child.usage = h.usage
 	child.observedQuotas = h.observedQuotas
+	child.modelPricing = h.modelPricing
 	child.modelEnabled = h.modelEnabled
 	child.freeProviders = h.freeProviders
 	return child, nil

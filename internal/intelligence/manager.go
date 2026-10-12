@@ -86,7 +86,7 @@ func NewManager(store SnapshotStore, sources []Source, models []catalog.Descript
 	}
 	// Disabled/removed sources remain inspectable but cannot influence routing.
 	for id, state := range m.snapshot.Sources {
-		state.Enabled = false
+		state.Enabled = id == CustomSource && state.Type == "custom"
 		m.snapshot.Sources[id] = state
 	}
 	for id, cfg := range configured {
@@ -380,7 +380,7 @@ func (m *Manager) ReloadCache() {
 		return
 	}
 	for id, state := range loaded.Sources {
-		state.Enabled = false
+		state.Enabled = id == CustomSource && state.Type == "custom"
 		loaded.Sources[id] = state
 	}
 	for id, configured := range m.snapshot.Sources {

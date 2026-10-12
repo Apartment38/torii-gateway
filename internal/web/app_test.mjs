@@ -1653,6 +1653,99 @@ test("overview counts classifier models outside the chat catalog",()=>{
  const app=consoleFixture(()=>response({}));app.setProviders([draft("jev")]);app.run('overviewModels=[];classifierCatalogs.set(providers[0],["jev/a","jev/b"]);renderOverview()');assert.match(app.run('document.querySelector("#overview-workspace").innerHTML'),/2 models/);
 });
 
+test("smart router dual selector transfers models and enforces 250 choices",async()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('applyConfig({providers:[],router:{models:["local/a"]}});overviewModels=[{id:"local/a",provider_id:"local"},{id:"local/b",provider_id:"local"}];saveConfig=async()=>{};renderSmartRouterScope()');
+ assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/local\/b/);
+ assert.ok(!app.run('document.querySelector("#smart-router-models-available").innerHTML').includes('local/a'));
+ await app.run('transferSmartModels(true,"local/b")');
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.models')),['local/a','local/b']);
+ await app.run('transferSmartModels(false,"local/a")');
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.models')),['local/b']);
+ app.run('smartRouterDrafts.smart.models=Array.from({length:250},(_,i)=>`local/${i}`)');
+ await app.run('transferSmartModels(true,"local/too-many")');
+ assert.equal(app.run('smartRouterDrafts.smart.models.length'),250);
+});
+
+test("benchmark editor loads escaped rows and clears edit state on sign out",async()=>{
+ const record={source:'custom',index:0,revision:'hash',observation:{external_model_id:'<model>',benchmark:'code',category:'coding',original_score:90,normalized_score:.9}};
+ const app=consoleFixture((url)=>{assert.match(url,/\/intelligence\/records\?limit=25&offset=0&q=/);return response({records:[record],total:1});});
+ app.run('benchmarksEnabledSaved=true;consoleSession="active"');
+ await app.run('loadBenchmarkRecords()');
+ assert.match(app.run('document.querySelector("#benchmark-records-body").innerHTML'),/&lt;model&gt;/);
+ assert.match(app.run('document.querySelector("#benchmark-records-body").innerHTML'),/data-edit-benchmark="0"/);
+ app.run('editingBenchmarkRecord=benchmarkRecords[0];clearBenchmarkRecords()');
+ assert.equal(app.run('editingBenchmarkRecord'),null);assert.equal(app.run('benchmarkRecords.length'),0);
+});
+
+test("custom CSV upload sends the file with administrator CSRF headers",async()=>{
+ const app=consoleFixture((url,options)=>{
+  if(url.endsWith('/import')){assert.equal(options.method,'POST');assert.equal(options.headers['Content-Type'],'text/csv');assert.equal(options.headers['X-CSRF-Token'],'csrf');assert.equal(options.body.name,'custom.csv');return response({updated:true});}
+  return response(url.includes('/records?')?{records:[],total:0}:{});
+ });
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";csrfToken="csrf";document.querySelector("#benchmark-csv-file").files=[{name:"custom.csv",size:100}]');
+ await app.run('uploadBenchmarkCSV()');
+ assert.equal(app.calls.filter(call=>call.url.endsWith('/import')).length,1);
+ assert.match(app.run('document.querySelector("#benchmark-custom-status").textContent'),/saved/);
+ app.run('document.querySelector("#benchmark-csv-file").files=[{name:"huge.csv",size:9*1024*1024}]');
+ await app.run('uploadBenchmarkCSV()');
+ assert.equal(app.calls.filter(call=>call.url.endsWith('/import')).length,1);
+ assert.match(app.run('document.querySelector("#benchmark-custom-status").textContent'),/8 MiB/);
+});
+
+test("manual benchmark edit submits numeric values and retains the revision",async()=>{
+ const app=consoleFixture((url,options)=>{
+  if(url.endsWith('/observations/edit')){assert.equal(options.method,'PUT');const record=JSON.parse(options.body);assert.equal(record.revision,'dataset-revision');assert.equal(record.source,'custom');assert.equal(record.observation.original_score,91);assert.equal(record.observation.normalized_score,.91);return response({updated:true});}
+  return response(url.includes('/records?')?{records:[],total:0}:{});
+ });
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkRecords=[{source:"custom",index:0,revision:"dataset-revision",observation:{external_model_id:"local/m",benchmark:"code",category:"coding",original_score:90,normalized_score:.9}}];const editForm=document.querySelector("#benchmark-edit-form");editForm.elements={namedItem:name=>document.querySelector(`#edit-${name}`)};editForm.reportValidity=()=>true;editForm.querySelector=()=>document.querySelector("#measurement-save");openBenchmarkEdit(0);editForm.elements.namedItem("original_score").value="91";editForm.elements.namedItem("normalized_score").value="0.91"');
+ await app.run('saveBenchmarkEdit({preventDefault(){}})');
+ assert.equal(app.calls.filter(call=>call.url.endsWith('/observations/edit')).length,1);
+ assert.equal(app.run('document.querySelector("#benchmark-edit-dialog").open'),false);
+ assert.equal(app.run('editingBenchmarkRecord'),null);
+});
+
+test("manual pricing editor saves rates and restores automatic prices",async()=>{
+ const app=consoleFixture(()=>response({models:[]}));
+ app.run('applyConfig({providers:[],router:{},model_pricing:{"p/model":{output_per_million:2}}});consoleSession="active";physicalModels=[{id:"p/model",pricing:{input_per_million:.5,output_per_million:2,source:"operator"}}];document.querySelector("#model-pricing-form").reportValidity=()=>true;saveConfig=async()=>true;openModelPricing("p/model")');
+ assert.equal(app.run('document.querySelector("#model-pricing-input").value'),"");
+ assert.equal(app.run('document.querySelector("#model-pricing-input").placeholder'),"0.5");
+ app.run('document.querySelector("#model-pricing-input").value="0";document.querySelector("#model-pricing-output").value="1.25"');
+ await app.run('saveModelPricing({preventDefault(){}})');
+ assert.equal(app.run('readConfig().model_pricing["p/model"].input_per_million'),0);
+ assert.equal(app.run('readConfig().model_pricing["p/model"].output_per_million'),1.25);
+ assert.equal(app.run('document.querySelector("#model-pricing-dialog").open'),false);
+ app.run('openModelPricing("p/model");document.querySelector("#model-pricing-input").value="";document.querySelector("#model-pricing-output").value=""');
+ await app.run('saveModelPricing()');assert.equal(app.run('modelPricingDraft["p/model"]'),undefined);
+});
+
+test("pricing CSV import validates before saving and merges only listed model rates",async()=>{
+ let fail=false;
+ const app=consoleFixture((url,options)=>{
+  if(url.endsWith('/pricing/parse')){assert.equal(options.method,'POST');assert.equal(options.headers['X-CSRF-Token'],'csrf');return fail?response({error:'CSV row is invalid'},false):response({model_pricing:{'p/change':{input_per_million:.25,output_per_million:1},'p/clear':{}}});}
+  return response({models:[]});
+ });
+ app.run('consoleSession="active";csrfToken="csrf";modelPricingDraft={"p/keep":{input_per_million:3},"p/change":{input_per_million:5},"p/clear":{input_per_million:1}};document.querySelector("#model-pricing-csv").files=[{name:"prices.csv",size:100}];saveConfig=async()=>true');
+ await app.run('uploadModelPricingCSV()');
+ assert.equal(app.run('modelPricingDraft["p/keep"].input_per_million'),3);
+ assert.equal(app.run('modelPricingDraft["p/change"].input_per_million'),.25);
+ assert.equal(app.run('modelPricingDraft["p/clear"]'),undefined);
+ const before=app.run('JSON.stringify(modelPricingDraft)');fail=true;
+ await app.run('uploadModelPricingCSV()');assert.equal(app.run('JSON.stringify(modelPricingDraft)'),before);
+ assert.match(app.run('document.querySelector("#model-pricing-import-status").textContent'),/invalid/);
+});
+
+test("manual pricing errors retain drafts and model rows expose editing",async()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('physicalModels=[{id:"p/model",provider_id:"p",pricing:{},enabled:true}];renderModelsPage();openModelPricing("p/model");document.querySelector("#model-pricing-form").reportValidity=()=>true;document.querySelector("#model-pricing-input").value="-1";saveConfig=async()=>{throw new Error("invalid rate reached save")};');
+ assert.match(app.run('document.querySelector("#model-table-body").innerHTML'),/data-model-price="p\/model"/);
+ await app.run('saveModelPricing()');assert.match(app.run('document.querySelector("#model-pricing-status").textContent'),/nonnegative/);
+ app.run('document.querySelector("#model-pricing-input").value="2";saveState.textContent="Conflict · draft preserved";saveConfig=async()=>false');
+ await app.run('saveModelPricing()');assert.equal(app.run('modelPricingDraft["p/model"].input_per_million'),2);
+ assert.equal(app.run('document.querySelector("#model-pricing-dialog").open'),true);
+ app.run('clearModelPricing()');assert.equal(app.run('Object.keys(modelPricingDraft).length'),0);
+});
+
 test("Codex quota groups retain independent windows and unavailable values",()=>{
  const app=consoleFixture(()=>response({}));
  app.run('codexTestQuota={provider:"openai-codex",status:"stale",account_id:"workspace",account_identity:"user@example.test",plan:"plus",source:"codex_app_server",collected_at:"2026-10-11T20:00:00Z",unavailable_reason:"rate_limited",limits:[{limit_id:"codex",scope:"account",status:"available",windows:[{window_type:"weekly",used:62,remaining:38,status:"available",reset_at:"2026-10-15T22:00:00Z"}]},{limit_id:"extra",limit_name:"<script>",scope:"unknown",status:"unavailable",windows:[{window_type:"5h",status:"unavailable"}]}]}');
@@ -1670,4 +1763,5 @@ test("Codex quota refresh handles cooldowns and network failure without losing m
  await button.listeners.click();
  assert.match(app.context.document.querySelector("#quota-refresh-status").textContent,/cooling down/);assert.equal(button.disabled,false);
  fail=true;await button.listeners.click();assert.match(app.context.document.querySelector("#quota-refresh-status").textContent,/unavailable/);assert.equal(button.disabled,false);
+
 });

@@ -47,7 +47,7 @@ function applyBenchmarkConfig(config                      = {})       {
   updateBenchmarkControls();
 }
 function clearBenchmarkConsole()       {
-  closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
+  clearBenchmarkRecords();closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
   benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
@@ -309,8 +309,78 @@ function initializeBenchmarks()       {
   renderBenchmarkTable();
 }
 
+let benchmarkRecords                     =[];
+let benchmarkRecordPage=0;
+let benchmarkRecordTotal=0;
+let benchmarkRecordSequence=0;
+let editingBenchmarkRecord                        =null;
+async function loadBenchmarkRecords()              {
+ if(!benchmarksEnabledSaved||!consoleSession)return;
+ const sequence=++benchmarkRecordSequence;const login=consoleSession;
+ const query=document.querySelector                  ("#benchmark-record-filter")?.value||"";
+ try{
+  const response=await gatewayFetch(`/gateway/v1/intelligence/records?limit=25&offset=${benchmarkRecordPage*25}&q=${encodeURIComponent(query)}`,{headers:await authProvider.headers()});
+  const result=await response.json();if(!response.ok)throw new Error(result.error?.message||"Unable to load measurements");
+  if(sequence!==benchmarkRecordSequence||login!==consoleSession)return;
+  benchmarkRecords=result.records||[];benchmarkRecordTotal=result.total||0;
+  document.querySelector("#benchmark-records-body") .innerHTML=benchmarkRecords.map((record,index)=>{const o=record.observation;return `<tr><td>${escapeHTML(o.external_model_id)}<span class="data-secondary">${escapeHTML(record.source)}</span></td><td>${escapeHTML(o.benchmark)}<span class="data-secondary">${escapeHTML(o.category)}</span></td><td>${benchmarkNumber(o.original_score)}</td><td>${benchmarkNumber(o.normalized_score)}</td><td><button type="button" class="button quiet" data-edit-benchmark="${index}">Edit</button></td></tr>`;}).join("")||'<tr><td colspan="5">No measurements found.</td></tr>';
+  document.querySelector("#benchmark-records-page") .textContent=`${benchmarkRecordTotal?benchmarkRecordPage*25+1:0}–${Math.min((benchmarkRecordPage+1)*25,benchmarkRecordTotal)} of ${benchmarkRecordTotal}`;
+  document.querySelector                   ("#benchmark-records-previous") .disabled=benchmarkRecordPage===0;
+  document.querySelector                   ("#benchmark-records-next") .disabled=(benchmarkRecordPage+1)*25>=benchmarkRecordTotal;
+ }catch(error){document.querySelector("#benchmark-custom-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to load measurements");}
+}
+function clearBenchmarkRecords()     {
+ benchmarkRecords=[];editingBenchmarkRecord=null;benchmarkRecordPage=0;benchmarkRecordTotal=0;benchmarkRecordSequence++;
+ document.querySelector                   ("#benchmark-edit-dialog")?.close?.();
+ document.querySelector                 ("#benchmark-edit-form")?.reset?.();
+ for(const id of ["benchmark-records-body","benchmark-records-page","benchmark-custom-status","benchmark-edit-status"]){const node=document.querySelector(`#${id}`);if(node)node.textContent="";}
+ const filter=document.querySelector                  ("#benchmark-record-filter");if(filter)filter.value="";
+ const file=document.querySelector                  ("#benchmark-csv-file");if(file)file.value="";
+}
+async function uploadBenchmarkCSV()              {
+ const file=document.querySelector                  ("#benchmark-csv-file")?.files?.[0];const status=document.querySelector("#benchmark-custom-status") ;
+ if(!file){status.textContent="Choose a CSV file first.";return;}
+ if(file.size>8*1024*1024){status.textContent="CSV files must be at most 8 MiB.";return;}
+ const login=consoleSession;const button=document.querySelector                   ("#benchmark-csv-upload") ;button.disabled=true;status.textContent="Validating and saving CSV…";
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/import",{method:"POST",headers:{"Content-Type":"text/csv",...await authProvider.headers()},body:file});
+  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"CSV upload failed");
+  status.textContent="Custom benchmarks saved.";benchmarkRecordPage=0;await loadBenchmarkData();await loadBenchmarkRecords();
+ }catch(error){status.textContent=benchmarkSafeMessage(error instanceof Error?error.message:"CSV upload failed");}finally{button.disabled=false;}
+}
+function openBenchmarkEdit(index       )     {
+ const record=benchmarkRecords[index];if(!record)return;editingBenchmarkRecord=structuredClone(record);
+ const form=document.querySelector                 ("#benchmark-edit-form") ;
+ for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const input=form.elements.namedItem(name)                    ;const value=record.observation[name];input.value=name==="evaluated_at"&&String(value).startsWith("0001-")?"":String(value??"");}
+ document.querySelector("#benchmark-edit-status") .textContent="";
+ document.querySelector                   ("#benchmark-edit-dialog")?.showModal?.();
+}
+async function saveBenchmarkEdit(event      )              {
+ event.preventDefault();if(!editingBenchmarkRecord)return;
+ const form=document.querySelector                 ("#benchmark-edit-form") ;if(!form.reportValidity())return;
+ const record=structuredClone(editingBenchmarkRecord);const o                   ={};
+ for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const value=(form.elements.namedItem(name)                    ).value.trim();if(name==="original_score")o[name]=Number(value);else if(name==="normalized_score"){if(value!=="")o[name]=Number(value);}else if(name==="evaluated_at"){if(value!==""){const date=new Date(value);if(Number.isNaN(date.getTime())){document.querySelector("#benchmark-edit-status") .textContent="Enter a valid RFC3339 evaluation time.";return;}o[name]=date.toISOString();}}else o[name]=value;}
+ record.observation=o;const login=consoleSession;const button=form.querySelector                   ('button[type="submit"]') ;button.disabled=true;
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/observations/edit",{method:"PUT",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify(record)});
+  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"Unable to save measurement");
+  document.querySelector                   ("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;
+  document.querySelector("#benchmark-custom-status") .textContent="Measurement saved.";await loadBenchmarkData();await loadBenchmarkRecords();
+ }catch(error){document.querySelector("#benchmark-edit-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to save measurement");}finally{button.disabled=false;}
+}
+document.querySelector("#benchmark-csv-upload")?.addEventListener("click",()=>void uploadBenchmarkCSV());
+document.querySelector("#benchmark-records-load")?.addEventListener("click",()=>void loadBenchmarkRecords());
+document.querySelector("#benchmark-record-filter")?.addEventListener("change",()=>{benchmarkRecordPage=0;void loadBenchmarkRecords();});
+document.querySelector("#benchmark-records-previous")?.addEventListener("click",()=>{if(benchmarkRecordPage>0){benchmarkRecordPage--;void loadBenchmarkRecords();}});
+document.querySelector("#benchmark-records-next")?.addEventListener("click",()=>{if((benchmarkRecordPage+1)*25<benchmarkRecordTotal){benchmarkRecordPage++;void loadBenchmarkRecords();}});
+document.querySelector("#benchmark-records-body")?.addEventListener("click",event=>{const button=(event.target               ).closest                   ("[data-edit-benchmark]");if(button)openBenchmarkEdit(Number(button.dataset.editBenchmark));});
+document.querySelector("#benchmark-edit-form")?.addEventListener("submit",event=>void saveBenchmarkEdit(event));
+document.querySelector("#benchmark-edit-cancel")?.addEventListener("click",()=>{document.querySelector                   ("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;});
+
 const modelLoadingMarkup='<div class="empty-state" role="status"><strong>Loading model catalog…</strong><p>Discovering models from configured providers.</p></div>';
 let modelEnabledDraft                       ={};
+let modelPricingDraft                   ={};
+let editingModelPricingID="";
 let physicalModels      =[];
 let modelSearch="";
 let modelProviderFilter="";
@@ -322,7 +392,7 @@ function modelQuotaSummary(model    )       {const q=model.quota;return q?.known
 function modelPrice(raw       )       {return raw>0&&raw<.000001?`$${raw.toPrecision(3)}`:`$${raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:6})}`;}
 function modelPricingText(model    )       {
  const p=model.pricing||{};
- if(model.subscription)return "Subscription included";
+ if(model.subscription&&p.source!=="operator")return "Subscription included";
  return `${typeof p.input_per_million==="number"?modelPrice(p.input_per_million):"Unknown"} in / ${typeof p.output_per_million==="number"?modelPrice(p.output_per_million):"Unknown"} out per 1M${String(p.source||"").startsWith("models.dev")?" (estimate)":""}`;
 }
 function quotaWindowText(window    )       {
@@ -391,19 +461,20 @@ function renderModelRows()     {
   const capabilities=supported.map(name=>`<span class="capability-pill">${escapeHTML(name)}</span>`).join("")||'<span class="data-secondary">Unknown</span>';
   const scores=model.benchmark?Object.entries(model.benchmark.scores||{}).map(([name,score])=>`${name.replace(/_/g," ")} ${(Number(score)*100).toFixed(1)}%`).join(" · "):"";
   const details=`<details class="model-details"><summary>Inspect metadata</summary><div class="model-detail-content"><p><strong>Capabilities</strong><br>${Object.entries(model.capabilities||{}).map(([name,v])=>`${escapeHTML(name.replace(/_/g," "))}: ${escapeHTML(String(v))}`).join(" · ")||"Unknown"}</p><p><strong>Context window</strong> ${consoleNumber(model.context_window)} tokens</p>${modelTrackingMarkup(model)}${model.benchmark?`<p><strong>Benchmark scores</strong><br>${escapeHTML(scores||"No scores")}</p><p><strong>Sources</strong> ${(model.benchmark.sources||[]).map(escapeHTML).join(", ")||"Unknown"}<br>Retrieved ${escapeHTML(model.benchmark.latest_retrieval||"unknown")}<br>Evaluated ${escapeHTML(model.benchmark.latest_evaluation||"unknown")}</p>`:""}</div></details>`;
-  return `<tr><td data-label="Model"><strong class="model-name">${escapeHTML(model.id)}</strong><span class="data-secondary">${escapeHTML(model.provider_id)}</span></td><td data-label="Capabilities"><div class="capability-list">${capabilities}</div></td><td class="numeric" data-label="Input / 1M tokens">${model.subscription?'<span class="data-secondary">Subscription included</span>':""}${typeof pricing.input_per_million==="number"?modelPrice(pricing.input_per_million):"—"}<span class="data-secondary">${typeof pricing.output_per_million==="number"?`${modelPrice(pricing.output_per_million)} output`:"Output unknown"}</span></td><td data-label="Benchmark evidence"><span class="data-secondary">${escapeHTML(model.benchmark?scores.split(" · ").slice(0,2).join(" · ")||"No scores":"No matched benchmark data")}</span>${model.benchmark?`<span class="status-badge ${model.benchmark.stale?"neutral":"success"}">${model.benchmark.stale?"Stale":"Current"}</span>`:""}${details}</td><td data-label="Access"><label class="checkbox model-enable"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" aria-label="Enable ${escapeHTML(model.id)}" ${model.enabled?"checked":""}><span>${model.enabled?"Enabled":"Disabled"}</span></label></td><td class="model-tracking" data-label="Usage &amp; provider quota"><span class="data-secondary">${escapeHTML(modelQuotaText(model))}</span><span class="data-secondary">${escapeHTML(modelUsageText(model))}</span></td></tr>`;
+  return `<tr><td data-label="Model"><strong class="model-name">${escapeHTML(model.id)}</strong><span class="data-secondary">${escapeHTML(model.provider_id)}</span></td><td data-label="Capabilities"><div class="capability-list">${capabilities}</div></td><td class="numeric" data-label="Input / 1M tokens">${model.subscription?'<span class="data-secondary">Subscription included</span>':""}${typeof pricing.input_per_million==="number"?modelPrice(pricing.input_per_million):"—"}<span class="data-secondary">${typeof pricing.output_per_million==="number"?`${modelPrice(pricing.output_per_million)} output`:"Output unknown"}</span>${pricing.source==="operator"?'<span class="data-secondary">Manual pricing</span>':""}<button type="button" class="button quiet model-price-edit" data-model-price="${escapeHTML(model.id)}">Edit pricing</button></td><td data-label="Benchmark evidence"><span class="data-secondary">${escapeHTML(model.benchmark?scores.split(" · ").slice(0,2).join(" · ")||"No scores":"No matched benchmark data")}</span>${model.benchmark?`<span class="status-badge ${model.benchmark.stale?"neutral":"success"}">${model.benchmark.stale?"Stale":"Current"}</span>`:""}${details}</td><td data-label="Access"><label class="checkbox model-enable"><input type="checkbox" data-model-enabled="${escapeHTML(model.id)}" aria-label="Enable ${escapeHTML(model.id)}" ${model.enabled?"checked":""}><span>${model.enabled?"Enabled":"Disabled"}</span></label></td><td class="model-tracking" data-label="Usage &amp; provider quota"><span class="data-secondary">${escapeHTML(modelQuotaText(model))}</span><span class="data-secondary">${escapeHTML(modelUsageText(model))}</span></td></tr>`;
  }).join(""):`<tr><td colspan="6"><div class="empty-state"><strong>No models match these filters</strong><p>Try another model name or clear your filters.</p></div></td></tr>`;
  document.querySelector("#model-count") .textContent=`${filtered.length?modelPage*modelPageSize+1:0}–${Math.min((modelPage+1)*modelPageSize,filtered.length)} of ${filtered.length} models${filtered.length!==physicalModels.length?` · ${physicalModels.length} total`:""}`;
  document.querySelector                   ("#model-previous") .disabled=modelPage===0;document.querySelector                   ("#model-next") .disabled=(modelPage+1)*modelPageSize>=filtered.length;
  if(focused==="model-next"&&document.querySelector                   ("#model-next") .disabled)(document.querySelector                   ("#model-previous") .disabled?document.querySelector                  ("#model-search"):document.querySelector                   ("#model-previous"))?.focus?.();
  if(focused==="model-previous"&&document.querySelector                   ("#model-previous") .disabled)(document.querySelector                   ("#model-next") .disabled?document.querySelector                  ("#model-search"):document.querySelector                   ("#model-next"))?.focus?.();
+ rows.querySelectorAll                   ("[data-model-price]").forEach(button=>button.addEventListener("click",()=>openModelPricing(button.dataset.modelPrice )));
  rows.querySelectorAll                  ("[data-model-enabled]").forEach(input=>input.addEventListener("change",async()=>{modelEnabledDraft[input.dataset.modelEnabled ]=input.checked;markDirty();if(await saveConfig())void loadModelsPage();}));
 }
 function renderModelsPage()     {
  const output=document.querySelector             ("#models-list") ;
  if(!physicalModels.length){output.innerHTML='<div class="empty-state"><span class="empty-state-icon">◇</span><strong>Your model catalog is empty</strong><p>Connect and test a provider to discover the models available to your gateway.</p><a href="#providers" class="button primary">Connect a provider</a></div>';return;}
  const providerIDs=[...new Set(physicalModels.map(model=>String(model.provider_id)))].sort();
- output.innerHTML=`<div class="models-toolbar"><label class="search-field" for="model-search">Search models<input aria-label="Search models" id="model-search" type="search" placeholder="Search by model or provider…" maxlength="256" value="${escapeHTML(modelSearch)}"></label><label for="model-provider-filter">Provider<select id="model-provider-filter" aria-label="Provider"><option value="">All providers</option>${providerIDs.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("")}</select></label><label for="model-status-filter">Status<select id="model-status-filter" aria-label="Status"><option value="">All models</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label><label for="model-sort">Sort<select id="model-sort" aria-label="Sort models"><option value="name">Model name</option><option value="provider">Provider</option><option value="enabled">Enabled first</option></select></label><span id="model-count" class="section-note" role="status"></span></div><div class="benchmark-table-scroll"><table class="model-table"><thead><tr><th scope="col">Model / provider</th><th scope="col">Capabilities</th><th scope="col">Input / 1M tokens</th><th scope="col">Benchmark evidence</th><th scope="col">Access</th><th scope="col">Usage &amp; provider quota</th></tr></thead><tbody id="model-table-body"></tbody></table></div><div class="benchmark-pagination models-pagination"><label for="model-page-size" class="inline-filter">Rows<select id="model-page-size" aria-label="Models per page"><option value="5">5</option><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><div><button id="model-previous" class="button quiet" type="button">Previous</button><button id="model-next" class="button quiet" type="button">Next</button></div></div><p class="section-note">Prices are USD per million tokens; subscription models have zero marginal cost. Gateway spend is estimated. Provider quota snapshots share account limits across models where applicable. — means unknown. Disabled models are unavailable to client discovery and routing.</p>`;
+ output.innerHTML=`<div class="models-toolbar"><label class="search-field" for="model-search">Search models<input aria-label="Search models" id="model-search" type="search" placeholder="Search by model or provider…" maxlength="256" value="${escapeHTML(modelSearch)}"></label><label for="model-provider-filter">Provider<select id="model-provider-filter" aria-label="Provider"><option value="">All providers</option>${providerIDs.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("")}</select></label><label for="model-status-filter">Status<select id="model-status-filter" aria-label="Status"><option value="">All models</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label><label for="model-sort">Sort<select id="model-sort" aria-label="Sort models"><option value="name">Model name</option><option value="provider">Provider</option><option value="enabled">Enabled first</option></select></label><span id="model-count" class="section-note" role="status"></span></div><div class="benchmark-table-scroll"><table class="model-table"><thead><tr><th scope="col">Model / provider</th><th scope="col">Capabilities</th><th scope="col">Input / 1M tokens</th><th scope="col">Benchmark evidence</th><th scope="col">Access</th><th scope="col">Usage &amp; provider quota</th></tr></thead><tbody id="model-table-body"></tbody></table></div><div class="benchmark-pagination models-pagination"><label for="model-page-size" class="inline-filter">Rows<select id="model-page-size" aria-label="Models per page"><option value="5">5</option><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><div><button id="model-previous" class="button quiet" type="button">Previous</button><button id="model-next" class="button quiet" type="button">Next</button></div></div><p class="section-note">Prices are USD per million tokens. Manual rates apply to routing and estimated spend. Providers configured to treat models as free retain zero effective cost. Gateway spend is estimated. Provider quota snapshots share account limits across models where applicable. — means unknown. Disabled models are unavailable to client discovery and routing.</p>`;
  document.querySelector                  ("#model-search") .addEventListener("input",event=>{modelSearch=(event.target                    ).value;modelPage=0;renderModelRows();});
  const provider=document.querySelector                   ("#model-provider-filter") ;provider.value=modelProviderFilter;provider.addEventListener("change",()=>{modelProviderFilter=provider.value;modelPage=0;renderModelRows();});
  const status=document.querySelector                   ("#model-status-filter") ;status.value=modelStatusFilter;status.addEventListener("change",()=>{modelStatusFilter=status.value;modelPage=0;renderModelRows();});const sort=document.querySelector                   ("#model-sort") ;sort.value=modelSort;sort.addEventListener("change",()=>{modelSort=sort.value;modelPage=0;renderModelRows();});
@@ -416,6 +487,45 @@ async function loadModelsPage()              {
  }catch(error){output.innerHTML=`<div class="empty-state error-state" role="alert"><strong>Unable to load models</strong><p>${escapeHTML(error instanceof Error?error.message:"Models unavailable")}</p></div>`;}finally{button.disabled=false;}
 }
 document.querySelector("#refresh-models") .addEventListener("click",()=>{void loadModelsPage();});
+
+function clearModelPricing()     {
+ modelPricingDraft={};editingModelPricingID="";
+ document.querySelector                   ("#model-pricing-dialog")?.close?.();
+ document.querySelector                 ("#model-pricing-form")?.reset?.();
+ for(const id of ["model-pricing-status","model-pricing-current","model-pricing-import-status"]){const node=document.querySelector(`#${id}`);if(node)node.textContent="";}
+ const file=document.querySelector                  ("#model-pricing-csv");if(file)file.value="";
+}
+function openModelPricing(id       )     {
+ editingModelPricingID=id;const manual=modelPricingDraft[id]||{};const model=physicalModels.find(model=>model.id===id);
+ document.querySelector("#model-pricing-model") .textContent=id;
+ document.querySelector("#model-pricing-current") .textContent=`Current effective rates: ${model?modelPricingText(model):"Unknown"}. Provider free-model policy takes precedence over entered rates.`;
+ for(const [id,key] of [["model-pricing-input","input_per_million"],["model-pricing-output","output_per_million"]]){const input=document.querySelector                  (`#${id}`) ;input.value=manual[key]===undefined?"":String(manual[key]);input.placeholder=typeof model?.pricing?.[key]==="number"?String(model.pricing[key]):"Unknown automatic rate";}
+ document.querySelector("#model-pricing-status") .textContent="";
+ document.querySelector                   ("#model-pricing-dialog")?.showModal?.();
+}
+async function saveModelPricing(event       )              {
+ event?.preventDefault();if(!editingModelPricingID)return;
+ const form=document.querySelector                 ("#model-pricing-form") ;if(!form.reportValidity())return;
+ const pricing                      ={};const status=document.querySelector("#model-pricing-status") ;
+ for(const [id,key] of [["model-pricing-input","input_per_million"],["model-pricing-output","output_per_million"]]){const raw=document.querySelector                  (`#${id}`) .value.trim();if(raw==="")continue;const value=Number(raw);if(!Number.isFinite(value)||value<0){status.textContent="Rates must be finite, nonnegative USD amounts per million tokens.";return;}pricing[key]=value;}
+ if(Object.keys(pricing).length)modelPricingDraft[editingModelPricingID]=pricing;else delete modelPricingDraft[editingModelPricingID];
+ const login=consoleSession;const button=document.querySelector                   ("#model-pricing-save") ;button.disabled=true;markDirty();status.textContent="Saving pricing…";
+ try{if(await saveConfig()){if(login!==consoleSession)return;document.querySelector                   ("#model-pricing-dialog")?.close?.();editingModelPricingID="";await loadModelsPage();}else if(login===consoleSession)status.textContent=saveState.textContent||"Pricing draft retained. Wait for any active save, then retry.";}finally{button.disabled=false;}
+}
+async function uploadModelPricingCSV()              {
+ const status=document.querySelector("#model-pricing-import-status") ;const file=document.querySelector                  ("#model-pricing-csv")?.files?.[0];
+ if(!file){status.textContent="Choose a pricing CSV first.";return;}if(file.size>1024*1024){status.textContent="Pricing CSV files must be at most 1 MiB.";return;}
+ const login=consoleSession;const button=document.querySelector                   ("#model-pricing-upload") ;button.disabled=true;status.textContent="Validating pricing CSV…";
+ try{
+  const response=await gatewayFetch("/gateway/v1/models/pricing/parse",{method:"POST",headers:{"Content-Type":"text/csv",...await authProvider.headers()},body:file});const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error||"Unable to validate pricing CSV");
+  for(const [id,pricing] of Object.entries(result.model_pricing||{})                  ){if(pricing.input_per_million===undefined&&pricing.output_per_million===undefined)delete modelPricingDraft[id];else modelPricingDraft[id]=pricing;}
+  markDirty();if(await saveConfig()){if(login!==consoleSession)return;status.textContent="Model pricing saved.";await loadModelsPage();}else status.textContent=saveState.textContent||"Pricing draft retained; retry saving.";
+ }catch(error){if(login===consoleSession)status.textContent=error instanceof Error?error.message:"Unable to import pricing";}finally{button.disabled=false;}
+}
+document.querySelector("#model-pricing-form")?.addEventListener("submit",event=>void saveModelPricing(event));
+document.querySelector("#model-pricing-cancel")?.addEventListener("click",()=>{document.querySelector                   ("#model-pricing-dialog")?.close?.();editingModelPricingID="";});
+document.querySelector("#model-pricing-clear")?.addEventListener("click",()=>{document.querySelector                  ("#model-pricing-input") .value="";document.querySelector                  ("#model-pricing-output") .value="";void saveModelPricing();});
+document.querySelector("#model-pricing-upload")?.addEventListener("click",()=>void uploadModelPricingCSV());
 
 document.querySelector("#refresh-quotas")?.addEventListener("click",async()=>{
  const login=consoleSession;
@@ -647,7 +757,7 @@ function signOutConsole()       {
   document.querySelector                   ("#create-key-dialog") .close();
   document.querySelector                  ("#client-key-name") .value = "";
   providers = [];
-  overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];usageData=null;usageKeyMetadata=[];document.querySelector("#models-list") .textContent="";document.querySelector("#usage-list") .textContent="";
+  overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];clearModelPricing();usageData=null;usageKeyMetadata=[];document.querySelector("#models-list") .textContent="";document.querySelector("#usage-list") .textContent="";
   configurationLoaded = false;
   classifierQuestionOverrides = {};
   classifierNoulThresholds = {};
@@ -973,7 +1083,7 @@ function isSetupPlaceholder(provider                     )          {
 
 function applyConfig(config                     , revision = "")       {
   configurationRevision = revision;
-  loadedConfiguration=structuredClone(config);modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
+  loadedConfiguration=structuredClone(config);modelPricingDraft=structuredClone(config.model_pricing||{});modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
   legacyClassifier = null;
@@ -1188,7 +1298,7 @@ function readConfig()                      {
   const config                      = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router=structuredClone(smartRouterDrafts[selectedSmartRouter]||config.router||{});config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality" || name==="router.intelligence_weights") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
+  config.model_pricing=structuredClone(modelPricingDraft);config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
@@ -1356,7 +1466,7 @@ document.querySelector("#inspect-benchmarks") .addEventListener("click", () => {
 document.querySelector("#save-button") .addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle") .addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target               ))markDirty();});
 form.addEventListener("change",event=>{const target=event.target               ;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
@@ -1453,10 +1563,23 @@ async function detectOllama(provider                   )              {
 
 function renderSmartRouterScope()     {
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
- for(const [selector,ids,chosen] of [["#smart-router-providers",providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),draft.providers||[]],["#smart-router-models",(overviewModels||[]).map(m=>m.id),draft.models||[]]]                                ){
-  const control=document.querySelector                   (selector);if(!control)continue;
-  const options=[...new Set([...ids,...chosen])].sort();control.innerHTML=options.map(id=>`<option value="${escapeHTML(id)}" ${chosen.includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const providerControl=document.querySelector                   ("#smart-router-providers");
+ const providerIDs=[...new Set([...providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),...(draft.providers||[])])].sort();
+ if(providerControl)providerControl.innerHTML=providerIDs.map(id=>`<option value="${escapeHTML(id)}" ${(draft.providers||[]).includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const chosen         =draft.models||[];
+ const available=(overviewModels||[]).filter(m=>!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id).sort();
+ for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]]                       ){
+  const control=document.querySelector                   (selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }
+ const count=document.querySelector("#smart-router-model-count");if(count)count.textContent=`${chosen.length} / 250`;
+}
+async function transferSmartModels(enable        , single        )              {
+ const control=document.querySelector                   (enable?"#smart-router-models-available":"#smart-router-models");
+ const ids=single?[single]:Array.from(control?.selectedOptions||[]).map(option=>option.value);if(!ids.length)return;
+ readConfig();const draft=smartRouterDrafts[selectedSmartRouter];const current         =draft.models||[];
+ const next=enable?[...new Set([...current,...ids])]:current.filter(id=>!ids.includes(id));
+ if(next.length>250){toast("Smart routers support at most 250 enabled models.");return;}
+ draft.models=next;renderSmartRouterScope();markDirty();await saveConfig();
 }
 function renderSmartRouterEditor()     {
  const selector=document.querySelector                   ("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
@@ -1478,4 +1601,10 @@ document.querySelector("#add-smart-router")?.addEventListener("click",async()=>{
  readConfig();smartRouterDrafts[name]={...structuredClone(smartRouterDrafts.smart),model_name:name};selectedSmartRouter=name;input.value="";renderSmartRouterEditor();markDirty();await saveConfig();
 });
 document.querySelector("#remove-smart-router")?.addEventListener("click",async()=>{if(selectedSmartRouter==="smart")return;delete smartRouterDrafts[selectedSmartRouter];selectedSmartRouter="smart";renderSmartRouterEditor();markDirty();await saveConfig();});
-for(const [id,key] of [["smart-router-providers","providers"],["smart-router-models","models"]])document.querySelector                   (`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target                     ).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+for(const [id,key] of [["smart-router-providers","providers"]])document.querySelector                   (`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target                     ).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+
+document.querySelector("#smart-router-model-add")?.addEventListener("click",()=>void transferSmartModels(true));
+document.querySelector("#smart-router-model-remove")?.addEventListener("click",()=>void transferSmartModels(false));
+for(const [id,enable] of [["smart-router-models-available",true],["smart-router-models",false]]                      ){
+ document.querySelector(id.startsWith("#")?id:`#${id}`)?.addEventListener("dblclick",event=>{const target=event.target                     ;void transferSmartModels(enable,target.tagName==="OPTION"?target.value:undefined);});
+}

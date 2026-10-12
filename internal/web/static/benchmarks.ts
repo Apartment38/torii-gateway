@@ -176,8 +176,8 @@ function renderBenchmarkTable(): void {
 function benchmarkDate(value:any):string{
  if(!value||String(value).startsWith("0001-"))return "Unknown";
  const date=new Date(String(value));if(Number.isNaN(date.getTime()))return "Unknown";
- const display=date.toLocaleDateString("en-US",{timeZone:"UTC",month:"short",day:"numeric",year:"numeric"});
- return /^\d{4}-\d{2}-\d{2}$/.test(String(value))?display:`${display} · ${date.toLocaleTimeString("en-US",{timeZone:"UTC",hour:"2-digit",minute:"2-digit",hour12:false})} UTC`;
+ const display=date.toLocaleDateString("en-US",{timeZone:/^\d{4}-\d{2}-\d{2}$/.test(String(value))?"UTC":consoleTimezone||undefined,month:"short",day:"numeric",year:"numeric"});
+ return /^\d{4}-\d{2}-\d{2}$/.test(String(value))?display:`${display} · ${date.toLocaleTimeString("en-US",{timeZone:consoleTimezone||undefined,hour:"2-digit",minute:"2-digit",hour12:false} )} ${escapeHTML(consoleTimezoneLabel())}`;
 }
 async function loadBenchmarkData(): Promise<boolean> {
   if (!benchmarksEnabledSaved || !consoleSession) return false;

@@ -1,4 +1,4 @@
-// Package activity publishes bounded, metadata-only request history.
+// Package activity publishes bounded request history with opt-in debug bodies.
 package activity
 
 import (
@@ -14,11 +14,13 @@ import (
 )
 
 type Options struct {
-	RetentionDays int    `yaml:"retention_days,omitempty"`
-	MaxBytes      int64  `yaml:"max_bytes,omitempty"`
-	LogFile       string `yaml:"log_file,omitempty"`
-	LogMaxBytes   int64  `yaml:"log_max_bytes,omitempty"`
-	LogBackups    int    `yaml:"log_backups,omitempty"`
+	RetentionDays      int    `yaml:"retention_days,omitempty"`
+	PromptLogging      bool   `yaml:"prompt_logging,omitempty"`
+	JevDecisionLogging bool   `yaml:"jev_decision_logging,omitempty"`
+	MaxBytes           int64  `yaml:"max_bytes,omitempty"`
+	LogFile            string `yaml:"log_file,omitempty"`
+	LogMaxBytes        int64  `yaml:"log_max_bytes,omitempty"`
+	LogBackups         int    `yaml:"log_backups,omitempty"`
 }
 
 func (o Options) Defaults() Options {
@@ -66,6 +68,10 @@ type Event struct {
 	UnknownCost       bool      `json:"unknown_cost"`
 	AccountingFailure bool      `json:"accounting_failure,omitempty"`
 	GapCount          uint64    `json:"gap_count,omitempty"`
+	Prompt            string    `json:"prompt,omitempty"`
+	JevRequest        string    `json:"jev_request,omitempty"`
+	JevResponse       string    `json:"jev_response,omitempty"`
+	DebugTruncated    bool      `json:"debug_truncated,omitempty"`
 }
 type Store struct {
 	db          *sql.DB
@@ -94,9 +100,27 @@ func Open(database *state.Database, options Options) (*Store, error) {
 }
 func (s *Store) Configure(options Options) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.options = options.Defaults()
+	s.mu.Unlock()
+	if err := s.prune(); err != nil {
+		slog.Warn("activity_retention_unavailable")
+	}
 }
+func (s *Store) Options() Options {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.options
+}
+
+const MaxDebugBytes = 64 << 10
+
+func DebugText(value string) (string, bool) {
+	if len(value) <= MaxDebugBytes {
+		return value, false
+	}
+	return strings.ToValidUTF8(value[:MaxDebugBytes], ""), true
+}
+
 func (s *Store) Emit(e Event) {
 	// Only this explicit field inventory crosses the persistence/log boundary.
 	e.ID = 0
@@ -112,6 +136,20 @@ func (s *Store) Emit(e Event) {
 	if s.closed {
 		return
 	}
+	if !s.options.PromptLogging {
+		e.Prompt = ""
+	}
+	if !s.options.JevDecisionLogging {
+		e.JevRequest = ""
+		e.JevResponse = ""
+	}
+	var truncated bool
+	e.Prompt, truncated = DebugText(e.Prompt)
+	e.DebugTruncated = e.DebugTruncated || truncated
+	e.JevRequest, truncated = DebugText(e.JevRequest)
+	e.DebugTruncated = e.DebugTruncated || truncated
+	e.JevResponse, truncated = DebugText(e.JevResponse)
+	e.DebugTruncated = e.DebugTruncated || truncated
 	select {
 	case s.queue <- e:
 	default:
@@ -181,7 +219,14 @@ func (s *Store) persist(e Event) {
 		return
 	}
 	// Structured logs carry the same safe metadata as history, even if storage fails.
-	defer func() { slog.Info("gateway_activity", "event", e) }()
+	defer func() {
+		metadata := e
+		metadata.Prompt = ""
+		metadata.JevRequest = ""
+		metadata.JevResponse = ""
+		metadata.DebugTruncated = false
+		slog.Info("gateway_activity", "event", metadata)
+	}()
 	tx, err := s.db.Begin()
 	if err != nil {
 		s.publish(Event{Kind: "gap", GapCount: 1})
@@ -197,7 +242,8 @@ func (s *Store) persist(e Event) {
 	if err != nil {
 		return
 	}
-	if err = s.trim(tx); err != nil {
+	removed, err := s.trim(tx)
+	if err != nil {
 		s.publish(Event{Kind: "gap", GapCount: 1})
 		return
 	}
@@ -206,25 +252,35 @@ func (s *Store) persist(e Event) {
 		return
 	}
 	s.publish(e)
+	if removed {
+		s.publish(Event{Kind: "history_reset"})
+	}
 }
-func (s *Store) trim(tx *sql.Tx) error {
+func (s *Store) trim(tx *sql.Tx) (bool, error) {
 	s.mu.RLock()
 	options := s.options
 	s.mu.RUnlock()
-	if _, err := tx.Exec("DELETE FROM activity_events WHERE at<?", time.Now().UTC().AddDate(0, 0, -options.RetentionDays).Unix()); err != nil {
-		return err
+	result, err := tx.Exec("DELETE FROM activity_events WHERE at<?", time.Now().UTC().AddDate(0, 0, -options.RetentionDays).Unix())
+	if err != nil {
+		return false, err
 	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	removed := count > 0
 	for {
 		var size int64
 		if err := tx.QueryRow("SELECT bytes FROM activity_storage WHERE id=1").Scan(&size); err != nil {
-			return err
+			return removed, err
 		}
 		if size <= options.MaxBytes {
-			return nil
+			return removed, nil
 		}
 		if _, err := tx.Exec("DELETE FROM activity_events WHERE id IN (SELECT id FROM activity_events ORDER BY id LIMIT 128)"); err != nil {
-			return err
+			return removed, err
 		}
+		removed = true
 	}
 }
 func (s *Store) prune() error {
@@ -233,10 +289,17 @@ func (s *Store) prune() error {
 		return err
 	}
 	defer tx.Rollback()
-	if err = s.trim(tx); err != nil {
+	removed, err := s.trim(tx)
+	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if removed {
+		s.publish(Event{Kind: "history_reset"})
+	}
+	return nil
 }
 func (s *Store) History(after int64, limit int) ([]Event, bool, error) {
 	if limit < 1 || limit > 1000 {

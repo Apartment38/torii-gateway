@@ -305,7 +305,7 @@ func TestSmartSafetyEvidenceIsTransparentAndCannotBeSpoofed(t *testing.T) {
 			if elapsed, err := strconv.ParseFloat(w.Header().Get("X-Torii-Routing-Ms"), 64); err != nil || elapsed < 0 {
 				t.Fatal("missing routing time")
 			}
-			if !strings.Contains(logs.String(), "smart_routing_decision") || !strings.Contains(logs.String(), "classifier_actual_usage") || strings.Contains(logs.String(), "private-prompt-sentinel") || strings.Contains(logs.String(), "safety-session") {
+			if strings.Contains(logs.String(), "smart_routing_decision") || strings.Contains(logs.String(), "classifier_actual_usage") || strings.Contains(logs.String(), "private-prompt-sentinel") || strings.Contains(logs.String(), "safety-session") {
 				t.Fatal("unsafe/missing logs", logs.String())
 			}
 		})

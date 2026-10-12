@@ -270,3 +270,17 @@ router:
 		t.Fatalf("config = %#v", cfg)
 	}
 }
+
+func TestDisplayTimezoneValidation(t *testing.T) {
+	for _, zone := range []string{"", "UTC", "America/New_York", "Asia/Tokyo", "Europe/London"} {
+		cfg, err := config.Decode(strings.NewReader(strings.Replace(validConfig, "listen: 127.0.0.1:8080", "listen: 127.0.0.1:8080\n  timezone: '"+zone+"'", 1)))
+		if err != nil || cfg.Server.Timezone != zone {
+			t.Fatalf("zone %q: %v", zone, err)
+		}
+	}
+	for _, zone := range []string{"Local", "Mars/Olympus", "/etc/passwd"} {
+		if _, err := config.Decode(strings.NewReader(strings.Replace(validConfig, "listen: 127.0.0.1:8080", "listen: 127.0.0.1:8080\n  timezone: '"+zone+"'", 1))); err == nil {
+			t.Fatal("accepted timezone", zone)
+		}
+	}
+}

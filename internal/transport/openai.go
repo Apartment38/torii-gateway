@@ -73,6 +73,9 @@ func (t *OpenAICompatible) Do(ctx context.Context, endpoint string, body []byte,
 	if err != nil {
 		return nil, err
 	}
+	if observe, ok := ctx.Value(requestBodyObserverKey{}).(func([]byte)); ok {
+		observe(rewritten)
+	}
 	u := *t.baseURL
 	appendURLPath(&u, endpoint)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(rewritten))

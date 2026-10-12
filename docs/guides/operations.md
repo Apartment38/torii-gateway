@@ -50,7 +50,7 @@ deadline. Idle HTTP connections close after 60 seconds.
 
 The durable operator ledger reserves budgets before dispatch and settles reported JSON/SSE usage afterward. Missing usage or interruptions retain conservative estimates. Reservations, budgets, and administrator sessions survive restarts. These estimated monetary costs are not provider billing. Legacy routing counters are buffered separately; upstream live quota caches and pending OAuth flows remain in memory.
 
-The Activity page retains metadata for seven days by default with a 100 MiB cap. `activity` settings control retention; `activity.log_file` enables an optional rotating JSON file. Prompts, responses, and credentials are excluded.
+The Activity page retains metadata for seven days by default with a 100 MiB cap. `activity` settings control retention; `activity.log_file` enables an optional rotating JSON file. API prompts and Jev protocol bodies are excluded by default. Server → Activity monitoring exposes size/retention and optional prompt/Jev debugging capture, both off by default. Captured bodies share the Activity limits and never appear in general logs; HTTP authorization headers are excluded. See [console monitoring](console.md#timezone-and-activity-monitoring).
 
 Use one process per SQLite data volume on local storage. Keep the database and master key persistent. [Backup and upgrade](backup-and-upgrade.md) explains coherent backups
 and schema compatibility. [State and security](../development/state-and-security.md)

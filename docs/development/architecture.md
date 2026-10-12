@@ -44,7 +44,7 @@ one local database volume; benchmark writer coordination is process-local.
 | `internal/quota` / `internal/usage` | Quota snapshots, aggregate accounting and background flush |
 | `internal/intelligence` | Source adapters, identities, aggregation, refresh/store manager |
 | `internal/accounting` | Durable per-key budgets, conservative reservations and JSON/SSE usage |
-| `internal/activity` | Bounded metadata history, live events and structured logs |
+| `internal/activity` | Bounded request history, optional debug bodies, live events and redacted structured logs |
 | `internal/state` | Encrypted records, admin/client keys, schemas, durable runtime/benchmark data |
 | `internal/web` / `assets` | Embedded console/generated JS and project images |
 | `internal/fault`, `requestid`, `buildinfo` | Shared error taxonomy, correlation, version metadata |
@@ -110,7 +110,7 @@ SQLite stores validated settings and revisions; YAML is accepted for explicit im
 payloads and readable benchmark/usage/host-identity data. Separate pools for
 benchmark and usage writes prevent those writes queuing credential reads, though
 SQLite still serializes competing writes. Usage is buffered/flushed every second.
-Administrator sessions, budgets, reservations and activity metadata are durable. Routing affinity, upstream live quota caches and pending OAuth flows remain memory-only.
+Administrator sessions, budgets, reservations and activity history (including explicitly enabled debug bodies) are durable. Routing affinity, upstream live quota caches and pending OAuth flows remain memory-only.
 
 ## Decisions and risks
 

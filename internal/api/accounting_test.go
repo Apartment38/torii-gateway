@@ -246,3 +246,41 @@ func TestEmbeddingUsageAndAmbiguousTotalCost(t *testing.T) {
 		})
 	}
 }
+
+func TestActivityPromptLoggingPreservesOriginalAPIBody(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			p := &accountingFixtureProvider{}
+			h, _ := accountingHandler(t, p, accounting.Settings{})
+			db, err := state.OpenDatabase(filepath.Join(t.TempDir(), "activity.db"), bytes.Repeat([]byte{2}, 32))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			events, err := activity.Open(db, activity.Options{PromptLogging: enabled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer events.Close()
+			h.SetActivity(events)
+			ch, cancel := events.Subscribe()
+			defer cancel()
+			body := "{\n \"model\": \"p/model\", \"messages\": [{\"role\":\"user\",\"content\":\"private prompt\"}], \"extra\": {\"opaque\": true}\n}"
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body)))
+			if w.Code != 200 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			for range 3 {
+				select {
+				case e := <-ch:
+					if enabled && e.Prompt != body || !enabled && e.Prompt != "" {
+						t.Fatal("original request not preserved or capture enabled by default", e.Kind)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("event missing")
+				}
+			}
+		})
+	}
+}

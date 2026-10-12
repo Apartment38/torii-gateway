@@ -82,11 +82,12 @@ func (j *Jev) Classify(ctx context.Context, request ClassificationRequest) (Clas
 	req.Header.Set("Authorization", "Bearer "+j.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	recordDecisionRequest(ctx, body)
 	resp, err := j.client.Do(req)
 	if err != nil {
 		return Classification{}, errors.New("Jev request failed (network or timeout)")
 	}
-	return decodeJevResponse(resp, request, j.options)
+	return decodeObservedJevResponse(ctx, resp, request, j.options)
 }
 
 func NewJevTransport(p provider.DecisionProvider, model string) (*JevTransport, error) {
@@ -115,11 +116,12 @@ func (j *JevTransport) Classify(ctx context.Context, request ClassificationReque
 	if err != nil {
 		return Classification{}, err
 	}
-	resp, err := j.provider.ForwardDecision(ctx, body)
+	recordDecisionRequest(ctx, body)
+	resp, err := j.provider.ForwardDecision(decisionRequestContext(ctx), body)
 	if err != nil {
 		return Classification{}, errors.New("Jev provider request failed (network or timeout)")
 	}
-	return decodeJevResponse(resp, request, j.options)
+	return decodeObservedJevResponse(ctx, resp, request, j.options)
 }
 
 func jevRequestBody(model string, request ClassificationRequest, options DecisionOptions) ([]byte, error) {

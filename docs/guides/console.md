@@ -29,8 +29,8 @@ The Overview client model selector includes token prices, provider allowance/res
 information, and this month's gateway usage. **Models** shows the same tracking
 and expands provider-reported spend under **Inspect metadata**. **Provider Balances**
 shows one card per provider, combining shared account balances and independent quota
-windows without adding repeated balances together. It shows subscription limits separately from the operator budgets
-on **Usage & quota**.
+windows without adding repeated balances together. It shows subscription limits
+separately from the operator budgets on **Usage & quota**.
 Dollar balances, token/request allowances and subscription percentages retain
 their units; reset times use the saved display timezone (your browser timezone when unset). “Quota unknown” and
 “Usage unavailable” mean data was not reported or could not be read, not zero.

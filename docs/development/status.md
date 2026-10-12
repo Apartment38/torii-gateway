@@ -12,7 +12,26 @@ of API-key metadata, supports refresh and explicit empty/error states, and clear
 cached telemetry when the administrator session ends. The console guide is updated.
 
 Validation: console tests, generated-script freshness, and diff checks pass.
-No push, merge, or deployment was performed.
+Submitted as PR #27. No deployment was performed.
+
+## Known provider API URL defaults
+
+Implemented on `fix/provider-url-defaults` in
+`/workspace/work/provider-url-defaults`. Selecting any of the 15 hosted provider
+integrations fills its complete API URL, including provider-specific path prefixes.
+One table replaces the incomplete tracking-only defaults and conditional Nous/Codex
+assignments. Switching types updates the endpoint; reopening a saved provider or
+receiving an unchanged type event preserves its customized URL. Custom compatible
+services still need an operator URL, and Ollama retains its detection workflow.
+The provider guide now describes automatic defaults.
+
+Validation: baseline and final console checks pass, including all 122 console
+tests, generated script freshness, `go test ./internal/web`, guide links and
+`git diff --check`. Regression checks exercise add-provider selection, visible
+URL fields and actual connection-test payloads for every hosted integration, both
+with blank drafts and previous endpoint values, plus custom URL preservation.
+Backend provider behavior and dependencies are unchanged. No live provider calls
+or deployment were performed.
 
 ## Codex browser login
 

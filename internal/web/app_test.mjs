@@ -360,6 +360,58 @@ test("the edited API URL is used rather than stale loaded base_url fields", () =
   assert.equal(output.api_path, "/custom");
 });
 
+test("selecting a known hosted provider fills the API URL used by connection checks", async () => {
+  const endpoints = {
+    openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com",
+    gemini: "https://generativelanguage.googleapis.com/v1beta/openai", xai: "https://api.x.ai/v1",
+    openrouter: "https://openrouter.ai/api/v1", nous: "https://inference-api.nousresearch.com/v1",
+    "opencode-go": "https://opencode.ai/zen/go/v1", "opencode-zen": "https://opencode.ai/zen/v1",
+    "standard-compute": "https://api.stdcmpt.com/v1", zai: "https://api.z.ai/api/coding/paas/v4",
+    "kimi-coding": "https://api.kimi.com/coding/v1", minimax: "https://api.minimax.io/v1",
+    deepseek: "https://api.deepseek.com/v1", "openai-codex": "https://chatgpt.com/backend-api/codex",
+    jev: "https://api.typesafe.ai/v1",
+  };
+  for (const [type, endpoint] of Object.entries(endpoints)) {
+    for (const previousURL of ["", "https://previous.example/stale-path"]) {
+      const app = consoleFixture((url, options) => {
+        assert.equal(url, "/gateway/v1/providers/test");
+        const provider = JSON.parse(options.body).provider;
+        assert.equal(provider.type, type);
+        assert.equal(provider.base_url + (provider.api_path || ""), endpoint);
+        return response({ models: [{ id: `${provider.id}/model` }] });
+      });
+      app.run('document.querySelector("#add-provider").listeners.click()');
+      app.context.previousURL = previousURL;
+      app.context.selectedType = type;
+      app.run('providers[0].api_url=previousURL;updateProvider({target:{dataset:{provider:"0",key:"type"},value:selectedType}})');
+      assert.equal(app.run("providers[0].api_url"), endpoint);
+      if (type !== "openai-codex") assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_url"]').value, endpoint);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(app.calls.length, 1, `${type} should test its populated URL`);
+      assert.match(app.status(0).textContent, /Working/);
+    }
+  }
+});
+
+test("existing custom provider URLs survive reopening and unchanged type events", async () => {
+  const app = consoleFixture((_, options) => {
+    const provider = JSON.parse(options.body).provider;
+    assert.equal(provider.base_url + (provider.api_path || ""), "https://custom.example/prefix");
+    return response(models(1));
+  });
+  app.setProviders([{ ...draft("openrouter"), api_url: "https://custom.example/prefix" }]);
+  app.run('openProviderEditor(0);updateProvider({target:{dataset:{provider:"0",key:"type"},value:"openrouter"}})');
+  assert.equal(app.list.querySelector('[data-provider="0"][data-key="api_url"]').value, "https://custom.example/prefix");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(app.calls.length, 1);
+  for (const type of ["openai_compatible", "jev_compatible"]) {
+    app.run('cancelProviderEditor();providers=[];document.querySelector("#add-provider").listeners.click()');
+    app.context.selectedType = type;
+    app.run('updateProvider({target:{dataset:{provider:"0",key:"type"},value:selectedType}})');
+    assert.equal(app.run("providers[0].api_url"), "");
+  }
+});
+
 test("provider-native base URLs retain their complete path", () => {
   const app = consoleFixture(() => response(models(1)));
   for (const type of ["openai-codex", "nous", "ollama", "anthropic"]) {

@@ -36,9 +36,11 @@ their units; reset times use the saved display timezone (your browser timezone w
 Portal dollar balances and some Codex credential types remain unknown; see
 [Provider support](../reference/providers.md#costs-usage-and-remaining-allowances).
 
-Models and Activity support search, filters, and pagination; mobile views start
-with five rows. The overview period selector switches between the current UTC day
-and month. Benchmark scorecards keep full measurements in **Inspect** dialogs.
+Models and Activity support search, filters, and pagination. Models offers 25, 50,
+100, or **All** rows, with synchronized controls above and below the table. Select a
+page number or use **Previous** / **Next**; longer page lists show **First**, nearby
+pages, and **Last**. Activity mobile views start with five rows. The overview
+period selector switches between the current UTC day and month. Benchmark scorecards keep full measurements in **Inspect** dialogs.
 
 The console supports light and dark themes. It loads the active configuration
 when you sign in. Static assets are public, but configuration and credential
@@ -103,6 +105,19 @@ limits, matching and refresh behavior.
 
 ## Enter model pricing
 
+Each model has a pricing status dot. Hover, focus, or select it to read the status:
+green means pricing was pulled successfully within 24 hours; yellow means manual
+pricing, prices older than 24 hours (including more than one week), a failed
+refresh after a successful pull, or a bundled estimate/unknown update date. Gray
+means prices have never been pulled or set. Manual prices always stay yellow,
+including when a provider's free-model policy sets the effective cost to zero.
+
+**Refresh pricing** attempts fresh provider model-catalog reads. Failed providers
+retain their last known prices and successful update date. Providers without live
+pricing retain available bundled estimates; fetching models does not make those
+estimates current. Manual rates continue to take precedence. Pricing freshness is
+held in the running catalog and is rediscovered after restart.
+
 Use this when a provider does not supply rates, or when its estimates need an
 operator override. Rates are USD per million tokens and affect future routing,
 Jev criteria and gateway cost estimates across all routers. They do not change
@@ -119,8 +134,8 @@ means the existing catalog metadata from providers, bundled estimates and catalo
 overrides. Providers with **Treat models as free** enabled retain zero effective
 rates; disable that provider option when entered rates should apply.
 
-For a batch update, expand **Model pricing · import CSV**, select **Download pricing
-CSV template**, replace the sample row, choose the file under **Pricing CSV**,
+For a batch update, select **Import pricing** to open the import dialog, then
+**Download pricing CSV template**, replace the sample row, choose the file under **Pricing CSV**,
 and select **Upload pricing CSV**. The console validates the entire file before
 saving through the same revision-protected configuration flow.
 

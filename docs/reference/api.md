@@ -46,6 +46,7 @@ and selectors. IDs remain unchanged; `smart` stays first in the list.
 | Field | Meaning |
 | --- | --- |
 | `pricing.input_per_million`, `pricing.output_per_million` | Known USD rates per million tokens; missing rates are unknown. Top-level rate fields are also returned for compatible consumers. |
+| `pricing.updated_at`, `pricing.refresh_failed` | Last successful price evidence time (a bundled estimate uses its snapshot date), and whether a subsequent read failed or omitted previously reported live prices. Missing timestamps mean freshness is unknown. |
 | `pricing.source` | Price provenance: live provider catalog, dated bundled base-rate snapshot, subscription inclusion or operator override. Cached tokens, variable rates and extra charges can differ. |
 | `context_window`, `subscription` | Known token capacity and explicit subscription billing; subscription prices represent zero marginal inference cost. |
 | `quota.known`, `quota.exhausted`, `quota.blocked` | Current provider allowance state; unknown does not imply zero balance or unlimited usage. |
@@ -241,6 +242,7 @@ Pricing CSV tools require administrator authentication:
 
 | Route | Behavior |
 | --- | --- |
+| `POST /gateway/v1/models/pricing/refresh` | Force provider catalog reads within a 30-second request budget; return management models with refreshed pricing evidence. Retain last known prices on provider failures; manual overrides remain in effect. Does not write configuration. Returns 503 when no catalog is usable. |
 | `GET /gateway/v1/models/pricing/template.csv` | Download the header and sample model rates |
 | `POST /gateway/v1/models/pricing/parse` | CSV body ≤1 MiB / 1,000 rows; validate every row and return `model_pricing` replacements without writing settings. Invalid files return 400. |
 

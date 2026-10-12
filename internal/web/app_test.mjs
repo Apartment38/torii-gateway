@@ -1459,7 +1459,7 @@ test("display filters never dirty or save configuration while settings still aut
  const app=consoleFixture(()=>response({providers:[],router:{classifier:{type:"disabled"}}}));
  await app.run('loadServerConfig()');
  const initial=app.run('editGeneration');
- for(const id of ["budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","usage-period","activity-search","activity-outcome","activity-page-size","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"]){
+ for(const id of ["budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","usage-period","activity-search","activity-outcome","activity-page-size","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"]){
   app.context.filterId=id;
   app.run('form.listeners.input({target:{id:filterId}});form.listeners.change({target:{id:filterId,dataset:{},closest(){return null;}}})');
  }
@@ -1505,10 +1505,10 @@ test("overview model distribution excludes monthly and duplicated client rows",(
 
 test("model pages preserve complete model records, clamp ranges, and sort enabled models first",()=>{
  const app=consoleFixture(()=>response({}));
- app.context.largeCatalog=Array.from({length:23},(_,index)=>({id:`p/model-${String(index).padStart(2,"0")}`,provider_id:"p",enabled:index%2===0,pricing:{input_per_million:.0001}}));
+ app.context.largeCatalog=Array.from({length:53},(_,index)=>({id:`p/model-${String(index).padStart(2,"0")}`,provider_id:"p",enabled:index%2===0,pricing:{input_per_million:.0001}}));
  app.run('physicalModels=largeCatalog;renderModelsPage()');
- assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/<tr>/g)].length,10);
- assert.equal(app.run('document.querySelector("#model-count").textContent'),"1–10 of 23 models");
+ assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/<tr>/g)].length,25);
+ assert.equal(app.run('document.querySelector("#model-count").textContent'),"1–25 of 53 models");
  assert.match(app.run('document.querySelector("#model-table-body").innerHTML'),/\$0\.0001/);
  app.run('modelPage=2;renderModelRows()');
  assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/<tr>/g)].length,3);
@@ -1519,7 +1519,7 @@ test("model pages preserve complete model records, clamp ranges, and sort enable
  assert.equal(app.run('filteredPhysicalModels().slice(0,12).every(model=>model.enabled)'),true);
  app.run('modelSearch="model-22";modelPage=20;renderModelRows()');
  assert.equal(app.run('modelPage'),0);
- assert.equal(app.run('document.querySelector("#model-count").textContent'),"1–1 of 1 models · 23 total");
+ assert.equal(app.run('document.querySelector("#model-count").textContent'),"1–1 of 1 models · 53 total");
 });
 
 test("activity investigation filters request, model, key and outcome before pagination",()=>{
@@ -1552,20 +1552,20 @@ test("overview period changes use exact monthly totals and qualify bounded activ
  assert.match(app.run('renderOverviewMonitoring()'),/Current UTC month/);
 });
 
-test("small-screen model and activity views start with five complete records per page",()=>{
+test("small-screen models start with 25 rows and activity retains five rows",()=>{
  const app=consoleFixture(()=>response({}),{mobile:true});
- assert.equal(app.run('modelPageSize'),5);
+ assert.equal(app.run('modelPageSize'),25);
  assert.equal(app.run('activityPageSize'),5);
  app.context.records=Array.from({length:12},(_,index)=>({id:`p/m${index}`,provider_id:"p",enabled:true}));
  app.run('physicalModels=records;renderModelsPage()');
- assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/data-model-enabled=/g)].length,5);
+ assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/data-model-enabled=/g)].length,12);
 });
 
 test("pagination boundaries move keyboard focus to the remaining enabled page action",()=>{
  const app=consoleFixture(()=>response({}));
  app.context.focusHits=[];
  app.context.records=Array.from({length:12},(_,index)=>({id:`p/m${index}`,provider_id:"p",enabled:true,kind:"request_complete"}));
- app.run('physicalModels=records;document.querySelector("#model-previous").focus=()=>focusHits.push("model-previous");document.activeElement={id:"model-next"};modelPage=1;renderModelRows()');
+ app.run('physicalModels=records;modelPageSize=10;document.querySelector("#model-previous").focus=()=>focusHits.push("model-previous");document.activeElement={id:"model-next"};modelPage=1;renderModelRows()');
  assert.deepEqual(Array.from(app.context.focusHits),["model-previous"]);
  app.run('activityRows=records;activityPageSize=5;activityPage=2;document.querySelector("#activity-previous").focus=()=>focusHits.push("activity-previous");document.activeElement={id:"activity-next"};renderActivity()');
  assert.deepEqual(Array.from(app.context.focusHits),["model-previous","activity-previous"]);
@@ -1971,4 +1971,55 @@ test("activity cleanup refresh removes pruned rows and ignores stale session res
  let finish;app.setFetch(()=>new Promise(resolve=>{finish=resolve;}));
  const refresh=app.run('refreshActivityHistory()');await new Promise(resolve=>setImmediate(resolve));app.run('consoleSession="different"');finish(response({events:[{id:2}]}));await refresh;
  assert.equal(app.run('activityRows.length'),0);
+});
+
+
+test("pricing status distinguishes manual, fresh, stale, failed and unknown data",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.priceNow=Date.parse("2026-10-12T12:00:00Z");
+ const status=pricing=>{app.context.testPrice=pricing;return app.run('modelPricingStatus({id:"p/m",pricing:testPrice},priceNow)');};
+ assert.equal(status({}).color,"gray");
+ assert.equal(status({input_per_million:0,source:"provider_model_catalog",updated_at:"2026-10-12T11:00:00Z"}).color,"green");
+ for(const updated_at of ["2026-10-12T11:00:00Z","2026-09-01T00:00:00Z"]){assert.equal(status({input_per_million:1,source:"operator",updated_at}).color,"yellow");}
+ assert.match(status({input_per_million:1,updated_at:"2026-10-11T11:59:59Z"}).label,/24 hours/);
+ assert.match(status({input_per_million:1,updated_at:"2026-10-05T11:59:59Z"}).label,/one week/);
+ assert.match(status({input_per_million:1,updated_at:"2026-10-12T11:00:00Z",refresh_failed:true}).label,/refresh failed/);
+ assert.equal(status({input_per_million:1,source:"models.dev snapshot 2026-10-12",updated_at:"2026-10-12T00:00:00Z"}).color,"yellow");
+ assert.equal(status({input_per_million:1}).color,"yellow");
+});
+
+test("both model paginators provide row sizes, page slices and truncated navigation",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.pagedModels=Array.from({length:500},(_,i)=>({id:`p/m${String(i).padStart(3,"0")}`,provider_id:"p",enabled:true}));
+ app.run('physicalModels=pagedModels;renderModelsPage();modelPage=9;renderModelRows()');
+ for(const position of ["top","bottom"]){
+  const html=app.run(`document.querySelector("#models-pagination-${position}").innerHTML`);
+  for(const size of [25,50,100,0])assert.match(html,new RegExp(`value="${size}"`));
+  assert.match(html,/First/);assert.match(html,/Last/);assert.match(html,/aria-current="page"[^>]*>10/);
+  assert.deepEqual([...html.matchAll(/data-model-page="(\d+)"/g)].map(m=>Number(m[1])),[0,8,9,10,19]);
+ }
+ assert.match(app.run('document.querySelector("#model-count").textContent'),/226–250 of 500/);
+ app.run('document.querySelector("#model-page-size-top").value="100";document.querySelector("#model-page-size-top").listeners.change()');
+ assert.equal(app.run('modelPage'),0);assert.equal(app.run('modelPageSize'),100);
+ app.run('document.querySelector("#model-next").listeners.click()');
+ assert.equal(app.run('document.querySelector("#model-count").textContent'),"101–200 of 500 models");
+ app.run('document.querySelector("#model-page-size").value="0";document.querySelector("#model-page-size").listeners.change()');
+ assert.equal([...app.run('document.querySelector("#model-table-body").innerHTML').matchAll(/<tr>/g)].length,500);
+ assert.equal(app.run('document.querySelector("#model-next-top").disabled'),true);
+ app.run('modelSearch="missing";renderModelRows()');
+ assert.equal(app.run('document.querySelector("#model-count").textContent'),"0–0 of 0 models · 500 total");
+});
+
+test("pricing import opens an overlay and pricing refresh posts with CSRF and retains manual rates",async()=>{
+ let fail=false;const app=consoleFixture((url,options)=>{assert.equal(url,"/gateway/v1/models/pricing/refresh");assert.equal(options.method,"POST");assert.equal(options.headers["X-CSRF-Token"],"csrf");return fail?response({},false):response({models:[{id:"p/m",provider_id:"p",pricing:{source:"operator",input_per_million:2}}]});});
+ app.run('consoleSession="active";csrfToken="csrf";document.querySelector("#import-pricing").listeners.click()');
+ assert.equal(app.run('document.querySelector("#model-pricing-import-dialog").open'),true);
+ app.run('document.querySelector("#model-pricing-import-close").listeners.click()');
+ assert.equal(app.run('document.querySelector("#model-pricing-import-dialog").open'),false);
+ await app.run('document.querySelector("#refresh-pricing").listeners.click()');
+ assert.equal(app.run('physicalModels[0].pricing.source'),"operator");
+ fail=true;await app.run('document.querySelector("#refresh-pricing").listeners.click()');
+ assert.equal(app.run('physicalModels[0].pricing.input_per_million'),2);
+ assert.match(app.run('document.querySelector("#quota-refresh-status").textContent'),/unavailable/);
+ assert.equal(app.run('document.querySelector("#refresh-pricing").disabled'),false);
 });

@@ -2,6 +2,28 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Models pricing status and pagination
+
+Implemented on `feat/models-pricing-pagination` in
+`/workspace/models-pricing-pagination`, based on main `5b92ea7` before edits.
+Commit `1dd4cc6` adds pricing status dots with hover/focus/click tooltips,
+manual/stale/failed/unknown pricing states, and successful pricing timestamps.
+Failed reads retain last known prices; bundled estimates keep their snapshot date.
+Both table ends offer 25/50/100/All rows, numbered pages with truncation, and
+Previous/Next. Models refresh actions stay grouped; administrator-only pricing
+refresh forces provider catalog reads while retaining manual overrides. CSV import
+opens a modal dialog. Console and API guides describe the behavior and limits.
+
+Validation: main baseline checks, 130 console tests, full Go tests and race checks,
+build, vet, module tidy (unchanged), generated assets, release-validator tests,
+formatting/diff and affected documentation file links pass. Chromium checks cover
+500-model pagination, synchronized controls, dot tooltips, pricing refresh and
+import dismissal at 1440×1000 and 390×844, including dark theme, without page errors.
+Go 1.25.1 was installed in workspace scratch; local builds use `-buildvcs=false`
+because sandboxed worktree VCS stamping fails. Container checks are unavailable
+because Docker/Podman and the SQLite CLI are absent. Live-provider checks and
+deployment remain unperformed; pricing refresh is tested with a controlled upstream.
+
 ## Server timezone and Activity monitoring
 
 Implemented on `feat/server-monitoring` in `/workspace/work/server-monitoring`.

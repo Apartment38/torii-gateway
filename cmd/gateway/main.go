@@ -812,6 +812,15 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		protect("PUT /gateway/v1/models", runtime.setModel)
 		protect("GET /gateway/v1/models/pricing/template.csv", runtime.pricingCSVTemplate)
 		protect("POST /gateway/v1/models/pricing/parse", runtime.parsePricingCSV)
+		protect("POST /gateway/v1/models/pricing/refresh", func(w http.ResponseWriter, req *http.Request) {
+			ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+			defer cancel()
+			if err := openAI.RefreshCatalog(ctx); err != nil {
+				writeConfigError(w, http.StatusServiceUnavailable, errors.New("pricing refresh unavailable"))
+				return
+			}
+			openAI.ManagementModels(w, req)
+		})
 		protect("GET /gateway/v1/config", runtime.getConfig)
 		protect("PUT /gateway/v1/config", runtime.putConfig)
 		protect("POST /gateway/v1/config", runtime.putConfig)

@@ -47,7 +47,7 @@ func TestManualPricingFeedsRoutingNamedRoutersAndAccounting(t *testing.T) {
 		t.Fatal("manual rates exposed mutable pointers")
 	}
 	h.SetModelControls(nil, map[string]bool{"critic": true})
-	if *h.CatalogModels()[0].Pricing.InputPerMillion != 0 {
+	if *h.CatalogModels()[0].Pricing.InputPerMillion != 0 || h.CatalogModels()[0].Pricing.Source != "operator" {
 		t.Fatal("manual prices bypassed explicit free-provider policy")
 	}
 }

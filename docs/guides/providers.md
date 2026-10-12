@@ -142,7 +142,9 @@ require an administrator to enable it.
 
 1. On **Providers**, add or edit **OpenAI Codex**, then click **Log in**.
 2. Torii opens a new browser tab. Sign in with OpenAI and enter the one-time code
-   shown on the provider card. If the tab is blocked or closed, click
+   shown in the **One-time code** text box on the provider card. Click **Copy**
+   to copy it; if clipboard access is unavailable, the code is selected for manual
+   copying. If the tab is blocked or closed, click
    **Open OpenAI login** on the card to open it yourself.
 3. Return to Torii. It completes authorization on the gateway, stores the
    credential encrypted in SQLite, and checks the subscription's model catalog.

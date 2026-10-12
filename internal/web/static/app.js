@@ -1408,16 +1408,39 @@ async function loginProvider(index        , button                   )          
   }
 }
 function renderLoginInstructions(provider                                  , body                     )       {
-  const message = body.user_code ? `${body.message || "Sign in with OpenAI"}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+  const message = body.message || "Waiting for login…";
+  const index = providers.indexOf(provider);
+  const nodes = [`[data-result="${index}"]`, `[data-editor-status="${index}"]`]
+    .map(selector => providerList.querySelector             (selector)).filter((node)                      => node !== null);
+  const instructions = JSON.stringify([message, body.verification_url, body.user_code]);
+  // Preserve selection and copy feedback while polling unchanged instructions.
+  if (body.user_code && providerStatuses.get(provider)?.state === "pending" && nodes.length && nodes.every(node => node.dataset.codexLogin === instructions && node.querySelector                  (".codex-login-code")?.value === body.user_code)) return;
   setProviderStatus(provider, { state: "pending", message });
   if (!body.verification_url) return;
   const url = new URL(body.verification_url);
   if (url.origin !== "https://auth.openai.com") throw new Error("Invalid OpenAI login URL");
-  const content = `${escapeHTML(redactProviderKeys(message))} <a href="${escapeHTML(url.href)}" target="_blank" rel="noopener noreferrer">Open OpenAI login</a>`;
-  const index = providers.indexOf(provider);
-  for (const selector of [`[data-result="${index}"]`, `[data-editor-status="${index}"]`]) {
-    const node = providerList.querySelector             (selector);
-    if (node) node.innerHTML = content;
+  const codeControls = body.user_code ? `<div class="codex-code-controls"><label>One-time code<input class="codex-login-code" type="text" readonly autocomplete="off" spellcheck="false"></label><button class="codex-copy-code button secondary" type="button" aria-label="Copy one-time code">Copy</button></div><span class="codex-copy-status" role="status" aria-live="polite"></span>` : "";
+  const content = `${escapeHTML(redactProviderKeys(message))}${codeControls} <a href="${escapeHTML(url.href)}" target="_blank" rel="noopener noreferrer">Open OpenAI login</a>`;
+  for (const node of nodes) {
+    node.innerHTML = content;
+    node.dataset.codexLogin = instructions;
+    const input = node.querySelector                  (".codex-login-code");
+    const copy = node.querySelector                   (".codex-copy-code");
+    const feedback = node.querySelector             (".codex-copy-status");
+    if (!input || !copy || !feedback || !body.user_code) continue;
+    input.value = body.user_code;
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(input.value);
+        copy.textContent = "Copied";
+        feedback.textContent = "Code copied";
+      } catch {
+        copy.textContent = "Copy";
+        input.focus();
+        input.select();
+        feedback.textContent = "Copy unavailable. Copy the selected code.";
+      }
+    });
   }
 }
 async function pollProviderLogin(provider                                  , button                   , loginTab               , initial                     )                {

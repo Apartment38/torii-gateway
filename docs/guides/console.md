@@ -11,7 +11,7 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 | Overview | Inspect the current gateway and model summary |
 | Server | Listener setting and database bootstrap information |
 | Providers | Add/test inference and classifier providers; subscription login |
-| Models | Enable models and inspect pricing, usage, provider quota resets and benchmark freshness |
+| Models | Enable models, edit/import pricing, and inspect usage, provider quotas and benchmarks |
 | Smart routing | Smart routing, classifier selection/tuning, session failure policy |
 | Benchmarks | Enable sources, enter source keys, refresh and inspect scores |
 | API keys | Create/revoke client API keys and rotate the default key |
@@ -72,3 +72,38 @@ CSV template, upload your measurements, or **Load measurements** and **Edit** a
 stored row. Saves take effect immediately; concurrent changes require reloading.
 See [Custom benchmarks](benchmarks.md#upload-custom-benchmarks) for field definitions,
 limits, matching and refresh behavior.
+
+## Enter model pricing
+
+Use this when a provider does not supply rates, or when its estimates need an
+operator override. Rates are USD per million tokens and affect future routing,
+Jev criteria and gateway cost estimates across all routers. They do not change
+provider billing or historical usage totals.
+
+1. Open **Models**, find the model, and select **Edit pricing**.
+2. Enter **Input USD / million tokens** and/or **Output USD / million tokens**.
+   A blank field uses its automatic rate; `0` explicitly means free.
+3. Select **Save pricing**. The console preserves the draft if another settings
+   change causes a revision conflict; reload and reconcile before trying again.
+
+**Use automatic pricing** removes the model's manual rates. Automatic pricing
+means the existing catalog metadata from providers, bundled estimates and catalog
+overrides. Providers with **Treat models as free** enabled retain zero effective
+rates; disable that provider option when entered rates should apply.
+
+For a batch update, expand **Model pricing · import CSV**, select **Download pricing
+CSV template**, replace the sample row, choose the file under **Pricing CSV**,
+and select **Upload pricing CSV**. The console validates the entire file before
+saving through the same revision-protected configuration flow.
+
+| CSV field | Meaning |
+| --- | --- |
+| `model_id` | Required exact provider-qualified model ID, such as `openrouter/vendor/model`. Models may be priced before discovery. Maximum 512 bytes. |
+| `input_per_million` | Optional finite, nonnegative input rate in USD per million tokens. Blank restores automatic input pricing. |
+| `output_per_million` | Optional finite, nonnegative output rate in USD per million tokens. Blank restores automatic output pricing. |
+
+Keep the header and column order. The limit is 1 MiB / 1,000 rows. Duplicate IDs,
+invalid IDs, negative rates and nonfinite numbers reject the whole file. Imports
+replace the manual rates of listed models and keep other models' rates. Both rate
+fields blank removes that model's manual pricing. Saved rates survive restart,
+rediscovery and settings reload.

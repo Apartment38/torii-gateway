@@ -125,7 +125,7 @@ function signOutConsole(): void {
   document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();
   document.querySelector<HTMLInputElement>("#client-key-name")!.value = "";
   providers = [];
-  overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];usageData=null;usageKeyMetadata=[];document.querySelector("#models-list")!.textContent="";document.querySelector("#usage-list")!.textContent="";
+  overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];clearModelPricing();usageData=null;usageKeyMetadata=[];document.querySelector("#models-list")!.textContent="";document.querySelector("#usage-list")!.textContent="";
   configurationLoaded = false;
   classifierQuestionOverrides = {};
   classifierNoulThresholds = {};
@@ -451,7 +451,7 @@ function isSetupPlaceholder(provider: Record<string, any>): boolean {
 
 function applyConfig(config: Record<string, any>, revision = ""): void {
   configurationRevision = revision;
-  loadedConfiguration=structuredClone(config);modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
+  loadedConfiguration=structuredClone(config);modelPricingDraft=structuredClone(config.model_pricing||{});modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
   classifierDiscoveryPending = true;
   configurationLoaded = true;
   legacyClassifier = null;
@@ -666,7 +666,7 @@ function readConfig(): Record<string, any> {
   const config: Record<string, any> = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router=structuredClone(smartRouterDrafts[selectedSmartRouter]||config.router||{});config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality" || name==="router.intelligence_weights") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
-  config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
+  config.model_pricing=structuredClone(modelPricingDraft);config.model_enabled={...modelEnabledDraft};config.budgets=structuredClone(budgetsDraft);
  config.providers = providers.flatMap((p,index)=>editingProvider===index?(editingOriginal?[readProviderConfig(editingOriginal)]:[]):[readProviderConfig(p)]);
   // Unchecked checkboxes are absent from FormData. Emit the policy explicitly
   // so saving "false" cannot restore the backend's default of allowing paid models.
@@ -834,7 +834,7 @@ document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => {
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target as HTMLElement))markDirty();});
 form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);

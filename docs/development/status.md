@@ -2,6 +2,26 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Manual model pricing
+
+Completed gateway-wide `model_pricing` settings and the Models console pricing
+editor/CSV upload. Input/output rates use USD per million tokens; partial rates
+preserve automatic pricing for the other field, blank rates restore automatic
+metadata, and explicit zero means free. Rates survive restart/rediscovery and
+apply to Jev, deterministic selection, named routers and accounting, including
+classifier models. Explicit provider free-model policy still takes precedence.
+CSV import validates up to 1 MiB / 1,000 rows before the console's existing
+revision-protected save; unlisted models remain unchanged. Administrator-only
+API tools provide CSV validation/template download and per-model updates.
+
+Validation: targeted baseline, full Go tests/race checks, build, vet, module
+metadata, formatting, all 116 console tests, generated assets and affected
+reference/guide links pass. Tests cover durable rates, revision conflicts,
+CSV atomic validation, automatic-rate restoration, named routing/accounting and
+administrator-only access. No database migration or dependency was needed.
+Container verification remains unavailable because Podman and the host SQLite
+CLI are absent. No deployment was performed.
+
 ## Jev model decisions and custom benchmarks
 
 Implemented on `feat/jev-model-selection`. Jev now chooses a physical model for

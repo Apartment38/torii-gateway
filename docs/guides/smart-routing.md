@@ -63,7 +63,9 @@ default; the console persists an explicit false when unchecked. Estimated costs
 need known prices and are not actual bills. Quota allowances and cached provider
 limits can remove exhausted models; unknown quota is not assumed unlimited
 verified capacity. [Configuration](../reference/configuration.md) lists defaults.
-Benchmark weighting is optional; see [Benchmarks](benchmarks.md).
+Benchmark weighting is optional; see [Benchmarks](benchmarks.md). Enter missing
+model rates through the [pricing editor or CSV import](console.md#enter-model-pricing)
+on **Models**; saved rates also inform Jev criteria and cost estimates.
 
 
 Benchmark intelligence supplies evidence to Jev whenever it is enabled, even

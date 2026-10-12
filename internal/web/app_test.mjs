@@ -1704,3 +1704,44 @@ test("manual benchmark edit submits numeric values and retains the revision",asy
  assert.equal(app.run('document.querySelector("#benchmark-edit-dialog").open'),false);
  assert.equal(app.run('editingBenchmarkRecord'),null);
 });
+
+test("manual pricing editor saves rates and restores automatic prices",async()=>{
+ const app=consoleFixture(()=>response({models:[]}));
+ app.run('applyConfig({providers:[],router:{},model_pricing:{"p/model":{output_per_million:2}}});consoleSession="active";physicalModels=[{id:"p/model",pricing:{input_per_million:.5,output_per_million:2,source:"operator"}}];document.querySelector("#model-pricing-form").reportValidity=()=>true;saveConfig=async()=>true;openModelPricing("p/model")');
+ assert.equal(app.run('document.querySelector("#model-pricing-input").value'),"");
+ assert.equal(app.run('document.querySelector("#model-pricing-input").placeholder'),"0.5");
+ app.run('document.querySelector("#model-pricing-input").value="0";document.querySelector("#model-pricing-output").value="1.25"');
+ await app.run('saveModelPricing({preventDefault(){}})');
+ assert.equal(app.run('readConfig().model_pricing["p/model"].input_per_million'),0);
+ assert.equal(app.run('readConfig().model_pricing["p/model"].output_per_million'),1.25);
+ assert.equal(app.run('document.querySelector("#model-pricing-dialog").open'),false);
+ app.run('openModelPricing("p/model");document.querySelector("#model-pricing-input").value="";document.querySelector("#model-pricing-output").value=""');
+ await app.run('saveModelPricing()');assert.equal(app.run('modelPricingDraft["p/model"]'),undefined);
+});
+
+test("pricing CSV import validates before saving and merges only listed model rates",async()=>{
+ let fail=false;
+ const app=consoleFixture((url,options)=>{
+  if(url.endsWith('/pricing/parse')){assert.equal(options.method,'POST');assert.equal(options.headers['X-CSRF-Token'],'csrf');return fail?response({error:'CSV row is invalid'},false):response({model_pricing:{'p/change':{input_per_million:.25,output_per_million:1},'p/clear':{}}});}
+  return response({models:[]});
+ });
+ app.run('consoleSession="active";csrfToken="csrf";modelPricingDraft={"p/keep":{input_per_million:3},"p/change":{input_per_million:5},"p/clear":{input_per_million:1}};document.querySelector("#model-pricing-csv").files=[{name:"prices.csv",size:100}];saveConfig=async()=>true');
+ await app.run('uploadModelPricingCSV()');
+ assert.equal(app.run('modelPricingDraft["p/keep"].input_per_million'),3);
+ assert.equal(app.run('modelPricingDraft["p/change"].input_per_million'),.25);
+ assert.equal(app.run('modelPricingDraft["p/clear"]'),undefined);
+ const before=app.run('JSON.stringify(modelPricingDraft)');fail=true;
+ await app.run('uploadModelPricingCSV()');assert.equal(app.run('JSON.stringify(modelPricingDraft)'),before);
+ assert.match(app.run('document.querySelector("#model-pricing-import-status").textContent'),/invalid/);
+});
+
+test("manual pricing errors retain drafts and model rows expose editing",async()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('physicalModels=[{id:"p/model",provider_id:"p",pricing:{},enabled:true}];renderModelsPage();openModelPricing("p/model");document.querySelector("#model-pricing-form").reportValidity=()=>true;document.querySelector("#model-pricing-input").value="-1";saveConfig=async()=>{throw new Error("invalid rate reached save")};');
+ assert.match(app.run('document.querySelector("#model-table-body").innerHTML'),/data-model-price="p\/model"/);
+ await app.run('saveModelPricing()');assert.match(app.run('document.querySelector("#model-pricing-status").textContent'),/nonnegative/);
+ app.run('document.querySelector("#model-pricing-input").value="2";saveState.textContent="Conflict · draft preserved";saveConfig=async()=>false');
+ await app.run('saveModelPricing()');assert.equal(app.run('modelPricingDraft["p/model"].input_per_million'),2);
+ assert.equal(app.run('document.querySelector("#model-pricing-dialog").open'),true);
+ app.run('clearModelPricing()');assert.equal(app.run('Object.keys(modelPricingDraft).length'),0);
+});

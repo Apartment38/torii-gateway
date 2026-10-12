@@ -466,3 +466,6 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
 .csv-field-help dd { margin: 0; color: var(--muted); }
 #benchmark-edit-dialog { width: min(720px,calc(100vw - 32px)); }
 @media (max-width: 600px) { .model-transfer { gap: 8px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .model-transfer-actions { grid-column: 1/-1; grid-row: 2; flex-direction: row; } .csv-field-help { grid-template-columns: 1fr; } }
+#model-pricing-dialog { width: min(560px,calc(100vw - 32px)); }
+#model-pricing-model { overflow-wrap: anywhere; font-weight: 600; }
+.model-price-edit { display: block; margin-top: 8px; }

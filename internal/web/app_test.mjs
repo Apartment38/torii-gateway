@@ -2217,11 +2217,17 @@ test("mixed providers expose discovered decision models as judges while keeping 
 
 test("built-in provider IDs are editable and TypeSafe defaults use typesafe",()=>{
  const app=consoleFixture(()=>response({models:[]}));app.setProviders([draft('openrouter'),draft('typesafe'),draft('openai-codex')]);app.run('renderProviders()');
- const html=app.run('providerList.innerHTML');assert.doesNotMatch(html,/data-key="id"[^>]*readonly/);assert.match(html,/<option value="typesafe"[^>]*>TypeSafe<\/option>/);assert.equal(app.run('knownProviderID("typesafe",1)'),"typesafe");
+ const html=app.run('providerList.innerHTML');assert.doesNotMatch(html,/data-key="id"[^>]*readonly/);assert.match(html,/<option value="typesafe"[^>]*>TypeSafe<\/option>/);assert.equal(app.run('knownProviderID("typesafe",1)'),"typesafe");assert.match(html, /data-provider-dialog="2"[\s\S]*data-login="2"/);
 });
 
 test("provider ID edits retain credentials and update references across router profiles",()=>{
  const app=consoleFixture(()=>response({models:[]}));app.context.renameConfig={providers:[{id:'old',type:'jev',base_url:'https://api.typesafe.ai',api_path:'/v1',bearer_token:{credential:'stored-key'}}],router:{providers:['old'],models:['old/chat'],classifier:{type:'jev',transport:'provider',provider:'old',model:'decision'}},smart_routers:[{model_name:'coding',providers:['old'],models:['old/chat'],classifier:{type:'jev',transport:'provider',provider:'old',model:'decision'}}],model_enabled:{'old/decision':true},model_pricing:{'old/decision':{input_per_million:.1}}};
  app.run('applyConfig(renameConfig,fixtureRevision);providers[0].id="new"');const config=app.run('readConfig()');
  assert.equal(config.providers[0].id,'new');assert.equal(config.providers[0].type,'typesafe');assert.equal(config.providers[0].bearer_token.credential,'stored-key');assert.equal(config.router.classifier.provider,'new');assert.deepEqual(Array.from(config.router.providers),['new']);assert.deepEqual(Array.from(config.router.models),['new/chat']);assert.equal(config.smart_routers[0].classifier.provider,'new');assert.equal(config.model_enabled['new/decision'],true);assert.equal(config.model_enabled['old/decision'],undefined);assert.equal(config.model_pricing['new/decision'].input_per_million,.1);
+});
+
+
+test("renaming a provider never rewrites a judge's upstream author namespace",()=>{
+ const app=consoleFixture(()=>response({models:[]}));app.run('config={router:{classifier:{type:"jev",transport:"provider",provider:"typesafe",model:"typesafe/jev-1.13"}}};renameProviderReferences(config,"typesafe","new")');
+ assert.equal(app.run('config.router.classifier.provider'),'new');assert.equal(app.run('config.router.classifier.model'),'typesafe/jev-1.13');
 });

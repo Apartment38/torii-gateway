@@ -738,7 +738,7 @@ function renderUsagePage()     {
 }
 let providerBalancesData                        =null;
 function combineProviderSnapshots(snapshots      )    {
- const ordered=[...snapshots].sort((a,b)=>String(a.checked_at||"").localeCompare(String(b.checked_at||"")));
+ const ordered=[...snapshots].sort((a,b)=>(Date.parse(a.checked_at)||0)-(Date.parse(b.checked_at)||0));
  const quota=Object.assign({},...ordered);
  const merge=(rows      ,key                  ,prefer                         )=>{
   const entries=new Map            ();
@@ -1366,7 +1366,7 @@ function applyConfig(config                     , revision = "")       {
   configurationRevision = revision;
   consoleTimezone=config.server?.timezone||"";
   for(const name of ["prompt_logging","jev_decision_logging"])(form.elements.namedItem(`activity.${name}`)                    ).checked=Boolean(config.activity?.[name]);
-  for(const name of ["max_bytes","retention_days"])(form.elements.namedItem(`activity.${name}`)                    ).value=String(config.activity?.[name]||({max_bytes:104857600,retention_days:7}                         )[name]);
+  (form.elements.namedItem("activity.retention_days")                    ).value=String(config.activity?.retention_days||7);
   (form.elements.namedItem("server.timezone")                    ).value=consoleTimezone;
   const providerCatalogChanged=JSON.stringify(loadedConfiguration.providers)!==JSON.stringify(config.providers);
   loadedConfiguration=structuredClone(config);modelPricingDraft=structuredClone(config.model_pricing||{});modelEnabledDraft={...config.model_enabled};budgetsDraft=structuredClone(config.budgets||{});renderBudgetEditor();saveConflict=false;
@@ -1447,7 +1447,7 @@ function applyConfig(config                     , revision = "")       {
   for(const profile of config.smart_routers||[])smartRouterDrafts[profile.model_name]=structuredClone(profile);
   if(!smartRouterDrafts[selectedSmartRouter])selectedSmartRouter="smart";
   renderSmartRouterEditor();
-  if(providerCatalogChanged && overviewModels!==null && consoleSession)void loadSmartRouterModels();
+  if(providerCatalogChanged && (overviewModels!==null||location.hash==="#routing") && consoleSession)void loadSmartRouterModels();
   updateClassifierOptions();
   if (location.hash === "#intelligence" && benchmarksEnabledSaved) void loadBenchmarkData();
 }
@@ -1812,7 +1812,7 @@ document.querySelector("#console-login") .addEventListener("click",()=>location.
 document.querySelector("#console-logout") .addEventListener("click",async()=>{try{const response=await gatewayFetch("/gateway/v1/session",{method:"DELETE",headers:await authProvider.headers()});if(!response.ok)throw new Error();signOutConsole();location.assign("/login");}catch{toast("Sign-out failed. Retry to revoke the session.");}});
 document.querySelector("#login-form") .addEventListener("submit",async event=>{
   event.preventDefault();const username=document.querySelector                  ("#login-username") .value;const input=document.querySelector                  ("#login-password") ;const password=input.value;input.value="";
-  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(revision!==configurationRevision){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error") .textContent="";document.querySelector                   ("#login-dialog") .close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
+  try{await createBrowserSession(username,password);const response=await gatewayFetch("/gateway/v1/config",{headers:await authProvider.headers()});if(!response.ok)throw new Error();const committed=await response.json();const revision=response.headers.get("ETag")||"";if(configurationLoaded){if(providerConfig!==JSON.stringify(loadedConfiguration.providers)){saveConflict=true;saveState.textContent="Settings changed while signed out. Your draft is retained; reload to resolve the conflict.";}}else applyConfig(committed,revision);signedInUsername=username;updateConsoleIdentity();document.querySelector("#login-error") .textContent="";document.querySelector                   ("#login-dialog") .close();if(!saveConflict)saveState.textContent="Signed in. Your draft is ready to save.";void testAllProviders();void loadCredentialMetadata();}
   catch{expireConsoleSession();document.querySelector("#login-error") .textContent="Sign-in failed. Check your administrator username and password, then try again in one minute if rate limited.";}
 });
 async function loadCredentialMetadata()              {
@@ -1884,19 +1884,19 @@ async function detectOllama(provider                   )              {
 
 let smartRouterModelsSequence=0;
 async function loadSmartRouterModels()              {
- const sequence=++smartRouterModelsSequence,login=consoleSession,revision=configurationRevision;
+ const sequence=++smartRouterModelsSequence,login=consoleSession,providerConfig=JSON.stringify(loadedConfiguration.providers);
  if(!login)return;
  const status=document.querySelector             ("#smart-router-model-status") ;
  status.textContent="Loading available models…";
  try{
   const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers()});
-  if(sequence!==smartRouterModelsSequence||login!==consoleSession||revision!==configurationRevision)return;
+  if(sequence!==smartRouterModelsSequence||login!==consoleSession||providerConfig!==JSON.stringify(loadedConfiguration.providers))return;
   if(!response.ok)throw new Error("Model discovery unavailable. Reopen Smart routing to retry.");
   const data=await response.json();
-  if(sequence!==smartRouterModelsSequence||login!==consoleSession||revision!==configurationRevision)return;
+  if(sequence!==smartRouterModelsSequence||login!==consoleSession||providerConfig!==JSON.stringify(loadedConfiguration.providers))return;
   overviewModels=data.models||[];renderSmartRouterScope();
   status.textContent=overviewModels .length?"":"No models discovered from enabled providers.";
- }catch(error){if(sequence===smartRouterModelsSequence&&login===consoleSession&&revision===configurationRevision)status.textContent=error instanceof Error?error.message:"Model discovery unavailable. Reopen Smart routing to retry.";}
+ }catch(error){if(sequence===smartRouterModelsSequence&&login===consoleSession&&providerConfig===JSON.stringify(loadedConfiguration.providers))status.textContent=error instanceof Error?error.message:"Model discovery unavailable. Reopen Smart routing to retry.";}
 }
 
 function renderSmartRouterScope()     {

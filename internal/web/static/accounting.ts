@@ -20,7 +20,7 @@ function renderUsagePage():void{
 }
 let providerBalancesData:Record<string,any>|null=null;
 function combineProviderSnapshots(snapshots:any[]):any{
- const ordered=[...snapshots].sort((a,b)=>String(a.checked_at||"").localeCompare(String(b.checked_at||"")));
+ const ordered=[...snapshots].sort((a,b)=>(Date.parse(a.checked_at)||0)-(Date.parse(b.checked_at)||0));
  const quota=Object.assign({},...ordered);
  const merge=(rows:any[],key:(row:any)=>string,prefer?:(old:any,next:any)=>any)=>{
   const entries=new Map<string,any>();

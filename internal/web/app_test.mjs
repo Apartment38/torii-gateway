@@ -2194,3 +2194,13 @@ test("Provider balance merge retains scoped windows and freshest shared data",()
  const app=consoleFixture(()=>response({}));app.context.snapshots=[{known:true,exhausted:true,source:'old',checked_at:'2026-10-11T00:00:00Z',windows:[{name:'daily',unit:'requests',model:'a',remaining:0},{name:'credits',unit:'USD',remaining:2}],balances:[{name:'account',unit:'USD',remaining:2}],reported_usage:[{period:'monthly',unit:'USD',scope:'account',used:1}]},{known:true,source:'new',checked_at:'2026-10-12T00:00:00Z',windows:[{name:'daily',unit:'requests',model:'b',remaining:50},{name:'credits',unit:'USD',remaining:3}],balances:[{name:'account',unit:'USD',remaining:3}],reported_usage:[{period:'monthly',unit:'USD',scope:'account',used:2},{period:'monthly',unit:'tokens',scope:'organization',used:100}]}];
  const merged=app.run('combineProviderSnapshots(snapshots)');assert.equal(merged.windows.length,3);assert.equal(merged.balances.length,1);assert.equal(merged.balances[0].remaining,3);assert.equal(merged.reported_usage.length,2);assert.equal(merged.exhausted,false);assert.equal(merged.source,'old · new');assert.ok(merged.windows.some(w=>w.name==='daily (a)'));assert.ok(merged.windows.some(w=>w.name==='daily (b)'));
 });
+
+
+test("Routing policy saves do not discard in-flight model discovery",async()=>{
+ let reply;const app=consoleFixture(()=>new Promise(resolve=>reply=resolve));
+ app.run('consoleSession="active";applyConfig({providers:[{id:"p",type:"ollama",base_url:"http://local.test"}],router:{}},fixtureRevision)');
+ const pending=app.run('loadSmartRouterModels()');await new Promise(resolve=>setImmediate(resolve));
+ app.run('applyConfig({providers:[{id:"p",type:"ollama",base_url:"http://local.test"}],router:{providers:["p"]}},"new-revision")');
+ reply(response({models:[{id:'p/m',provider_id:'p'}]}));await pending;
+ assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/p\/m/);
+});

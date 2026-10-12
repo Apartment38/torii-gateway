@@ -174,3 +174,23 @@ func TestProviderUsesCurrentEncryptedCredentialAndSuppressesUpstreamErrorEcho(t 
 		t.Fatal("upstream error echoed credential")
 	}
 }
+
+func TestBenchmarkMutationsRequireAdministrator(t *testing.T) {
+	r, _ := credentialRuntime(t)
+	for _, route := range []struct{ method, path string }{{"POST", "/gateway/v1/intelligence/import"}, {"PUT", "/gateway/v1/intelligence/observations/edit"}} {
+		req := httptest.NewRequest(route.method, route.path, strings.NewReader("invalid data"))
+		req.Header.Set("Authorization", "Bearer admin-sentinel")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("inference key allowed benchmark mutation %s: %d", route.path, w.Code)
+		}
+		req = httptest.NewRequest(route.method, route.path, strings.NewReader("invalid data"))
+		req.SetBasicAuth("chosen-admin", "administrator-password")
+		w = httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("administrator did not reach disabled intelligence handler: %d", w.Code)
+		}
+	}
+}

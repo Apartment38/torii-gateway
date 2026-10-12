@@ -1,8 +1,8 @@
 # Smart routing end to end: Jev decisions and gateway selection
 
-When a client requests `model: "smart"`, Torii asks Jev to choose the cheapest capable model from the configured pool,
-validates that choice, and dispatches the
-original request to that model's provider. Jev receives task text and questions;
+When a client requests `model: "smart"`, Torii asks Jev to choose the cheapest
+capable model from the configured pool, validates that choice, and dispatches
+the original request to that model's provider. Jev receives task text and questions;
 Torii supplies catalog prices, capabilities and benchmark evidence as per-model
 criteria and owns policy, quota checks, session affinity, and dispatch.
 The selected inference model produces the user-facing answer.
@@ -213,8 +213,8 @@ required.structured_output = objective.structured_output OR classification.struc
 
 A tools score below threshold cannot remove a requirement created by the
 original `tools` field. Endpoint, streaming, input estimate, and output reserve
-survive classification unchanged. Requirements and the routing policy snapshot
-remain fixed through any retry.
+survive classification unchanged. Objective requirements and the routing policy
+snapshot remain fixed through retries; Jev can reassess semantic requirements.
 
 Candidates come from discovered inference models. Metadata combines bundled
 records, authoritative live facts, and operator overrides. Disabled models and
@@ -299,7 +299,8 @@ Utility is a weighted average of normalized scores; missing values use
 `missing_score` (default 0.5). All-zero weights preserve deterministic selection.
 Without usable intelligence evidence, scoring also falls back to deterministic
 ordering. Scores cannot grant unverified features or override any eligibility
-gate. Eligible pins and the latency-sensitive comparison still take precedence.
+gate. In deterministic routing, eligible pins and the latency-sensitive comparison
+still take precedence.
 See [Benchmarks](../guides/benchmarks.md), [Intelligence](intelligence.md),
 [ordering](../../internal/router/selector.go), and
 [task-weight tests](../../internal/router/intelligence_test.go).
@@ -312,13 +313,15 @@ summary, not a complete wire response):
 
 | Answer | Value | Interpretation |
 | --- | --- | --- |
-| Task | coding, confidence 0.90 | Coding weights if configured |
+| Model | cloud/coder, confidence 0.95 | Cheapest candidate judged capable |
+| Task | coding, confidence 0.90 | Task-relevant coding evidence |
 | Complexity | high, confidence 0.85 | Known general quality must meet 0.82 |
 | Tools | noul 0.20 | Below threshold, but tools still required by the request |
 | Reasoning | noul 0.80 | Reasoning required |
 | Vision/structured output/latency | Each below 0.5 | No additional requirement or latency preference |
 
-Overall confidence is `min(0.90, 0.85) = 0.85`, accepted at the default minimum
+Suppose the model choice confidence is 0.95. Overall confidence is
+`min(0.90, 0.85, 0.95) = 0.85`, accepted at the default minimum
 of zero. Assume these illustrative candidates all have known prices, adequate
 context, available quota, and verified Chat Completions support:
 
@@ -329,10 +332,12 @@ context, available quota, and verified Chat Completions support:
 | cloud/coder | 0.88 | Supported / supported | $0.002 | Eligible |
 | cloud/premium | 0.95 | Supported / supported | $0.010 | Eligible |
 
-Assume both survivors pass specialized-quality gates. With intelligence disabled,
-`cloud/coder` wins on cost. Sufficiently higher coding utility could select
-`cloud/premium` with benchmark weights enabled. An already eligible
-`cloud/premium` pin would also be reused. Jev does not directly choose either.
+Assume both survivors pass specialized-quality gates and coding benchmarks
+show that `cloud/coder` can complete the job. Jev should choose `cloud/coder`
+because it is the cheaper capable option. It should choose `cloud/premium` only
+when task-relevant capability evidence indicates the cheaper option is inadequate.
+Torii validates the returned choice; it does not override a valid Jev answer
+with its deterministic ranking.
 
 If minimum confidence becomes 0.90 with capability fallback, the task becomes
 general/medium. Objective tools survive; classifier-only reasoning is removed,
@@ -351,10 +356,10 @@ Affinity is in memory, bounded to 10,000 records, with a default 30-minute
 inactivity timeout. Restarting loses pins. Only a successfully relayed 2xx
 inference response establishes the model/classification pin.
 
-An ordinary follow-up is classified again. Torii checks its pin against current
-features, quality, paid-model policy, quota, and budget eligibility. A valid pin
-wins over a newly cheaper model; an invalid pin is removed and ordinary selection
-can choose another. Pins are evaluated individually, so the selector's
+Jev evaluates ordinary follow-ups again and can choose a cheaper capable model.
+Generic classifiers retain affinity: Torii checks the pin against current
+features, quality, paid-model policy, quota and budget eligibility. A valid pin
+wins over a newly cheaper model; an invalid pin is removed. Pins are evaluated individually, so the selector's
 unknown-general-quality fallback can admit a pin with no general-quality score.
 
 A tool continuation normally reuses the originating classification and merges

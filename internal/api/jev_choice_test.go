@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Apartment38/torii-gateway/internal/catalog"
 	"github.com/Apartment38/torii-gateway/internal/classifier"
+	"github.com/Apartment38/torii-gateway/internal/intelligence"
 	"github.com/Apartment38/torii-gateway/internal/provider"
 )
 
@@ -27,7 +29,7 @@ func (f *modelDecisionFixture) ForwardDecision(_ context.Context, body []byte) (
 	}
 	_ = json.Unmarshal(body, &request)
 	criteria := request.Questions["model"].Criteria
-	if request.State != "hi" || len(criteria) != 2 || criteria["critic/a"] == "" || criteria["critic/b"] == "" {
+	if request.State != "hi" || len(criteria) != 2 || criteria["critic/a"] == "" || criteria["critic/b"] == "" || !strings.Contains(criteria["critic/b"], `"coding":`) {
 		f.t.Fatalf("wrong routing criteria: %s", body)
 	}
 	var response map[string]any
@@ -48,7 +50,15 @@ func TestJevSelectedDestinationHonorsConfiguredPoolAndReevaluatesPrompts(t *test
 	a.Pricing.OutputPerMillion = criticPtr(0.0)
 	b.Pricing.InputPerMillion = criticPtr(1.0)
 	b.Pricing.OutputPerMillion = criticPtr(1.0)
+	a.Capabilities.Tools = catalog.Supported
+	b.Capabilities.Tools = catalog.Supported
 	h := criticHandler(t, p, a, b, outside)
+	_, benchmarks := consoleBenchmarkManager(t, nil)
+	h.SetIntelligence(benchmarks)
+	score := .95
+	if err := benchmarks.Import(context.Background(), []intelligence.Observation{{ExternalModelID: "critic/b", Benchmark: "my-code-eval", Category: intelligence.Coding, Score: 95, Normalized: &score}}); err != nil {
+		t.Fatal(err)
+	}
 	h.SetRouterScope("smart", nil, []string{"critic/a", "critic/b"})
 	fixture := &modelDecisionFixture{t: t}
 	jev, err := classifier.NewJevTransport(fixture, "jev-latest")
@@ -61,6 +71,10 @@ func TestJevSelectedDestinationHonorsConfiguredPoolAndReevaluatesPrompts(t *test
 		if w.Code != 200 || p.calls[i] != "b" {
 			t.Fatalf("Jev choice replaced: %d %s calls=%v", w.Code, w.Body.String(), p.calls)
 		}
+	}
+	w := criticPost(h, "/v1/chat/completions", `{"model":"smart","messages":[{"role":"user","content":"hi"},{"role":"tool","tool_call_id":"opaque","content":"tool result"}]}`)
+	if w.Code != 200 || p.calls[2] != "b" {
+		t.Fatalf("tool continuation lost originating model: %d %s", w.Code, w.Body.String())
 	}
 	if fixture.calls != 2 {
 		t.Fatalf("Jev did not evaluate each new prompt: %d", fixture.calls)

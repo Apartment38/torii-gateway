@@ -65,4 +65,10 @@ headers still appear. See [provider tracking](../reference/configuration.md#prov
 
 Provider editors show connection checks and save progress inside the card. A successful check and save closes the editor; connection or save errors keep the draft open for correction. Overview counts include discovered classifier models, even though those models are excluded from the chat catalog.
 
-Smart routing supports **Create router** and named provider/model pools. Choose a router in the selector to edit its full policy. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
+Smart routing supports **Create router** and named provider/model pools. Choose a router in the selector to edit its full policy. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
+
+On **Benchmarks**, expand **Custom benchmarks · upload and edit** to download the
+CSV template, upload your measurements, or **Load measurements** and **Edit** a
+stored row. Saves take effect immediately; concurrent changes require reloading.
+See [Custom benchmarks](benchmarks.md#upload-custom-benchmarks) for field definitions,
+limits, matching and refresh behavior.

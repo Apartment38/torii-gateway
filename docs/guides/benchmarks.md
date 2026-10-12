@@ -60,6 +60,52 @@ successful update, and cache age. Table updates occur as each source finishes.
 A running refresh is followed instead of duplicated; disconnecting that observer
 does not cancel the worker. Rate-limit pauses/heartbeats can indicate active work.
 
+## Upload custom benchmarks
+
+1. Enable benchmark intelligence and wait for **Saved**.
+2. Expand **Custom benchmarks · upload and edit** and select **Download CSV template**.
+3. Replace the sample with your measurements, keeping the header and column order.
+4. Choose the file under **Benchmark CSV**, then select **Upload CSV**.
+5. Inspect matched scores in the benchmark table. Use exact provider/model IDs
+   or explicit configured aliases so the data can inform routing.
+
+Uploads are limited to 8 MiB and 10,000 rows. The entire CSV is validated before
+saving; invalid rows leave the previous data intact. Measurements are stored in
+SQLite under the reserved source `custom` and survive restart and source refresh.
+Import merges by model ID, benchmark, category, and version, replacing matching
+custom rows and retaining others. Duplicate identities within an upload are
+rejected. At most 100,000 custom rows can be stored.
+
+| CSV field | Meaning |
+| --- | --- |
+| `external_model_id` | Required exact model ID or configured benchmark alias. Approximate matches remain display-only. |
+| `benchmark` | Required evaluation name; for example `my-coding-eval`. |
+| `category` | Required `coding`, `agentic`, `knowledge`, `reasoning`, `math`, `instruction_following`, `multimodal`, `preference`, `general_intelligence`, `operational`, or `unknown`. |
+| `original_score` | Required finite measurement in its original scale. Operational values must be nonnegative. |
+| `normalized_score` | Optional finite 0–1 score, higher is better. Blank means unknown. For percentages divide by 100; for lower-is-better scales invert the normalized value. Operational measurements use the original score. |
+| `unit` | Optional original unit, such as `percent`. Operational benchmark names/units: `input_price`/`output_price` use `USD_per_million_tokens`, `latency`/`ttft` use `seconds`, `throughput` uses `tokens_per_second`, `context_length` uses `tokens`. |
+| `version` | Optional evaluation version; part of the custom row identity. |
+| `evaluated_at` | Optional RFC3339 evaluation timestamp, such as `2026-10-01T00:00:00Z`. Blank uses retrieval time as the date basis; upload time is recorded separately. |
+
+Each field is limited to 512 bytes. Quoted CSV values and UTF-8 headers with a
+byte-order mark are supported. Freshness and aggregation rules also apply to
+custom data; uploading an old evaluation does not make it new evidence.
+
+## Edit loaded measurements
+
+In the same panel, select **Load measurements**, filter by model/source/benchmark,
+and choose **Edit** on a row. Change the original score, normalized score, category,
+model, benchmark, units, version or evaluation time, then **Save measurement**.
+Edits save immediately; enabled sources are rematched and aggregated for routing.
+Disabled source edits stay stored but do not affect routing. A concurrent change
+returns a conflict: reload measurements before trying again. Original source
+metadata is retained and marked as manually edited.
+
+Refreshing a downloaded source can replace its manual edits. Keep independent
+measurements in custom CSV data when they must survive publisher refreshes.
+Upload and editing require administrator authentication; cookie mutations also
+require the console's CSRF token.
+
 ## Refresh from a terminal
 
 On the gateway host with its master-key environment loaded:

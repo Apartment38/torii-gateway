@@ -151,7 +151,9 @@ See [Credentials](../guides/credentials.md) for consequences of rotation/deletio
 ## Benchmark intelligence
 
 All routes below use the `/gateway/v1/intelligence` prefix and accept admin Basic
-or gateway bearer authentication. Disabled intelligence returns 503.
+or gateway bearer authentication for reads/refresh. Uploads and edits require
+administrator authentication. Disabled intelligence returns 503, except for the
+CSV template download.
 
 | Method/suffix | Result and parameters |
 | --- | --- |

@@ -1652,3 +1652,55 @@ test("named router settings persist independently across selector changes",()=>{
 test("overview counts classifier models outside the chat catalog",()=>{
  const app=consoleFixture(()=>response({}));app.setProviders([draft("jev")]);app.run('overviewModels=[];classifierCatalogs.set(providers[0],["jev/a","jev/b"]);renderOverview()');assert.match(app.run('document.querySelector("#overview-workspace").innerHTML'),/2 models/);
 });
+
+test("smart router dual selector transfers models and enforces 250 choices",async()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('applyConfig({providers:[],router:{models:["local/a"]}});overviewModels=[{id:"local/a",provider_id:"local"},{id:"local/b",provider_id:"local"}];saveConfig=async()=>{};renderSmartRouterScope()');
+ assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/local\/b/);
+ assert.ok(!app.run('document.querySelector("#smart-router-models-available").innerHTML').includes('local/a'));
+ await app.run('transferSmartModels(true,"local/b")');
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.models')),['local/a','local/b']);
+ await app.run('transferSmartModels(false,"local/a")');
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.models')),['local/b']);
+ app.run('smartRouterDrafts.smart.models=Array.from({length:250},(_,i)=>`local/${i}`)');
+ await app.run('transferSmartModels(true,"local/too-many")');
+ assert.equal(app.run('smartRouterDrafts.smart.models.length'),250);
+});
+
+test("benchmark editor loads escaped rows and clears edit state on sign out",async()=>{
+ const record={source:'custom',index:0,revision:'hash',observation:{external_model_id:'<model>',benchmark:'code',category:'coding',original_score:90,normalized_score:.9}};
+ const app=consoleFixture((url)=>{assert.match(url,/\/intelligence\/records\?limit=25&offset=0&q=/);return response({records:[record],total:1});});
+ app.run('benchmarksEnabledSaved=true;consoleSession="active"');
+ await app.run('loadBenchmarkRecords()');
+ assert.match(app.run('document.querySelector("#benchmark-records-body").innerHTML'),/&lt;model&gt;/);
+ assert.match(app.run('document.querySelector("#benchmark-records-body").innerHTML'),/data-edit-benchmark="0"/);
+ app.run('editingBenchmarkRecord=benchmarkRecords[0];clearBenchmarkRecords()');
+ assert.equal(app.run('editingBenchmarkRecord'),null);assert.equal(app.run('benchmarkRecords.length'),0);
+});
+
+test("custom CSV upload sends the file with administrator CSRF headers",async()=>{
+ const app=consoleFixture((url,options)=>{
+  if(url.endsWith('/import')){assert.equal(options.method,'POST');assert.equal(options.headers['Content-Type'],'text/csv');assert.equal(options.headers['X-CSRF-Token'],'csrf');assert.equal(options.body.name,'custom.csv');return response({updated:true});}
+  return response(url.includes('/records?')?{records:[],total:0}:{});
+ });
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";csrfToken="csrf";document.querySelector("#benchmark-csv-file").files=[{name:"custom.csv",size:100}]');
+ await app.run('uploadBenchmarkCSV()');
+ assert.equal(app.calls.filter(call=>call.url.endsWith('/import')).length,1);
+ assert.match(app.run('document.querySelector("#benchmark-custom-status").textContent'),/saved/);
+ app.run('document.querySelector("#benchmark-csv-file").files=[{name:"huge.csv",size:9*1024*1024}]');
+ await app.run('uploadBenchmarkCSV()');
+ assert.equal(app.calls.filter(call=>call.url.endsWith('/import')).length,1);
+ assert.match(app.run('document.querySelector("#benchmark-custom-status").textContent'),/8 MiB/);
+});
+
+test("manual benchmark edit submits numeric values and retains the revision",async()=>{
+ const app=consoleFixture((url,options)=>{
+  if(url.endsWith('/observations/edit')){assert.equal(options.method,'PUT');const record=JSON.parse(options.body);assert.equal(record.revision,'dataset-revision');assert.equal(record.source,'custom');assert.equal(record.observation.original_score,91);assert.equal(record.observation.normalized_score,.91);return response({updated:true});}
+  return response(url.includes('/records?')?{records:[],total:0}:{});
+ });
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkRecords=[{source:"custom",index:0,revision:"dataset-revision",observation:{external_model_id:"local/m",benchmark:"code",category:"coding",original_score:90,normalized_score:.9}}];const editForm=document.querySelector("#benchmark-edit-form");editForm.elements={namedItem:name=>document.querySelector(`#edit-${name}`)};editForm.reportValidity=()=>true;editForm.querySelector=()=>document.querySelector("#measurement-save");openBenchmarkEdit(0);editForm.elements.namedItem("original_score").value="91";editForm.elements.namedItem("normalized_score").value="0.91"');
+ await app.run('saveBenchmarkEdit({preventDefault(){}})');
+ assert.equal(app.calls.filter(call=>call.url.endsWith('/observations/edit')).length,1);
+ assert.equal(app.run('document.querySelector("#benchmark-edit-dialog").open'),false);
+ assert.equal(app.run('editingBenchmarkRecord'),null);
+});

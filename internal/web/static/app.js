@@ -47,7 +47,7 @@ function applyBenchmarkConfig(config                      = {})       {
   updateBenchmarkControls();
 }
 function clearBenchmarkConsole()       {
-  closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
+  clearBenchmarkRecords();closeBenchmarkEvidence();inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content") .textContent="";
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
   benchmarkPage = 0; benchmarkFilter = ""; benchmarkTableView = "models";
@@ -308,6 +308,74 @@ function initializeBenchmarks()       {
   document.querySelector("#benchmark-next") .addEventListener("click",()=>{benchmarkPage++;renderBenchmarkTable();});
   renderBenchmarkTable();
 }
+
+let benchmarkRecords                     =[];
+let benchmarkRecordPage=0;
+let benchmarkRecordTotal=0;
+let benchmarkRecordSequence=0;
+let editingBenchmarkRecord                        =null;
+async function loadBenchmarkRecords()              {
+ if(!benchmarksEnabledSaved||!consoleSession)return;
+ const sequence=++benchmarkRecordSequence;const login=consoleSession;
+ const query=document.querySelector                  ("#benchmark-record-filter")?.value||"";
+ try{
+  const response=await gatewayFetch(`/gateway/v1/intelligence/records?limit=25&offset=${benchmarkRecordPage*25}&q=${encodeURIComponent(query)}`,{headers:await authProvider.headers()});
+  const result=await response.json();if(!response.ok)throw new Error(result.error?.message||"Unable to load measurements");
+  if(sequence!==benchmarkRecordSequence||login!==consoleSession)return;
+  benchmarkRecords=result.records||[];benchmarkRecordTotal=result.total||0;
+  document.querySelector("#benchmark-records-body") .innerHTML=benchmarkRecords.map((record,index)=>{const o=record.observation;return `<tr><td>${escapeHTML(o.external_model_id)}<span class="data-secondary">${escapeHTML(record.source)}</span></td><td>${escapeHTML(o.benchmark)}<span class="data-secondary">${escapeHTML(o.category)}</span></td><td>${benchmarkNumber(o.original_score)}</td><td>${benchmarkNumber(o.normalized_score)}</td><td><button type="button" class="button quiet" data-edit-benchmark="${index}">Edit</button></td></tr>`;}).join("")||'<tr><td colspan="5">No measurements found.</td></tr>';
+  document.querySelector("#benchmark-records-page") .textContent=`${benchmarkRecordTotal?benchmarkRecordPage*25+1:0}–${Math.min((benchmarkRecordPage+1)*25,benchmarkRecordTotal)} of ${benchmarkRecordTotal}`;
+  document.querySelector                   ("#benchmark-records-previous") .disabled=benchmarkRecordPage===0;
+  document.querySelector                   ("#benchmark-records-next") .disabled=(benchmarkRecordPage+1)*25>=benchmarkRecordTotal;
+ }catch(error){document.querySelector("#benchmark-custom-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to load measurements");}
+}
+function clearBenchmarkRecords()     {
+ benchmarkRecords=[];editingBenchmarkRecord=null;benchmarkRecordPage=0;benchmarkRecordTotal=0;benchmarkRecordSequence++;
+ document.querySelector                   ("#benchmark-edit-dialog")?.close?.();
+ document.querySelector                 ("#benchmark-edit-form")?.reset?.();
+ for(const id of ["benchmark-records-body","benchmark-records-page","benchmark-custom-status","benchmark-edit-status"]){const node=document.querySelector(`#${id}`);if(node)node.textContent="";}
+ const filter=document.querySelector                  ("#benchmark-record-filter");if(filter)filter.value="";
+ const file=document.querySelector                  ("#benchmark-csv-file");if(file)file.value="";
+}
+async function uploadBenchmarkCSV()              {
+ const file=document.querySelector                  ("#benchmark-csv-file")?.files?.[0];const status=document.querySelector("#benchmark-custom-status") ;
+ if(!file){status.textContent="Choose a CSV file first.";return;}
+ if(file.size>8*1024*1024){status.textContent="CSV files must be at most 8 MiB.";return;}
+ const login=consoleSession;const button=document.querySelector                   ("#benchmark-csv-upload") ;button.disabled=true;status.textContent="Validating and saving CSV…";
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/import",{method:"POST",headers:{"Content-Type":"text/csv",...await authProvider.headers()},body:file});
+  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"CSV upload failed");
+  status.textContent="Custom benchmarks saved.";benchmarkRecordPage=0;await loadBenchmarkData();await loadBenchmarkRecords();
+ }catch(error){status.textContent=benchmarkSafeMessage(error instanceof Error?error.message:"CSV upload failed");}finally{button.disabled=false;}
+}
+function openBenchmarkEdit(index       )     {
+ const record=benchmarkRecords[index];if(!record)return;editingBenchmarkRecord=structuredClone(record);
+ const form=document.querySelector                 ("#benchmark-edit-form") ;
+ for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const input=form.elements.namedItem(name)                    ;const value=record.observation[name];input.value=name==="evaluated_at"&&String(value).startsWith("0001-")?"":String(value??"");}
+ document.querySelector("#benchmark-edit-status") .textContent="";
+ document.querySelector                   ("#benchmark-edit-dialog")?.showModal?.();
+}
+async function saveBenchmarkEdit(event      )              {
+ event.preventDefault();if(!editingBenchmarkRecord)return;
+ const form=document.querySelector                 ("#benchmark-edit-form") ;if(!form.reportValidity())return;
+ const record=structuredClone(editingBenchmarkRecord);const o                   ={};
+ for(const name of ["external_model_id","benchmark","category","original_score","normalized_score","unit","version","evaluated_at"]){const value=(form.elements.namedItem(name)                    ).value.trim();if(name==="original_score")o[name]=Number(value);else if(name==="normalized_score"){if(value!=="")o[name]=Number(value);}else if(name==="evaluated_at"){if(value!==""){const date=new Date(value);if(Number.isNaN(date.getTime())){document.querySelector("#benchmark-edit-status") .textContent="Enter a valid RFC3339 evaluation time.";return;}o[name]=date.toISOString();}}else o[name]=value;}
+ record.observation=o;const login=consoleSession;const button=form.querySelector                   ('button[type="submit"]') ;button.disabled=true;
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/observations/edit",{method:"PUT",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify(record)});
+  const result=await response.json();if(login!==consoleSession)return;if(!response.ok)throw new Error(result.error?.message||"Unable to save measurement");
+  document.querySelector                   ("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;
+  document.querySelector("#benchmark-custom-status") .textContent="Measurement saved.";await loadBenchmarkData();await loadBenchmarkRecords();
+ }catch(error){document.querySelector("#benchmark-edit-status") .textContent=benchmarkSafeMessage(error instanceof Error?error.message:"Unable to save measurement");}finally{button.disabled=false;}
+}
+document.querySelector("#benchmark-csv-upload")?.addEventListener("click",()=>void uploadBenchmarkCSV());
+document.querySelector("#benchmark-records-load")?.addEventListener("click",()=>void loadBenchmarkRecords());
+document.querySelector("#benchmark-record-filter")?.addEventListener("change",()=>{benchmarkRecordPage=0;void loadBenchmarkRecords();});
+document.querySelector("#benchmark-records-previous")?.addEventListener("click",()=>{if(benchmarkRecordPage>0){benchmarkRecordPage--;void loadBenchmarkRecords();}});
+document.querySelector("#benchmark-records-next")?.addEventListener("click",()=>{if((benchmarkRecordPage+1)*25<benchmarkRecordTotal){benchmarkRecordPage++;void loadBenchmarkRecords();}});
+document.querySelector("#benchmark-records-body")?.addEventListener("click",event=>{const button=(event.target               ).closest                   ("[data-edit-benchmark]");if(button)openBenchmarkEdit(Number(button.dataset.editBenchmark));});
+document.querySelector("#benchmark-edit-form")?.addEventListener("submit",event=>void saveBenchmarkEdit(event));
+document.querySelector("#benchmark-edit-cancel")?.addEventListener("click",()=>{document.querySelector                   ("#benchmark-edit-dialog")?.close?.();editingBenchmarkRecord=null;});
 
 const modelLoadingMarkup='<div class="empty-state" role="status"><strong>Loading model catalog…</strong><p>Discovering models from configured providers.</p></div>';
 let modelEnabledDraft                       ={};
@@ -1325,7 +1393,7 @@ document.querySelector("#inspect-benchmarks") .addEventListener("click", () => {
 document.querySelector("#save-button") .addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button") .addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle") .addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target            )        {return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target               ))markDirty();});
 form.addEventListener("change",event=>{const target=event.target               ;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
@@ -1422,10 +1490,23 @@ async function detectOllama(provider                   )              {
 
 function renderSmartRouterScope()     {
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
- for(const [selector,ids,chosen] of [["#smart-router-providers",providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),draft.providers||[]],["#smart-router-models",(overviewModels||[]).map(m=>m.id),draft.models||[]]]                                ){
-  const control=document.querySelector                   (selector);if(!control)continue;
-  const options=[...new Set([...ids,...chosen])].sort();control.innerHTML=options.map(id=>`<option value="${escapeHTML(id)}" ${chosen.includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const providerControl=document.querySelector                   ("#smart-router-providers");
+ const providerIDs=[...new Set([...providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),...(draft.providers||[])])].sort();
+ if(providerControl)providerControl.innerHTML=providerIDs.map(id=>`<option value="${escapeHTML(id)}" ${(draft.providers||[]).includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const chosen         =draft.models||[];
+ const available=(overviewModels||[]).filter(m=>!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id).sort();
+ for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]]                       ){
+  const control=document.querySelector                   (selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }
+ const count=document.querySelector("#smart-router-model-count");if(count)count.textContent=`${chosen.length} / 250`;
+}
+async function transferSmartModels(enable        , single        )              {
+ const control=document.querySelector                   (enable?"#smart-router-models-available":"#smart-router-models");
+ const ids=single?[single]:Array.from(control?.selectedOptions||[]).map(option=>option.value);if(!ids.length)return;
+ readConfig();const draft=smartRouterDrafts[selectedSmartRouter];const current         =draft.models||[];
+ const next=enable?[...new Set([...current,...ids])]:current.filter(id=>!ids.includes(id));
+ if(next.length>250){toast("Smart routers support at most 250 enabled models.");return;}
+ draft.models=next;renderSmartRouterScope();markDirty();await saveConfig();
 }
 function renderSmartRouterEditor()     {
  const selector=document.querySelector                   ("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
@@ -1447,4 +1528,10 @@ document.querySelector("#add-smart-router")?.addEventListener("click",async()=>{
  readConfig();smartRouterDrafts[name]={...structuredClone(smartRouterDrafts.smart),model_name:name};selectedSmartRouter=name;input.value="";renderSmartRouterEditor();markDirty();await saveConfig();
 });
 document.querySelector("#remove-smart-router")?.addEventListener("click",async()=>{if(selectedSmartRouter==="smart")return;delete smartRouterDrafts[selectedSmartRouter];selectedSmartRouter="smart";renderSmartRouterEditor();markDirty();await saveConfig();});
-for(const [id,key] of [["smart-router-providers","providers"],["smart-router-models","models"]])document.querySelector                   (`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target                     ).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+for(const [id,key] of [["smart-router-providers","providers"]])document.querySelector                   (`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target                     ).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+
+document.querySelector("#smart-router-model-add")?.addEventListener("click",()=>void transferSmartModels(true));
+document.querySelector("#smart-router-model-remove")?.addEventListener("click",()=>void transferSmartModels(false));
+for(const [id,enable] of [["smart-router-models-available",true],["smart-router-models",false]]                      ){
+ document.querySelector(id.startsWith("#")?id:`#${id}`)?.addEventListener("dblclick",event=>{const target=event.target                     ;void transferSmartModels(enable,target.tagName==="OPTION"?target.value:undefined);});
+}

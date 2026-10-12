@@ -834,7 +834,7 @@ document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => {
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target as HTMLElement))markDirty();});
 form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
@@ -931,10 +931,23 @@ async function detectOllama(provider:Record<string,any>):Promise<void>{
 
 function renderSmartRouterScope():void{
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
- for(const [selector,ids,chosen] of [["#smart-router-providers",providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),draft.providers||[]],["#smart-router-models",(overviewModels||[]).map(m=>m.id),draft.models||[]]] as [string,string[],string[]][]){
-  const control=document.querySelector<HTMLSelectElement>(selector);if(!control)continue;
-  const options=[...new Set([...ids,...chosen])].sort();control.innerHTML=options.map(id=>`<option value="${escapeHTML(id)}" ${chosen.includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const providerControl=document.querySelector<HTMLSelectElement>("#smart-router-providers");
+ const providerIDs=[...new Set([...providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),...(draft.providers||[])])].sort();
+ if(providerControl)providerControl.innerHTML=providerIDs.map(id=>`<option value="${escapeHTML(id)}" ${(draft.providers||[]).includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const chosen:string[]=draft.models||[];
+ const available=(overviewModels||[]).filter(m=>!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id).sort();
+ for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]] as [string,string[]][]){
+  const control=document.querySelector<HTMLSelectElement>(selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
  }
+ const count=document.querySelector("#smart-router-model-count");if(count)count.textContent=`${chosen.length} / 250`;
+}
+async function transferSmartModels(enable:boolean, single?:string):Promise<void>{
+ const control=document.querySelector<HTMLSelectElement>(enable?"#smart-router-models-available":"#smart-router-models");
+ const ids=single?[single]:Array.from(control?.selectedOptions||[]).map(option=>option.value);if(!ids.length)return;
+ readConfig();const draft=smartRouterDrafts[selectedSmartRouter];const current:string[]=draft.models||[];
+ const next=enable?[...new Set([...current,...ids])]:current.filter(id=>!ids.includes(id));
+ if(next.length>250){toast("Smart routers support at most 250 enabled models.");return;}
+ draft.models=next;renderSmartRouterScope();markDirty();await saveConfig();
 }
 function renderSmartRouterEditor():void{
  const selector=document.querySelector<HTMLSelectElement>("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
@@ -956,4 +969,10 @@ document.querySelector("#add-smart-router")?.addEventListener("click",async()=>{
  readConfig();smartRouterDrafts[name]={...structuredClone(smartRouterDrafts.smart),model_name:name};selectedSmartRouter=name;input.value="";renderSmartRouterEditor();markDirty();await saveConfig();
 });
 document.querySelector("#remove-smart-router")?.addEventListener("click",async()=>{if(selectedSmartRouter==="smart")return;delete smartRouterDrafts[selectedSmartRouter];selectedSmartRouter="smart";renderSmartRouterEditor();markDirty();await saveConfig();});
-for(const [id,key] of [["smart-router-providers","providers"],["smart-router-models","models"]])document.querySelector<HTMLSelectElement>(`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target as HTMLSelectElement).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+for(const [id,key] of [["smart-router-providers","providers"]])document.querySelector<HTMLSelectElement>(`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target as HTMLSelectElement).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+
+document.querySelector("#smart-router-model-add")?.addEventListener("click",()=>void transferSmartModels(true));
+document.querySelector("#smart-router-model-remove")?.addEventListener("click",()=>void transferSmartModels(false));
+for(const [id,enable] of [["smart-router-models-available",true],["smart-router-models",false]] as [string,boolean][]){
+ document.querySelector(id.startsWith("#")?id:`#${id}`)?.addEventListener("dblclick",event=>{const target=event.target as HTMLOptionElement;void transferSmartModels(enable,target.tagName==="OPTION"?target.value:undefined);});
+}

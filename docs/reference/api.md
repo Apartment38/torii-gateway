@@ -252,4 +252,37 @@ Provider quota snapshots are included in management model records and public `/v
 
 Administrator `POST /gateway/v1/providers/ollama-detect` accepts `{"port":55242}` or `{"port":0}` for detection. It returns `base_url`, `port`, and `model_count`, or HTTP 422 when no local service is reachable. It probes local and container-host addresses only.
 
-Codex inference `X-Codex-Primary-*` and `X-Codex-Secondary-*` headers, when present, supply shared account-window telemetry to router eligibility and the model catalog if polling is unavailable. Header snapshots are bounded by cache/reset expiry; no data is fabricated when neither channel supplies it.
+Codex inference `X-Codex-Primary-*` and `X-Codex-Secondary-*` headers, when present, supply supplementary window telemetry for the authenticated login when polling is unavailable. Missing pool/scope identifiers remain informational and do not gate other models. Header snapshots are bounded by cache/reset expiry; no data is fabricated when neither channel supplies it.
+
+### Codex subscription quota groups
+
+Codex adds `provider`, `account_id`, `status`, `collected_at`, optional `retry_at`,
+and `limits` to the existing quota snapshot. Administrator responses also include
+`account_identity` when stored; public model discovery omits that display identity.
+Each group preserves `limit_id`, optional `map_key`/`limit_name`, `scope`, `status`,
+`windows` and reported metadata. Unknown scope/model associations do not gate
+inference. Legacy flat `windows` remain available for existing clients.
+
+Window fields additionally include `window_type` (`5h`, `weekly`,
+`custom:<seconds>`, `unknown`), `slot`, `status`, `source`, `last_updated`, and
+`window_seconds`. `used`/`remaining` are percentages when `unit` is `percent`;
+remaining is 100 minus used, bounded to 0–100. Reported overage remains
+visible as used > 100 with zero remaining. Check window status before reading
+numeric values: unavailable values are not zero usage or exhaustion. Resets are
+UTC instants; a past reset does not establish replenishment.
+
+Snapshot `status` distinguishes available, stale, unavailable, auth_expired,
+permission_denied and rate_limited. `collection_status` retains the latest
+collection outcome when the snapshot status is stale. An available snapshot can contain exhausted
+groups/windows and set the existing `exhausted` flag. `collected_at` stays at the
+last successful read during a transient failure; `unavailable_reason` supplies a
+safe diagnostic, and `retry_at` indicates the next permitted attempt. Different
+accounts and quota sources are never merged into one Codex snapshot.
+
+Administrator `POST /gateway/v1/quotas/refresh` requests fresh provider reads and
+returns the management models envelope (`models`). It uses the existing
+administrator/CSRF boundary, coalesces account requests and returns HTTP 429 with
+Retry-After when reads are cooling down. Manual refresh has a ten-second minimum
+spacing and respects longer provider backoff. Reconnecting OAuth clears
+authentication-failure backoff; it does not bypass a provider 429 cooldown. The **Refresh quotas** button on
+Models uses this route. No quota collection failure disables explicit inference.

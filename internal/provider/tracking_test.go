@@ -133,7 +133,7 @@ func TestCodexPublicPathCreditsAndScopedLimits(t *testing.T) {
 		t.Fatalf("main %+v %v", main, err)
 	}
 	spark, err := cache.Get(context.Background(), "codex/spark")
-	if err != nil || !spark.Exhausted {
+	if err != nil || spark.Exhausted || len(spark.Limits) != 2 || spark.Limits[1].Scope != "unknown" || spark.Limits[1].State != "exhausted" {
 		t.Fatalf("spark %+v %v", spark, err)
 	}
 }

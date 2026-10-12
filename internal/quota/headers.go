@@ -12,6 +12,7 @@ import (
 // limit/remaining pair never becomes an invented balance.
 func FromHeaders(headers http.Header, now time.Time) (Status, bool) {
 	s := Status{Source: "response_headers"}
+	var codexWindows []Window
 	for _, unit := range []string{"requests", "tokens"} {
 		if headers.Get("Anthropic-RateLimit-"+unit+"-Limit") != "" {
 			limit, lOK := number(headers.Get("Anthropic-RateLimit-" + unit + "-Limit"))
@@ -31,7 +32,7 @@ func FromHeaders(headers http.Header, now time.Time) (Status, bool) {
 	for _, name := range []string{"primary", "secondary"} {
 		prefix := "X-Codex-" + name + "-"
 		used, ok := number(headers.Get(prefix + "Used-Percent"))
-		if !ok || used < 0 || used > 100 {
+		if !ok || used < 0 {
 			continue
 		}
 		var reset *time.Time
@@ -41,10 +42,28 @@ func FromHeaders(headers http.Header, now time.Time) (Status, bool) {
 			reset = &t
 		}
 		window := Window{Name: name, Unit: "percent", Limit: 100, Used: used, ResetAt: reset}
-		if minutes, ok := number(headers.Get(prefix + "Window-Minutes")); ok && minutes >= 0 && minutes <= 525600 {
+		if minutes, ok := number(headers.Get(prefix + "Window-Minutes")); ok && minutes > 0 && minutes*60 < float64(math.MaxInt64) {
 			window.WindowSeconds = int64(minutes * 60)
 		}
+		window.WindowType = WindowType(window.WindowSeconds)
+		window.Slot = name
+		window.State = "available"
+		window.Source = s.Source
+		window.LastUpdated = now
 		s.Windows = append(s.Windows, window)
+		codexWindows = append(codexWindows, window)
+	}
+	if len(codexWindows) > 0 {
+		s.Provider = "openai-codex"
+		s.State = "available"
+		s.CollectedAt = now
+		groupState := "available"
+		for _, w := range codexWindows {
+			if w.Used >= 100 {
+				groupState = "exhausted"
+			}
+		}
+		s.Limits = []LimitGroup{{Scope: "unknown", State: groupState, Windows: codexWindows}}
 	}
 	if reset := ParseReset(headers.Get("X-Sc-Budget-Renews-At"), now); reset != nil {
 		s.Source = "standard_compute_headers"

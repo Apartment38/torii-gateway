@@ -130,7 +130,10 @@ func (h *OpenAIHandler) prefetchQuotas(ctx context.Context, models []catalog.Des
 		go func() {
 			defer wg.Done()
 			for id := range jobs {
-				status := h.modelQuota(ctx, id)
+				status, _ := h.quota.Get(ctx, id)
+				if !status.Known {
+					status = h.modelQuota(ctx, id)
+				}
 				mu.Lock()
 				results[id] = status
 				mu.Unlock()
@@ -146,6 +149,7 @@ func (h *OpenAIHandler) clientMetadata(ctx context.Context, d catalog.Descriptor
 }
 
 func clientMetadataWithQuota(d catalog.Descriptor, usage []ModelUsage, available bool, status quota.Status) clientModel {
+	status.AccountIdentity = "" // Account display identity is administrator-only.
 	return clientModel{Model: provider.Model{ID: d.PublicID, Object: "model", Created: d.Created, OwnedBy: d.OwnedBy, ContextWindow: d.ContextWindow, InputPerMillion: d.Pricing.InputPerMillion, OutputPerMillion: d.Pricing.OutputPerMillion, Subscription: d.Subscription}, Pricing: &d.Pricing, Quota: &status, Usage: usage, UsageAvailable: available}
 }
 
@@ -175,10 +179,34 @@ func (h *OpenAIHandler) ModelQuota(ctx context.Context, id string) (quota.Status
 	if h.quota == nil {
 		return quota.Status{}, nil
 	}
-	status, err := h.quota.Get(ctx, id)
-	if !status.Known && h.observedQuotas != nil {
+	var status quota.Status
+	var err error
+	providerID, _, _ := provider.ParseModelID(id)
+	if _, codex := h.byID[providerID].(*provider.Codex); codex {
+		status, _ = h.quota.Peek(id)
+	} else {
+		status, err = h.quota.Get(ctx, id)
+	}
+	hasPolledBuckets := status.Provider == "openai-codex" && status.State == "available" && len(status.Limits) > 0
+	if !status.Known && !hasPolledBuckets && h.observedQuotas != nil {
 		if providerID, _, parseErr := provider.ParseModelID(id); parseErr == nil {
-			if observed, observeErr := h.observedQuotas.Get(ctx, providerID); observeErr == nil && observed.Known {
+			if codex, ok := h.byID[providerID].(*provider.Codex); ok {
+				providerID = codex.QuotaKey(id)
+			}
+			if observed, exists := h.observedQuotas.Peek(providerID); exists && (observed.Known || len(observed.Limits) > 0) {
+				if status.Provider == "openai-codex" {
+					observed.Provider = status.Provider
+					observed.AccountID = status.AccountID
+					observed.AccountIdentity = status.AccountIdentity
+					observed.UnavailableReason = status.UnavailableReason
+					if status.State != "" && status.State != "available" {
+						observed.CollectionState = status.CollectionState
+					}
+					if observed.State == "" {
+						observed.State = "available"
+					}
+					return observed, nil
+				}
 				// Account headers supplement polling; retain independently collected
 				// billing information and its original expiration deadline.
 				for _, balance := range observed.Balances {

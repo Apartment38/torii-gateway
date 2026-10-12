@@ -130,3 +130,20 @@ windows do not gate unrelated inference; calendar USD spend and organization
 reports remain separate from gateway per-key estimates. Concurrent model-picker
 warming shares one ten-second deadline. Dated base pricing fills missing model
 catalog prices; live values and operator overrides retain precedence.
+
+Codex subscription usage shares the inference authentication manager, refresh
+serialization and encrypted persistence, including across handler replacement.
+Conditional rotation cannot overwrite a newer login. The optional CLI collector
+requires matching account evidence and falls back to the endpoint-bound HTTP
+collector. Multi-pool snapshots retain duration-classified windows without
+inventing model associations. Background polling and manual reads coalesce per
+account, honor backoff/Retry-After and preserve stale successful evidence.
+Inference uses cached Codex evidence and does not wait on usage HTTP. Codex
+inference-header observations remain independent of polled snapshots and retain
+the originating login association. Workspace/user identity keys isolate account
+switches; unidentified users never share workspace cache entries.
+
+OAuth client/issuer/scope context participates in Codex snapshot identity. A new
+login clears authentication failure backoff while retaining provider 429 cooldowns
+and local allowances. Unidentified inference-header pools remain informational;
+they cannot assert account-wide exhaustion or erase an available polled bucket.

@@ -30,7 +30,9 @@ type Codex struct {
 	load       func(string) (CodexCredential, error)
 	save       func(string, CodexCredential) error
 	issuer     string
-	refreshMu  sync.Mutex
+	refreshMu  *sync.Mutex
+	commit     func(string, CodexCredential, CodexCredential) error
+	appServer  CodexAppServerConfig
 	modelsMu   sync.Mutex
 	lastModels []Model
 }
@@ -72,12 +74,17 @@ func NewCodex(id, baseURL string, models []string, load func(string) (CodexCrede
 	clonedClient := *client
 	clonedClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	client = &clonedClient
-	return &Codex{id: id, base: u, models: append([]string(nil), models...), client: client, load: load}, nil
+	return &Codex{id: id, base: u, models: append([]string(nil), models...), client: client, load: load, refreshMu: &sync.Mutex{}}, nil
 }
 
 func (c *Codex) ConfigureRefresh(issuer string, save func(string, CodexCredential) error) {
 	c.issuer = strings.TrimRight(issuer, "/")
 	c.save = save
+}
+
+// ConfigureCredentialLifecycle shares refresh serialization across handler reloads.
+func (c *Codex) ConfigureCredentialLifecycle(lock *sync.Mutex, commit func(string, CodexCredential, CodexCredential) error) {
+	c.refreshMu, c.commit = lock, commit
 }
 func (c *Codex) ID() string { return c.id }
 func (c *Codex) Models(ctx context.Context) ([]Model, error) {
@@ -121,12 +128,15 @@ func (c *Codex) DiscoverModels(ctx context.Context) ([]Model, error) {
 			return nil, errors.New("build Codex catalog request")
 		}
 		c.authenticate(request, credential)
-		response, err := c.client.Do(request)
+		response, err := c.doAuthenticated(ctx, request, credential)
 		if err != nil {
-			return nil, errors.New("Codex catalog request failed (network or timeout)")
+			return nil, err
 		}
 		models, err := c.decodeModels(response)
 		_ = response.Body.Close()
+		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+			return nil, err
+		}
 		if err == nil {
 			return models, nil
 		}
@@ -228,38 +238,113 @@ func (c *Codex) staticModels() []Model {
 	return result
 }
 
+// credential is the common authentication manager for inference, discovery and usage.
 func (c *Codex) credential(ctx context.Context) (CodexCredential, error) {
 	credential, err := c.load(c.id)
 	if err != nil {
 		return CodexCredential{}, errors.New("Codex credential unavailable; log in to the provider")
 	}
-	if credential.AccessToken == "" {
-		return CodexCredential{}, errors.New("Codex access token is missing; log in to the provider")
-	}
-	if credential.Endpoint != c.base.String() {
-		return CodexCredential{}, errors.New("Codex credential endpoint binding does not match provider; log in again")
+	credential = codexExpiryHint(credential)
+	if err = c.validateCredential(credential); err != nil {
+		return CodexCredential{}, err
 	}
 	if !credential.ExpiresAt.IsZero() && !credential.ExpiresAt.After(time.Now().Add(5*time.Minute)) {
-		if credential.RefreshToken == "" || c.save == nil || c.issuer == "" {
-			return CodexCredential{}, errors.New("Codex credential is expired or cannot be refreshed")
-		}
-		c.refreshMu.Lock()
-		defer c.refreshMu.Unlock()
-		// Another request may have refreshed and persisted a rotated token while
-		// this request was waiting for the lock. Re-read before making a second
-		// token exchange.
-		latest, loadErr := c.load(c.id)
-		if loadErr == nil && latest.Endpoint == c.base.String() {
-			credential = latest
-		}
-		if !credential.ExpiresAt.IsZero() && !credential.ExpiresAt.After(time.Now().Add(5*time.Minute)) {
-			credential, err = c.refresh(ctx, credential)
-			if err != nil {
-				return CodexCredential{}, err
-			}
-		}
+		return c.refreshCredential(ctx, credential, false)
 	}
 	return credential, nil
+}
+func codexExpiryHint(v CodexCredential) CodexCredential {
+	if !v.ExpiresAt.IsZero() {
+		return v
+	}
+	parts := strings.Split(v.AccessToken, ".")
+	if len(parts) == 3 {
+		raw, _ := base64.RawURLEncoding.DecodeString(parts[1])
+		var claims struct {
+			Expiry int64 `json:"exp"`
+		}
+		if json.Unmarshal(raw, &claims) == nil && claims.Expiry > 0 {
+			v.ExpiresAt = time.Unix(claims.Expiry, 0).UTC()
+		}
+	}
+	return v
+}
+func (c *Codex) validateCredential(v CodexCredential) error {
+	if v.AccessToken == "" {
+		return errors.New("Codex access token is missing; log in to the provider")
+	}
+	if v.Endpoint != c.base.String() {
+		return errors.New("Codex credential endpoint binding does not match provider; log in again")
+	}
+	return nil
+}
+func (c *Codex) refreshCredential(ctx context.Context, previous CodexCredential, force bool) (CodexCredential, error) {
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+	latest, err := c.load(c.id)
+	if err != nil {
+		return CodexCredential{}, errors.New("Codex credential unavailable")
+	}
+	latest = codexExpiryHint(latest)
+	if err = c.validateCredential(latest); err != nil {
+		return CodexCredential{}, err
+	}
+	latestAccount, previousAccount := latest.AccountID, previous.AccountID
+	if latestAccount == "" {
+		latestAccount = codexTokenAccount(latest.AccessToken)
+	}
+	if previousAccount == "" {
+		previousAccount = codexTokenAccount(previous.AccessToken)
+	}
+	if latestAccount != previousAccount || latest.Subject != previous.Subject {
+		return CodexCredential{}, errors.New("Codex account changed during authentication; retry the request")
+	}
+	if latest.AccessToken != previous.AccessToken {
+		return latest, nil
+	}
+	if !force && (latest.ExpiresAt.IsZero() || latest.ExpiresAt.After(time.Now().Add(5*time.Minute))) {
+		return latest, nil
+	}
+	if latest.RefreshToken == "" || c.save == nil || c.issuer == "" {
+		return CodexCredential{}, errors.New("Codex authentication expired or rejected; reconnect OAuth login")
+	}
+	return c.refresh(ctx, latest)
+}
+
+// doAuthenticated retries an authentication rejection once, using the same manager
+// and persistence path as proactive expiry refresh. Bodies must be replayable.
+func (c *Codex) doAuthenticated(ctx context.Context, req *http.Request, v CodexCredential) (*http.Response, error) {
+	c.authenticate(req, v)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, errors.New("Codex request failed (network or timeout)")
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		return resp, nil
+	}
+	if v.RefreshToken == "" || c.save == nil || c.issuer == "" {
+		return resp, nil
+	}
+	next, refreshErr := c.refreshCredential(ctx, v, true)
+	if refreshErr != nil {
+		resp.Body.Close()
+		return nil, &codexAuthError{refreshErr}
+	}
+	resp.Body.Close()
+	retry := req.Clone(ctx)
+	retry.Header = req.Header.Clone()
+	if req.GetBody != nil {
+		retry.Body, err = req.GetBody()
+		if err != nil {
+			return nil, errors.New("cannot replay Codex request")
+		}
+	}
+	c.authenticate(retry, next)
+	resp, err = c.client.Do(retry)
+	if err != nil {
+		return nil, errors.New("Codex retry failed (network or timeout)")
+	}
+	return resp, nil
 }
 
 func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model string) (*http.Response, error) {
@@ -303,10 +388,14 @@ func (c *Codex) Forward(ctx context.Context, endpoint string, body []byte, model
 	if stream || planUsage {
 		req.Header.Set("Accept", "text/event-stream")
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.doAuthenticated(ctx, req, credential)
 	if err != nil {
-		return nil, fmt.Errorf("Codex request: %w", err)
+		return nil, err
 	}
+	if resp.Request == nil {
+		resp.Request = req
+	}
+	resp.Request = resp.Request.WithContext(context.WithValue(resp.Request.Context(), codexQuotaContextKey{}, c.quotaIdentityKey(credential)))
 	if stream || resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if stream && endpoint == "/v1/chat/completions" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			resp.Body = &codexStreamReader{reader: bufio.NewReader(resp.Body), closer: resp.Body}
@@ -472,6 +561,9 @@ func (r *codexStreamReader) nextEvent() ([]byte, error) {
 }
 
 func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexCredential, error) {
+	previous := credential
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	clientID := credential.ClientID
 	if clientID == "" {
 		clientID = CodexOAuthClientID
@@ -494,12 +586,12 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return credential, fmt.Errorf("Codex token refresh returned %s", response.Status)
+		return credential, fmt.Errorf("Codex token refresh returned HTTP %d; reconnect OAuth login", response.StatusCode)
 	}
 	var refreshed struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
+		ExpiresIn    *int   `json:"expires_in"`
 		IDToken      string `json:"id_token"`
 		Scope        string `json:"scope"`
 	}
@@ -516,11 +608,26 @@ func (c *Codex) refresh(ctx context.Context, credential CodexCredential) (CodexC
 	if refreshed.Scope != "" {
 		credential.Scopes = strings.Fields(refreshed.Scope)
 	}
-	if refreshed.ExpiresIn > 0 {
-		credential.ExpiresAt = time.Now().Add(time.Duration(refreshed.ExpiresIn) * time.Second)
+	credential.ExpiresAt = time.Time{}
+	if refreshed.ExpiresIn != nil {
+		if *refreshed.ExpiresIn <= 0 || int64(*refreshed.ExpiresIn) > int64((time.Duration(1<<63-1))/time.Second) {
+			return previous, errors.New("Codex refresh response has invalid expiration")
+		}
+		credential.ExpiresAt = time.Now().Add(time.Duration(*refreshed.ExpiresIn) * time.Second)
+	} else {
+		credential = codexExpiryHint(credential)
 	}
-	if err := c.save(c.id, credential); err != nil {
-		return credential, fmt.Errorf("persist refreshed Codex credential: %w", err)
+	if !credential.ExpiresAt.IsZero() && !credential.ExpiresAt.After(time.Now()) {
+		return previous, errors.New("Codex refresh returned an expired access token")
+	}
+	var saveErr error
+	if c.commit != nil {
+		saveErr = c.commit(c.id, previous, credential)
+	} else {
+		saveErr = c.save(c.id, credential)
+	}
+	if saveErr != nil {
+		return previous, errors.New("cannot persist refreshed Codex credential; login may have changed")
 	}
 	return credential, nil
 }

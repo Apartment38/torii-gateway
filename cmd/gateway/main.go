@@ -351,7 +351,7 @@ func runAuth(args []string, output io.Writer) error {
 				return loginErr
 			}
 			credential.Endpoint = providerConfig.BaseURL
-			if err := store.Save(providerID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: credential.Endpoint, AccountID: credential.AccountID}); err != nil {
+			if err := store.Save(providerID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: credential.Endpoint, AccountID: credential.AccountID, ClientID: credential.ClientID, IDToken: credential.IDToken, Issuer: credential.Issuer, Subject: credential.Subject, Email: credential.Email, HostID: credential.HostID, Scopes: credential.Scopes, TokenType: "Bearer"}); err != nil {
 				return err
 			}
 			_, err := fmt.Fprintf(output, "provider %s: logged in\n", providerID)
@@ -1140,8 +1140,9 @@ func (r *handlerRuntime) testProvider(w http.ResponseWriter, req *http.Request) 
 
 func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Request) {
 	var request struct {
-		Provider   yaml.Node `json:"provider" yaml:"provider"`
-		ProviderID string    `json:"provider_id" yaml:"provider_id"`
+		Provider    yaml.Node `json:"provider" yaml:"provider"`
+		ProviderID  string    `json:"provider_id" yaml:"provider_id"`
+		LoginMethod string    `json:"login_method" yaml:"login_method"`
 	}
 	if err := yaml.NewDecoder(io.LimitReader(req.Body, 64<<10)).Decode(&request); err != nil {
 		writeConfigError(w, http.StatusBadRequest, errors.New("invalid login document (input omitted for credential safety)"))
@@ -1195,8 +1196,16 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 			writeConfigError(w, http.StatusServiceUnavailable, errors.New("Codex login requires the application database"))
 			return
 		}
-		if !isLoopbackRequest(req) {
+		if request.LoginMethod == "helper" {
 			r.startRemoteCodexLogin(w, req, providerConfig)
+			return
+		}
+		if request.LoginMethod != "" && request.LoginMethod != "device" {
+			writeConfigError(w, http.StatusBadRequest, errors.New("unsupported Codex login method"))
+			return
+		}
+		if !isLoopbackRequest(req) || request.LoginMethod == "device" {
+			r.startDeviceCodexLogin(w, providerConfig)
 			return
 		}
 		hostID, hostErr := r.credentials.CodexHostID(req.Context())
@@ -1243,7 +1252,47 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 	go r.completeProviderLogin(providerConfig)
 }
 
+// Remote browser login uses OpenAI's device flow, with no local callback server.
+func (r *handlerRuntime) startDeviceCodexLogin(w http.ResponseWriter, cfg config.ProviderConfig) {
+	r.loginMu.Lock()
+	if r.logins == nil {
+		r.logins = make(map[string]providerLogin)
+	}
+	if existing, ok := r.logins[cfg.ID]; ok && existing.Status == "pending" && existing.HelperURL == "" && !existing.ExpiresAt.IsZero() {
+		r.loginMu.Unlock()
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusAccepted, existing)
+		return
+	}
+	// A browser-only request replaces legacy helper/loopback sessions. Their
+	// old callbacks and pairing tokens must no longer be able to import a login.
+	for key, session := range r.loginSessions {
+		if session.Provider.ID == cfg.ID {
+			delete(r.loginSessions, key)
+		}
+	}
+	for key, flow := range r.loginFlows {
+		if flow.Provider.ID == cfg.ID {
+			delete(r.loginFlows, key)
+		}
+	}
+	status := providerLogin{Status: "pending", Message: "Preparing OpenAI browser login…", ExpiresAt: time.Now().Add(15 * time.Minute)}
+	r.logins[cfg.ID] = status
+	r.loginMu.Unlock()
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, status)
+	go r.completeProviderLogin(cfg)
+}
+
+// Explicit legacy helper sessions remain available for older clients.
 func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.Request, providerConfig config.ProviderConfig) {
+	r.loginMu.Lock()
+	existing, pending := r.logins[providerConfig.ID]
+	r.loginMu.Unlock()
+	if pending && existing.Status == "pending" && existing.HelperURL == "" && !existing.ExpiresAt.IsZero() {
+		writeConfigError(w, http.StatusConflict, errors.New("browser authorization is already pending for this provider"))
+		return
+	}
 	hostID, err := r.credentials.CodexHostID(req.Context())
 	if err != nil {
 		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", err))
@@ -1438,6 +1487,7 @@ func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Re
 		return
 	}
 	status.HelperToken = ""
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, status)
 }
 
@@ -1512,12 +1562,13 @@ func (r *handlerRuntime) completeProviderLogin(providerConfig config.ProviderCon
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
+	expiresAt, _ := ctx.Deadline()
 	if providerConfig.Type == "openai-codex" {
-		credential, loginErr := provider.DeviceCodeLogin(ctx, "https://auth.openai.com", &http.Client{}, func(url, code string) {
-			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "pending", Message: "Open the verification URL and enter the code", VerificationURL: url, UserCode: code})
+		credential, loginErr := provider.DeviceCodeLogin(ctx, "https://auth.openai.com", &http.Client{Timeout: 30 * time.Second}, func(url, code string) {
+			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "pending", Message: "Sign in with OpenAI in the browser tab and enter this one-time code", VerificationURL: url, UserCode: code, ExpiresAt: expiresAt})
 		})
 		if loginErr == nil {
-			loginErr = store.Save(providerConfig.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: providerConfig.BaseURL, AccountID: credential.AccountID, TokenType: "Bearer"})
+			loginErr = store.Save(providerConfig.ID, &state.Credential{AccessToken: credential.AccessToken, RefreshToken: credential.RefreshToken, ExpiresAt: credential.ExpiresAt, Endpoint: providerConfig.BaseURL, AccountID: credential.AccountID, ClientID: credential.ClientID, IDToken: credential.IDToken, Issuer: credential.Issuer, Subject: credential.Subject, Email: credential.Email, Scopes: credential.Scopes, TokenType: "Bearer"})
 		}
 		if loginErr != nil {
 			r.setProviderLogin(providerConfig.ID, providerLogin{Status: "failure", Message: loginErr.Error()})

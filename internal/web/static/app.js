@@ -1385,72 +1385,68 @@ async function testProvider(index        )                {
     setProviderStatus(provider, { state: "failure", message: `Not working · 0 models discovered · ${error instanceof Error ? error.message : "connection failed"}` });
   }
 }
+
 async function loginProvider(index        , button                   )                {
-  const result = providerList.querySelector                (`[data-result="${index}"]`) ;
   const provider = providers[index];
+  // Reserve the tab during the click, before any asynchronous request, so
+  // browsers do not treat the later authorization URL as an unsolicited popup.
+  const loginTab = window.open("about:blank", "_blank");
+  if (loginTab) loginTab.opener = null;
   button.disabled = true;
   setProviderStatus(provider, { state: "pending", message: "Starting login…" });
   try {
     const configuration = readProviderConfig(provider);
-    const response = await gatewayFetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration }) });
+    const response = await gatewayFetch("/gateway/v1/providers/login", { method: "POST", headers: { "Content-Type": "application/json", ...await authProvider.headers() }, body: JSON.stringify({ provider: configuration, login_method: "device" }) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "login could not start");
-    if (body.helper_url && body.helper_token) {
-      renderHelperInstructions(result, body.helper_url, body.helper_token);
-      await pollProviderLogin(provider, result, button, "", true);
-      return;
-    }
-    if (body.verification_url) window.open(body.verification_url, "_blank", "noopener,noreferrer");
-    result.textContent = body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…";
-    await pollProviderLogin(provider, result, button, body.verification_url || "");
+    await pollProviderLogin(provider, button, loginTab, body);
   } catch (error) {
+    loginTab?.close();
     setProviderStatus(provider, { state: "failure", message: `Not working · 0 models discovered · ${error instanceof Error ? error.message : "login failed"}` });
+  } finally {
     button.disabled = false;
   }
 }
-const helperAssets=["torii-auth-linux-amd64","torii-auth-linux-arm64","torii-auth-darwin-amd64","torii-auth-darwin-arm64","torii-auth-windows-amd64.exe"];
-function detectedHelperAsset()        {
- const platform=navigator.platform.toLowerCase(),agent=navigator.userAgent.toLowerCase();
- if(platform.includes("win"))return helperAssets[4];
- if(platform.includes("mac")||agent.includes("macintosh"))return agent.includes("arm")?helperAssets[3]:helperAssets[2];
- return agent.includes("aarch64")||agent.includes("arm64")?helperAssets[1]:helperAssets[0];
+function renderLoginInstructions(provider                                  , body                     )       {
+  const message = body.user_code ? `${body.message || "Sign in with OpenAI"}. Code: ${body.user_code}` : body.message || "Waiting for login…";
+  setProviderStatus(provider, { state: "pending", message });
+  if (!body.verification_url) return;
+  const url = new URL(body.verification_url);
+  if (url.origin !== "https://auth.openai.com") throw new Error("Invalid OpenAI login URL");
+  const content = `${escapeHTML(redactProviderKeys(message))} <a href="${escapeHTML(url.href)}" target="_blank" rel="noopener noreferrer">Open OpenAI login</a>`;
+  const index = providers.indexOf(provider);
+  for (const selector of [`[data-result="${index}"]`, `[data-editor-status="${index}"]`]) {
+    const node = providerList.querySelector             (selector);
+    if (node) node.innerHTML = content;
+  }
 }
-function quoteShell(value       ,windows=false)       {return "'"+value.replace(/'/g,windows?"''":"'\\''")+"'";}
-function helperCommand(asset       ,sessionURL       ,pairingToken       )        {
- if(!helperAssets.includes(asset))throw new Error("Select a supported helper platform");
- const windows=asset.endsWith(".exe");
- const executable=windows?`& ${quoteShell(".\\"+asset,true)}`:`./${asset}`;
- return (windows?"":`chmod +x ./${asset}\n`)+`${executable} --session-url ${quoteShell(sessionURL,windows)} --pairing-token ${quoteShell(pairingToken,windows)}`;
-}
-function renderHelperInstructions(result                , sessionURL        , pairingToken        )       {
- let asset=detectedHelperAsset();let command=helperCommand(asset,sessionURL,pairingToken);
- result.className="provider-result pending provider-helper";
- result.innerHTML=`<strong>Download and run the helper on the computer with your browser.</strong><label>Operating system / architecture<select class="helper-platform">${helperAssets.map(name=>`<option value="${name}" ${name===asset?"selected":""}>${name.replace("torii-auth-","")}</option>`).join("")}</select></label><a class="helper-download" href="${helperDownloadURL(asset)}" download="${asset}">Download ${asset}</a><p>Open a terminal in the folder containing the download (usually Downloads). Run these commands there:</p><pre class="helper-command">${escapeHTML(command)}</pre><button class="copy-helper button quiet" type="button">Copy commands</button><small>Check the platform selection; browser detection may not identify your processor. The helper opens OpenAI login locally, imports the credential and prints “Codex login imported into Torii successfully.” Then it exits. Pairing expires in 10 minutes and is single use. After expiry or failure, click Log in again for a fresh token and rerun the updated commands. Keep the token private.</small><a href="https://github.com/Apartment38/torii-gateway/releases/latest" target="_blank" rel="noopener noreferrer">Gateway releases</a>`;
- const link=result.querySelector                   (".helper-download");
- result.querySelector                   (".helper-platform")?.addEventListener("change",event=>{asset=(event.target                     ).value;command=helperCommand(asset,sessionURL,pairingToken);if(link){link.href=helperDownloadURL(asset);link.download=asset;link.textContent=`Download ${asset}`;}result.querySelector(".helper-command") .textContent=command;});
- link?.addEventListener("click",async event=>{event.preventDefault();try{const response=await gatewayFetch(helperDownloadURL(asset),{headers:await authProvider.headers()});if(!response.ok)throw new Error();const url=URL.createObjectURL(await response.blob());const a=document.createElement("a");a.href=url;a.download=asset;a.click();URL.revokeObjectURL(url);}catch{toast("Helper download failed; sign in and retry");}});
- result.querySelector                   (".copy-helper")?.addEventListener("click",async event=>{const button=event.currentTarget                     ;try{await navigator.clipboard.writeText(command);button.textContent="Copied";}catch{button.textContent="Copy unavailable";}});
-}
-function helperDownloadURL(asset=detectedHelperAsset())       {return helperAssets.includes(asset)?`/gateway/v1/providers/login/helper/${asset}`:"https://github.com/Apartment38/torii-gateway/releases/latest";}
-async function pollProviderLogin(provider                                  , result                , button                   , openedURL = "", helperPending = false)                {
+async function pollProviderLogin(provider                                  , button                   , loginTab               , initial                     )                {
   const providerID = String(provider.id);
-  for (let attempt = 0; attempt < 180; attempt += 1) {
-    await new Promise(resolve => window.setTimeout(resolve, 2000));
-    const response = await gatewayFetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
-    const body = await response.json();
-    if (body.verification_url && body.verification_url !== openedURL) { openedURL = body.verification_url; window.open(openedURL, "_blank", "noopener,noreferrer"); }
+  let body = initial;
+  let openedURL = "";
+  // Match OpenAI's 15-minute device authorization lifetime.
+  for (let attempt = 0; attempt < 450; attempt += 1) {
+    if (!providers.includes(provider) || String(provider.id) !== providerID) {
+      if (!openedURL) loginTab?.close();
+      return;
+    }
     if (body.status === "success") {
-      button.disabled = false;
+      if (!openedURL) loginTab?.close();
       await testProvider(providers.indexOf(provider));
       return;
     }
-    if (body.status === "failure") { setProviderStatus(provider, { state: "failure", message: `Not working · 0 models discovered · ${body.message || "login failed"}` }); button.disabled = false; return; }
-    if (!helperPending) {
-      setProviderStatus(provider, { state: "pending", message: body.user_code ? `${body.message}. Code: ${body.user_code}` : body.message || "Waiting for login…" });
+    if (body.status === "failure") throw new Error(body.message || "login failed");
+    renderLoginInstructions(provider, body);
+    if (body.verification_url && !openedURL) {
+      openedURL = body.verification_url;
+      if (loginTab && !loginTab.closed) loginTab.location.replace(openedURL);
     }
+    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    const response = await gatewayFetch(`/gateway/v1/providers/login?provider=${encodeURIComponent(providerID)}`, { headers: await authProvider.headers() });
+    body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Could not check login status; click Log in to try again");
   }
-  setProviderStatus(provider, { state: "failure", message: "Not working · 0 models discovered · login timed out" });
-  button.disabled = false;
+  throw new Error("Login timed out; click Log in for a new code");
 }
 async function testAllProviders()                {
   classifierDiscoveryPending = true;

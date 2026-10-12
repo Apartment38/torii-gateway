@@ -66,19 +66,25 @@ replacing wildcard hosts with loopback. `--url` takes an origin such as
 the default gateway key must exist, and the running server must be reachable.
 Source partial failures appear in `partial_failure` even on exit zero.
 
-## Remote login helper
+## Legacy remote login helper
+
+Normal console login uses a browser tab and one-time code, with no helper.
+See [Providers](../guides/providers.md). The helper remains available for API
+clients that explicitly request `login_method: "helper"` from the administrator
+login endpoint, as described in [API](api.md).
+
+For a returned pairing session, run the OS/architecture-matching helper on the
+computer with your browser. Both flags are required; use the returned session
+URL/token. For Linux amd64:
 
 ```sh
 chmod +x ./torii-auth-linux-amd64
 ./torii-auth-linux-amd64 --session-url 'https://gateway.example.com/gateway/v1/providers/login/session' \
-  --pairing-token 'ONE_TIME_TOKEN_FROM_CONSOLE'
+  --pairing-token 'ONE_TIME_PAIRING_TOKEN'
 ```
 
-Run the OS/architecture-matching helper on the computer with your browser.
-Open a terminal in the downloaded file’s folder (usually Downloads). Use the
-console platform selector to correct browser OS/architecture detection.
-Both flags are required; use the exact pending session URL/token from the console.
-The helper opens login locally, receives the loopback callback, transfers the
-credential, and exits. The token expires in 10 minutes and is single use. It must
-not be shared. `torii-auth version` prints build metadata. The helper needs no
-local gateway database/master key. Success prints `Codex login imported into Torii successfully.` and exits; failure or expiry requires a fresh console Log in token and updated command. The console generates matching POSIX or PowerShell quoting and filenames.
+The helper receives the loopback callback, transfers the credential, and exits.
+Pairing expires after 10 minutes and is single use. Success prints
+`Codex login imported into Torii successfully.`; failure requires a new pairing
+session. Windows uses the matching `.exe`, without `chmod`. The helper needs
+no local gateway database/master key. `torii-auth version` prints build metadata.

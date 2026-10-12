@@ -32,7 +32,7 @@ one local database volume; benchmark writer coordination is process-local.
 | Package | Responsibility |
 | --- | --- |
 | `cmd/gateway` | CLI, lifecycle, admin setup, config persistence/reload, OAuth orchestration |
-| `cmd/torii-auth` | Browser-host loopback login and single-use remote pairing |
+| `cmd/torii-auth` | Optional legacy browser-host loopback login and single-use remote pairing |
 | `internal/api` | Authentication, public endpoints, streaming, smart dispatch/evidence, errors |
 | `internal/config` | Strict settings/import schema, references, defaults/validation |
 | `internal/provider` | Discovery, profile-specific credentials/protocols/quota |

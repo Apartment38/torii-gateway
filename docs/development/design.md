@@ -147,3 +147,10 @@ OAuth client/issuer/scope context participates in Codex snapshot identity. A new
 login clears authentication failure backoff while retaining provider 429 cooldowns
 and local allowances. Unidentified inference-header pools remain informational;
 they cannot assert account-wide exhaustion or erase an available polled bucket.
+
+Console Codex subscription login uses server-side device authorization. The
+browser receives only a verification URL, one-time code and status; OAuth
+credentials remain on the gateway and retain their account/client/issuer context
+in encrypted SQLite. Browser tabs open during the login click, with a visible
+link when popup opening is blocked. The optional legacy helper API requires an
+explicit login method; console login does not require a helper or loopback listener.

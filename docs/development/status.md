@@ -2,6 +2,29 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Codex browser login
+
+Implemented on `fix/codex-browser-login` in
+`/workspace/work/codex-browser-login`. The console replaces helper downloads and
+terminal commands with an OpenAI browser tab and one-time device code. Gateway
+polling matches the current upstream response/PKCE exchange contract and retains
+account/client/issuer context in encrypted SQLite. Popup blocking leaves a visible
+login link; pending sessions are reused and browser polling covers the 15-minute
+lifetime. Helper APIs remain optional for explicitly requesting legacy clients.
+The guide and API/CLI/development documentation reflect the new default.
+
+Validation: full Go tests/race checks, build, vet, module tidy (no module changes),
+formatting/diff checks, all 120 console tests, generated assets, release-validator
+tests and affected documentation links pass. Targeted race checks also pass after
+final login-test cleanup. Tests cover local/remote browser authorization, pending
+polls, encrypted credential context, administrator access, token redaction,
+redirect rejection, cancellation, blocked tabs, delayed completion and errors.
+Go checks used the workspace's Go 1.25.1 toolchain with VCS stamping disabled;
+mock-server checks required local socket access. Container credential verification
+is unavailable because Podman and the host SQLite CLI are absent. Live OpenAI
+sign-in and deployment remain unverified; account/workspace device authorization
+must be enabled. No push, merge or deployment was performed.
+
 ## Manual model pricing
 
 Completed gateway-wide `model_pricing` settings and the Models console pricing

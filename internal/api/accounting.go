@@ -44,6 +44,7 @@ func (h *OpenAIHandler) accountingDescriptor(id string) catalog.Descriptor {
 			break
 		}
 	}
+	d = h.applyModelPricing(d)
 	if h.freeProviders[providerID] {
 		zero := float64(0)
 		d.Pricing = catalog.Pricing{InputPerMillion: &zero, OutputPerMillion: &zero}

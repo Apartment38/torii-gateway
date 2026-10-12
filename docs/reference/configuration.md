@@ -306,6 +306,28 @@ freshness equations, raw-data retention, identity safeguards, and provenance.
 
 ## Model controls
 
+`model_pricing` is a gateway-wide map from provider-qualified model ID to a pricing
+object. `input_per_million` and `output_per_million` are optional finite nonnegative
+USD rates per million tokens. Missing fields retain automatic catalog rates; zero
+means free. Removing an entry restores automatic pricing. These manual rates take
+precedence over provider, bundled and per-router catalog prices and are shared by
+Jev, deterministic routing, discovery and accounting (including classifier models).
+An explicit provider `treat_models_as_free: true` remains authoritative and forces
+zero effective rates. Existing usage totals are not recalculated.
+
+Example excerpt:
+
+```yaml
+model_pricing:
+  cloud/example:
+    input_per_million: 0.25
+    output_per_million: 1.00
+```
+
+Use the [console pricing editor or CSV import](../guides/console.md#enter-model-pricing)
+for missing rates. Pricing entries persist across restart and discovery.
+
+
 `model_enabled` maps provider-qualified model IDs to booleans; omitted IDs are enabled. Disabled IDs survive rediscovery/restarts, disappear from inference discovery, and cannot be dispatched directly or selected by Smart. Change an active classifier before disabling its model. `providers[].enabled` defaults to true. `providers[].treat_models_as_free` defaults to true for native Ollama and false otherwise. When true, routing and quotas use explicit zero estimated cost; false retains individual catalog pricing overrides. Locality alone does not make a model free or override its prices.
 
 ## Operator budgets

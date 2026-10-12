@@ -226,7 +226,19 @@ Cookies are Secure on direct HTTPS and when the immediate peer belongs to an exp
 
 ## Model management
 
-Administrator `GET /gateway/v1/models` returns discovered physical models, enabled state, catalog capabilities/pricing, and safely matched benchmark intelligence with source, freshness and missing-score metadata. It uses the existing identity/alias resolver; approximate display matches supply no scores. `PUT` accepts `{id,enabled}` and requires the configuration `If-Match` revision; its successful `ETag` is the newly committed settings revision. Full config changes can also set `model_enabled`.
+Administrator `GET /gateway/v1/models` returns discovered physical models, enabled state, catalog capabilities/pricing, and safely matched benchmark intelligence with source, freshness and missing-score metadata. It uses the existing identity/alias resolver; approximate display matches supply no scores. `PUT` accepts `{id,enabled}` and/or `{id,pricing:{input_per_million,output_per_million}}`; at least one of `enabled` or `pricing` is required. Pricing rates are finite nonnegative USD per million tokens; `pricing:{}` removes that model's manual rates. It requires the configuration `If-Match` revision; its successful `ETag` is the newly committed settings revision. Full config changes can also set `model_enabled` and gateway-wide `model_pricing`.
+
+Pricing CSV tools require administrator authentication:
+
+| Route | Behavior |
+| --- | --- |
+| `GET /gateway/v1/models/pricing/template.csv` | Download the header and sample model rates |
+| `POST /gateway/v1/models/pricing/parse` | CSV body ≤1 MiB / 1,000 rows; validate every row and return `model_pricing` replacements without writing settings. Invalid files return 400. |
+
+The console merges validated rates into its draft and submits the full configuration
+with `If-Match`. API callers do the same using `GET`/`PUT /gateway/v1/config`, or use
+the per-model `PUT`. Blank CSV rates restore automatic pricing; other models remain
+unchanged. See [CSV fields](../guides/console.md#enter-model-pricing).
 
 ## Usage and quotas
 

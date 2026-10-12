@@ -17,6 +17,25 @@ func (h *OpenAIHandler) SetModelControls(enabled map[string]bool, free map[strin
 	h.modelEnabled = enabled
 	h.freeProviders = free
 }
+func (h *OpenAIHandler) SetModelPricing(prices map[string]catalog.Pricing) { h.modelPricing = prices }
+func (h *OpenAIHandler) applyModelPricing(model catalog.Descriptor) catalog.Descriptor {
+	price, ok := h.modelPricing[model.PublicID]
+	if !ok {
+		return model
+	}
+	if price.InputPerMillion != nil {
+		value := *price.InputPerMillion
+		model.Pricing.InputPerMillion = &value
+	}
+	if price.OutputPerMillion != nil {
+		value := *price.OutputPerMillion
+		model.Pricing.OutputPerMillion = &value
+	}
+	if price.InputPerMillion != nil || price.OutputPerMillion != nil {
+		model.Pricing.Source = "operator"
+	}
+	return model
+}
 func (h *OpenAIHandler) enabled(id string) bool {
 	value, exists := h.modelEnabled[id]
 	return !exists || value
@@ -24,6 +43,7 @@ func (h *OpenAIHandler) enabled(id string) bool {
 func (h *OpenAIHandler) CatalogModels() []catalog.Descriptor {
 	models := h.catalog.Models()
 	for i := range models {
+		models[i] = h.applyModelPricing(models[i])
 		if h.freeProviders[models[i].ProviderID] {
 			zero := float64(0)
 			models[i].Pricing = catalog.Pricing{InputPerMillion: &zero, OutputPerMillion: &zero}

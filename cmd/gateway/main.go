@@ -639,6 +639,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 			freeProviders[p.ID] = *p.TreatModelsAsFree
 		}
 	}
+	openAI.SetModelPricing(cfg.ModelPricing)
 	openAI.SetModelControls(cfg.ModelEnabled, freeProviders)
 	if err := openAI.RefreshCatalog(context.Background()); err != nil {
 		return nil, fmt.Errorf("initialize model catalog: %w", err)
@@ -783,6 +784,8 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		protect("PUT /gateway/v1/quotas", runtime.setBudgets)
 		protect("GET /gateway/v1/models", openAI.ManagementModels)
 		protect("PUT /gateway/v1/models", runtime.setModel)
+		protect("GET /gateway/v1/models/pricing/template.csv", runtime.pricingCSVTemplate)
+		protect("POST /gateway/v1/models/pricing/parse", runtime.parsePricingCSV)
 		protect("GET /gateway/v1/config", runtime.getConfig)
 		protect("PUT /gateway/v1/config", runtime.putConfig)
 		protect("POST /gateway/v1/config", runtime.putConfig)

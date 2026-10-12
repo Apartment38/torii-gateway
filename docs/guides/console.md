@@ -97,9 +97,11 @@ Provider editors show connection checks and save progress inside the card. A suc
 
 Smart routing supports named provider/model pools. The top selector loads a router's full policy. **Create router** clears the editor to default options; enter a unique **Router Name**, configure the policy, and click **Save**. **Remove router** stays beside the name and cannot remove the default router. **Save** also applies a named router's name changes. Existing policy edits continue to save automatically. Double-click providers from **Allowed providers** into **Enabled providers**, or use **Enable →** / **← Remove**. This updates **Available models** and removes enabled models outside a restricted provider pool. An empty enabled provider list allows all providers. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
 
-On **Benchmarks**, expand **Custom benchmarks · upload and edit** to download the
-CSV template, upload your measurements, or **Load measurements** and **Edit** a
-stored row. Saves take effect immediately; concurrent changes require reloading.
+On **Benchmarks**, **Configure Ingestion** opens the source card and **Upload Data**
+opens the CSV card. **Edit data** switches the current table to inline measurement
+editing with per-row **Save** and **Cancel**. **Display Fields** opens Available and
+Enabled field lists; double-click to move fields. Saves take effect immediately;
+failed validation and concurrent changes retain drafts.
 See [Custom benchmarks](benchmarks.md#upload-custom-benchmarks) for field definitions,
 limits, matching and refresh behavior.
 

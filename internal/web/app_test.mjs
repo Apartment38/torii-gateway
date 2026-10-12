@@ -871,7 +871,7 @@ test("benchmark page replaces JSON with five source controls and cached evidence
   app.context.config={providers:[],intelligence:{enabled:true}};
   app.run("applyConfig(config, fixtureRevision)");
   assert.equal(app.run("benchmarkSources.length"),5);
-  assert.equal(app.run('document.querySelector("#benchmark-configuration").hidden'),false);
+  assert.equal(app.run('document.querySelector("#benchmark-configure").disabled'),true);
   const sourceHTML=app.run('document.querySelector("#benchmark-sources-list").innerHTML');
   for (const name of ["Artificial Analysis","BenchLM.ai","Hugging Face","LMArena","LiveBench"]) assert.ok(sourceHTML.includes(name));
   assert.equal(app.run("readConfig().intelligence.sources.length"),0,"unused placeholder sources must not fail configuration validation");
@@ -1000,7 +1000,7 @@ test("streamed refresh advances actual source progress and updates the table bef
 
 test("refresh button shows activity immediately and table requests cannot block progress",async()=>{
   const index = readFileSync(new URL("./static/index.html", import.meta.url),"utf8");
-  assert.ok(index.indexOf('id="benchmark-refresh-panel"') < index.indexOf('id="benchmark-sources-list"'),"progress must appear above the long source-card list");
+  assert.match(index,/<dialog id="benchmark-configuration"[\s\S]*?id="benchmark-sources-list"[\s\S]*?<\/dialog>/);
   let controller;
   const pendingModels=[];
   const app=consoleFixture(url=>{
@@ -1826,12 +1826,12 @@ test("smart router dual selector transfers models and enforces 250 choices",asyn
 test("benchmark editor loads escaped rows and clears edit state on sign out",async()=>{
  const record={source:'custom',index:0,revision:'hash',observation:{external_model_id:'<model>',benchmark:'code',category:'coding',original_score:90,normalized_score:.9}};
  const app=consoleFixture((url)=>{assert.match(url,/\/intelligence\/records\?limit=25&offset=0&q=/);return response({records:[record],total:1});});
- app.run('benchmarksEnabledSaved=true;consoleSession="active"');
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkEditing=true');
  await app.run('loadBenchmarkRecords()');
- assert.match(app.run('document.querySelector("#benchmark-records-body").innerHTML'),/&lt;model&gt;/);
- assert.match(app.run('document.querySelector("#benchmark-records-body").innerHTML'),/data-edit-benchmark="0"/);
- app.run('editingBenchmarkRecord=benchmarkRecords[0];clearBenchmarkRecords()');
- assert.equal(app.run('editingBenchmarkRecord'),null);assert.equal(app.run('benchmarkRecords.length'),0);
+ assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/&lt;model&gt;/);
+ assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/data-benchmark-record="0"/);
+ app.run('benchmarkInlineDrafts.test={};clearBenchmarkRecords()');
+ assert.equal(app.run('Object.keys(benchmarkInlineDrafts).length'),0);assert.equal(app.run('benchmarkRecords.length'),0);
 });
 
 test("custom CSV upload sends the file with administrator CSRF headers",async()=>{
@@ -1854,11 +1854,11 @@ test("manual benchmark edit submits numeric values and retains the revision",asy
   if(url.endsWith('/observations/edit')){assert.equal(options.method,'PUT');const record=JSON.parse(options.body);assert.equal(record.revision,'dataset-revision');assert.equal(record.source,'custom');assert.equal(record.observation.original_score,91);assert.equal(record.observation.normalized_score,.91);return response({updated:true});}
   return response(url.includes('/records?')?{records:[],total:0}:{});
  });
- app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkRecords=[{source:"custom",index:0,revision:"dataset-revision",observation:{external_model_id:"local/m",benchmark:"code",category:"coding",original_score:90,normalized_score:.9}}];const editForm=document.querySelector("#benchmark-edit-form");editForm.elements={namedItem:name=>document.querySelector(`#edit-${name}`)};editForm.reportValidity=()=>true;editForm.querySelector=()=>document.querySelector("#measurement-save");openBenchmarkEdit(0);editForm.elements.namedItem("original_score").value="91";editForm.elements.namedItem("normalized_score").value="0.91"');
- await app.run('saveBenchmarkEdit({preventDefault(){}})');
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkEditing=true;benchmarkRecords=[{source:"custom",index:0,revision:"dataset-revision",observation:{external_model_id:"local/m",benchmark:"code",category:"coding",original_score:90,normalized_score:.9}}];benchmarkInlineDrafts[benchmarkRecordKey(benchmarkRecords[0])]={record:structuredClone(benchmarkRecords[0]),values:{...benchmarkRecordValues(benchmarkRecords[0]),original_score:"91",normalized_score:"0.91"},error:""}');
+ await app.run('saveBenchmarkInlineRow(0)');
  assert.equal(app.calls.filter(call=>call.url.endsWith('/observations/edit')).length,1);
- assert.equal(app.run('document.querySelector("#benchmark-edit-dialog").open'),false);
- assert.equal(app.run('editingBenchmarkRecord'),null);
+ assert.equal(app.run('Object.keys(benchmarkInlineDrafts).length'),0);
+ assert.match(app.run('document.querySelector("#benchmark-inline-status").textContent'),/saved/);
 });
 
 test("manual pricing editor saves rates and restores automatic prices",async()=>{
@@ -2075,4 +2075,66 @@ test("provider transfer filters available models and removes models outside the 
  await app.run('document.querySelector("#smart-router-providers").listeners.dblclick({target:{tagName:"OPTION",value:"p"}})');
  assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.providers')),[]);
  assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/q\/c/);
+});
+
+test("benchmark toolbar opens separate ingestion and upload overlays and source changes autosave",async()=>{
+ const html=readFileSync(new URL("./static/index.html",import.meta.url),"utf8");
+ assert.ok(html.indexOf('id="benchmark-upload"')<html.indexOf('id="benchmark-configure"'));
+ assert.ok(html.indexOf('id="benchmark-configure"')<html.indexOf('id="refresh-benchmarks"'));
+ const upload=html.match(/<dialog id="benchmark-upload-dialog"[\s\S]*?<\/dialog>/)[0];
+ assert.match(upload,/benchmark-csv-upload/);assert.doesNotMatch(upload,/Edit loaded measurements|benchmark-records/);
+ const app=consoleFixture(()=>response({}));
+ app.run('consoleSession="active";applyBenchmarkConfig({enabled:true});saveCalls=0;saveConfig=async()=>{saveCalls++}');
+ for(const [button,id] of [["benchmark-configure","benchmark-configuration"],["benchmark-upload","benchmark-upload-dialog"],["benchmark-display-fields","benchmark-fields-dialog"]]){
+  app.run(`document.querySelector("#${button}").listeners.click()`);assert.equal(app.run(`document.querySelector("#${id}").open`),true);
+  app.run(`document.querySelector("#${id}-close").listeners.click()`);assert.equal(app.run(`document.querySelector("#${id}").open`),false);
+ }
+ await app.run('document.querySelector("#benchmark-sources-list").listeners.change()');assert.equal(app.run('saveCalls'),1);
+ app.run('document.querySelector("#benchmark-upload").listeners.click();clearBenchmarkConsole()');assert.equal(app.run('document.querySelector("#benchmark-upload-dialog").open'),false);
+});
+
+test("Display Fields transfers every score, metric and provenance field without changing configuration",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('benchmarkModels={"p/m":{scores:{coding:.92},operations:{latency:2},provider_ids:["p/m"],sources:["custom"],external_ids:["m"],observation_count:4}};renderBenchmarkFields()');
+ const available=app.run('document.querySelector("#benchmark-fields-available").innerHTML');
+ for(const name of ["score:coding","score:preference","operation:latency","operation:context_length","latest_retrieval","valid_until","external_ids"])assert.ok(available.includes(`value="${name}"`));
+ app.run('document.querySelector("#benchmark-fields-available").listeners.dblclick({target:{tagName:"OPTION",value:"score:coding"}});transferBenchmarkFields(true,"score:coding")');
+ assert.equal(app.run('benchmarkSummaryEnabled.filter(key=>key==="score:coding").length'),1);
+ assert.match(app.run('document.querySelector("#benchmark-table-head").innerHTML'),/Coding %/);
+ assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/92.0/);
+ app.run('document.querySelector("#benchmark-fields-enabled").listeners.dblclick({target:{tagName:"OPTION",value:"score:coding"}})');
+ assert.ok(!app.run('benchmarkSummaryEnabled.includes("score:coding")'));
+ app.run('benchmarkSummaryEnabled=["id"];transferBenchmarkFields(false,"id")');
+ assert.match(app.run('document.querySelector("#benchmark-fields-status").textContent'),/at least one/);
+ app.run('document.querySelector("#benchmark-fields-available").selectedOptions=[{value:"operation:latency"}];document.querySelector("#benchmark-fields-available").listeners.keydown({key:"Enter",preventDefault(){}})');
+ assert.ok(app.run('benchmarkSummaryEnabled.includes("operation:latency")'));
+ assert.equal(app.calls.some(call=>call.options?.method==="PUT"),false);
+});
+
+test("inline measurement drafts survive field changes, reject invalid scores and retain server conflicts",async()=>{
+ const record={source:"custom",index:0,revision:"old",observation:{external_model_id:"p/m",benchmark:"code",category:"coding",original_score:90,normalized_score:.9}};
+ const app=consoleFixture((url,options)=>url.endsWith('/observations/edit')?response({error:{message:"benchmark data changed; reload before editing"}},false):response({records:[record],total:1}));
+ app.context.record=record;
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkEditing=true;benchmarkRecords=[record];benchmarkRecordTotal=1;updateBenchmarkInlineDraft({target:{dataset:{benchmarkRecord:"0",benchmarkCell:"normalized_score"},value:"1.2",closest(){return null}}});transferBenchmarkFields(false,"normalized_score")');
+ await app.run('saveBenchmarkInlineRow(0)');
+ assert.equal(app.calls.some(call=>call.options?.method==="PUT"),false);
+ assert.match(app.run('benchmarkInlineDrafts["custom:0"].error'),/between 0 and 1/);
+ app.run('benchmarkInlineDrafts["custom:0"].values.normalized_score="0.95"');
+ await app.run('saveBenchmarkInlineRow(0)');
+ assert.match(app.run('benchmarkInlineDrafts["custom:0"].error'),/reload before editing/);
+ assert.equal(app.run('benchmarkInlineDrafts["custom:0"].values.normalized_score'),"0.95");
+ assert.equal(app.run('benchmarkInlineSaving'),false);
+ app.run('clearBenchmarkConsole()');assert.equal(app.run('Object.keys(benchmarkInlineDrafts).length'),0);
+});
+
+test("inline editing uses table pagination, filter, scope and refreshes untouched draft revisions",async()=>{
+ const record={source:"custom",index:0,revision:"fresh",observation:{external_model_id:"p/m",benchmark:"code",category:"coding",original_score:90}};
+ const app=consoleFixture(url=>{assert.match(url,/records\?limit=10&offset=10&q=model&configured_only=true/);return response({records:[record],total:12});});
+ app.context.record=record;
+ app.run('benchmarksEnabledSaved=true;consoleSession="active";benchmarkEditing=true;benchmarkPageSize=10;benchmarkPage=1;benchmarkFilter="model";benchmarkTableView="routable";benchmarkInlineDrafts["custom:0"]={record:{...record,revision:"old"},values:{...benchmarkRecordValues(record),original_score:"91"},error:""}');
+ await app.run('loadBenchmarkRecords()');
+ assert.equal(app.run('benchmarkInlineDrafts["custom:0"].record.revision'),"fresh");
+ assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/value="91"/);
+ assert.equal(app.run('document.querySelector("#benchmark-page-label").textContent'),"Page 2 of 2");
+ assert.equal(app.run('document.querySelector("#benchmark-next").disabled'),true);
 });

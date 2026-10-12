@@ -464,7 +464,6 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
 .csv-field-help { display: grid; grid-template-columns: minmax(130px,.4fr) minmax(0,1fr); gap: 8px 16px; font-size: 12px; }
 .csv-field-help dt { font-weight: 600; overflow-wrap: anywhere; }
 .csv-field-help dd { margin: 0; color: var(--muted); }
-#benchmark-edit-dialog { width: min(720px,calc(100vw - 32px)); }
 @media (max-width: 600px) { .model-transfer { gap: 8px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .model-transfer-actions { grid-column: 1/-1; grid-row: 2; flex-direction: row; } .csv-field-help { grid-template-columns: 1fr; } }
 #model-pricing-dialog { width: min(560px,calc(100vw - 32px)); }
 #model-pricing-model { overflow-wrap: anywhere; font-weight: 600; }
@@ -492,3 +491,26 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
 .router-heading-actions .button { white-space: nowrap; }
 .provider-transfer select { min-height: 160px; }
 @media (max-width: 600px) { #routing > .section-heading { flex-wrap: wrap; } .router-heading-actions { width: 100%; } .router-heading-actions label { min-width: 0; flex: 1; } }
+
+/* Benchmark overlays and table controls use the same transfers as routing. */
+.benchmark-overlay { width: min(900px,calc(100vw - 32px)); }
+.benchmark-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+.grid.benchmark-view-controls { grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(100px,.5fr) auto; align-items: end; }
+.benchmark-view-controls > button { margin-bottom: 0; }
+.benchmark-inline-input { min-width: 130px; }
+@media (max-width: 760px) {
+ #intelligence > .section-heading { align-items: flex-start; flex-direction: column; }
+ .benchmark-header-actions { justify-content: flex-start; }
+ .grid.benchmark-view-controls { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+ .benchmark-view-controls > button { grid-row: 3; grid-column: 2; }
+}
+#benchmark-table.benchmark-custom-fields { table-layout: auto; }
+#benchmark-table.benchmark-custom-fields th { width: auto; min-width: 130px; }
+#benchmark-table.benchmark-custom-fields td { min-width: 130px; }
+@media (max-width: 760px) {
+ #benchmark-table.benchmark-custom-fields td { min-width: 0; grid-column: auto; text-align: left; }
+ #benchmark-table.benchmark-custom-fields td::before { display: block; }
+ #benchmark-table.benchmark-custom-fields td[colspan] { grid-column: 1/-1; }
+ #benchmark-table.benchmark-measurements tbody tr { grid-template-columns: minmax(0,1fr); }
+ #benchmark-table.benchmark-measurements input,#benchmark-table.benchmark-measurements select { min-width: 0; width: 100%; }
+}

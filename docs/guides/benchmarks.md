@@ -7,7 +7,8 @@ Imported scores do not grant unverified tool, vision, or endpoint support.
 ## Enable and refresh sources
 
 1. Open **Benchmarks** and select **Enable benchmark intelligence**.
-2. Enable the individual sources you want; the master switch does not enable
+2. Select **Configure Ingestion** to open the source card. Enable the individual
+   sources you want; the master switch does not enable
    every source automatically.
 3. Enter an Artificial Analysis key if using that source. Hugging Face,
    LiveBench, and LMArena accept an optional Hugging Face token; public datasets
@@ -45,6 +46,11 @@ available scores, operational measurements, provenance, dates, age, and validity
 Choose **All
 benchmark models** or **Configured models only**, filter rows, and select
 5, 10, 25, 50, or 100 models per page (default 25 on desktop, 5 on mobile).
+Select **Display Fields**, beside **Rows per page**, to choose table columns.
+Double-click fields between **Available fields** and **Enabled fields**, or use
+**Enable →** / **← Remove**. Keep at least one field enabled. Summary and editing
+views retain separate field choices until sign-out; no gateway settings change.
+
 Evidence is grouped into capability scores, operating metrics, and provenance;
 dates display in UTC with exact timestamps available in tooltips.
 
@@ -63,7 +69,7 @@ does not cancel the worker. Rate-limit pauses/heartbeats can indicate active wor
 ## Upload custom benchmarks
 
 1. Enable benchmark intelligence and wait for **Saved**.
-2. Expand **Custom benchmarks · upload and edit** and select **Download CSV template**.
+2. Select **Upload Data**, then **Download CSV template** in the overlay card.
 3. Replace the sample with your measurements, keeping the header and column order.
 4. Choose the file under **Benchmark CSV**, then select **Upload CSV**.
 5. Inspect matched scores in the benchmark table. Use exact provider/model IDs
@@ -93,13 +99,21 @@ custom data; uploading an old evaluation does not make it new evidence.
 
 ## Edit loaded measurements
 
-In the same panel, select **Load measurements**, filter by model/source/benchmark,
-and choose **Edit** on a row. Change the original score, normalized score, category,
-model, benchmark, units, version or evaluation time, then **Save measurement**.
-Edits save immediately; enabled sources are rematched and aggregated for routing.
-Disabled source edits stay stored but do not affect routing. A concurrent change
-returns a conflict: reload measurements before trying again. Original source
-metadata is retained and marked as manually edited.
+Select **Edit data** at the top of **Benchmarks**. The current data table switches
+from calculated model summaries to individual measurements. Edit the model ID,
+benchmark, category, original/normalized scores, unit, version or evaluation time
+inline, then select **Save** on that row. **Cancel** discards that row's draft;
+**Done editing** returns to summaries and asks before discarding unsaved drafts.
+**Display Fields** selects measurement columns while editing. Source, matched ID,
+retrieval time and date basis are calculated provenance and remain read-only.
+
+The same filter, model scope and page-size controls apply. Drafts survive page and
+field changes. Failed validation or concurrent changes retain your edits; a stale
+revision requires cancelling that row and reloading cached data before retrying.
+Saving rematches and aggregates enabled sources for routing. Disabled source
+edits stay stored but do not affect routing. Original source metadata is retained
+and marked as manually edited. Normalized scores use 0–1 in the editor, while
+summary scores display percentages.
 
 Refreshing a downloaded source can replace its manual edits. Keep independent
 measurements in custom CSV data when they must survive publisher refreshes.

@@ -1731,13 +1731,28 @@ test("tracking distinguishes unknown pricing, unavailable quota and subscription
  assert.ok(!escaped.includes('<script>'));assert.match(escaped,/&lt;script&gt;/);
 });
 
-test("usage page includes provider limits separately from operator budgets",()=>{
+test("provider balances page deduplicates telemetry separately from operator budgets",()=>{
  const app=consoleFixture(()=>response({}));
- app.run('usageData={usage:[],budgets:[],provider_quotas:{"nous/a":{known:false,source:"nous_response_headers"},"nous/b":{known:false,source:"nous_response_headers"}}};renderUsagePage()');
- const html=app.run('document.querySelector("#usage-list").innerHTML');
- assert.match(html,/Provider balances &amp; subscription limits/);assert.equal((html.match(/<strong>nous<\/strong>/g)||[]).length,1);assert.match(html,/Quota unknown/);
+ app.run('usageData={usage:[],budgets:[],provider_quotas:{"nous/a":{known:false,source:"nous_response_headers"},"nous/b":{known:false,source:"nous_response_headers"}}};renderUsagePage();providerBalancesData=usageData.provider_quotas;renderProviderBalancesPage()');
+ assert.doesNotMatch(app.run('document.querySelector("#usage-list").innerHTML'),/nous|subscription limits/);
+ const html=app.run('document.querySelector("#provider-balances-list").innerHTML');
+ assert.equal((html.match(/<strong>nous<\/strong>/g)||[]).length,1);assert.match(html,/Quota unknown/);
 });
 
+
+test("provider balances loads independently and supports refresh, empty and error states",async()=>{
+ let data={provider_quotas:{"p/model":{known:false,balances:[{name:"credits",unit:"USD",remaining:8.75}]}}};
+ const app=consoleFixture(()=>response(data));
+ app.run('consoleSession="authenticated";location.hash="#provider-balances";navigate()');
+ assert.equal(app.run('document.querySelector("#current-page-title").textContent'),"Provider Balances");
+ await app.run('loadProviderBalancesPage()');
+ assert.match(app.run('document.querySelector("#provider-balances-list").innerHTML'),/8.75/);
+ data={provider_quotas:{}};await app.run('loadProviderBalancesPage()');
+ assert.match(app.run('document.querySelector("#provider-balances-list").innerHTML'),/No provider telemetry available/);
+ app.setFetch(()=>response({},false));await app.run('loadProviderBalancesPage()');
+ assert.match(app.run('document.querySelector("#provider-balances-list").innerHTML'),/Unable to load provider balances/);
+ assert.equal(app.run('document.querySelector("#refresh-provider-balances").disabled'),false);
+});
 
 test("balance-only snapshots and banked resets appear in harness selector labels",()=>{
  const app=consoleFixture(()=>response({}));

@@ -2,6 +2,34 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Hermes auxiliary session titles
+
+Implemented on `fix/hermes-title-generation` in
+`/mnt/data/projects/torii-gateway/.worktrees/hermes-title-generation`;
+commit `b5eff30`. Activity records showed successful smart turns followed by
+three title-generation 503s. JSON-schema requests had no eligible candidate:
+local Ollama structured-output support remained unknown, and
+`reasoning_effort: "none"` incorrectly required reasoning capability.
+Native discovery now advertises structured output for verified local completion
+models; disabled reasoning no longer adds that gate. Cloud aliases and incomplete
+metadata remain unknown. Regression tests preserve enabled-reasoning gates.
+
+Validation: targeted baseline and final tests, full Go tests and race checks,
+build, vet, unchanged module metadata, console tests/assets, affected documentation
+links and diff checks pass. The original title shape now succeeds as
+JSON and SSE with valid titles and stream termination. The installed Hermes
+`generate_title` function returns a title without failure callbacks. Health,
+discovery and missing/invalid-key rejection also pass. A full interactive Hermes
+session was not run.
+
+The running instance uses a patched `localhost/torii-gateway:local` image; the
+original is retained as `localhost/torii-gateway:before-hermes-title-fix`.
+No deployment source, Compose, environment or saved configuration was edited;
+379 readable deployment file hashes and its original Git status are unchanged.
+Existing unreadable configuration files were untouched. Normal activity/usage
+records from verification remain in the existing database volume. A future image
+rebuild must use the fixed source branch to retain this repair.
+
 ## Models pricing status and pagination
 
 Implemented on `feat/models-pricing-pagination` in

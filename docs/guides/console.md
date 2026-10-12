@@ -6,12 +6,13 @@ username/password. Open its root URL, for example <http://127.0.0.1:8080/>.
 
 ## Find the right page
 
-The sidebar groups pages under **MONITOR** (Overview, Activity), **MANAGE**
+The sidebar groups pages under **MONITOR** (Overview, Activity, Provider Balances), **MANAGE**
 (Usage & quota, API keys), and **CONFIGURE** (Providers, Models, Smart routing,
 Benchmarks, Server), in that order.
 
 | Page | Purpose |
 | --- | --- |
+| Provider Balances | Inspect provider balances, subscription limits, and reset times |
 | Overview | Inspect the current gateway and model summary |
 | Server | Listener setting and database bootstrap information |
 | Providers | Add/test inference and classifier providers; subscription login |
@@ -26,8 +27,9 @@ The overview leads with current UTC requests, processed tokens, and estimated co
 
 The Overview client model selector includes token prices, provider allowance/reset
 information, and this month's gateway usage. **Models** shows the same tracking
-and expands provider-reported spend under **Inspect metadata**. **Usage & quota**
-keeps **Provider balances & subscription limits** separate from operator budgets.
+and expands provider-reported spend under **Inspect metadata**. **Provider Balances**
+shows provider balances and subscription limits separately from the operator budgets
+on **Usage & quota**.
 Dollar balances, token/request allowances and subscription percentages retain
 their units; reset times use your browser's local time. “Quota unknown” and
 “Usage unavailable” mean data was not reported or could not be read, not zero.

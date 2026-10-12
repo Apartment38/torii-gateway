@@ -125,7 +125,7 @@ function signOutConsole(): void {
   document.querySelector<HTMLDialogElement>("#create-key-dialog")!.close();
   document.querySelector<HTMLInputElement>("#client-key-name")!.value = "";
   providers = [];
-  overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];clearModelPricing();usageData=null;usageKeyMetadata=[];document.querySelector("#models-list")!.textContent="";document.querySelector("#usage-list")!.textContent="";
+  overviewModels=null;overviewUsage=null;overviewRecent=null;overviewClientModel="";overviewLoading=false;overviewError="";physicalModels=[];clearModelPricing();usageData=null;usageKeyMetadata=[];providerBalancesData=null;document.querySelector("#provider-balances-list")!.textContent="";document.querySelector("#models-list")!.textContent="";document.querySelector("#usage-list")!.textContent="";
   configurationLoaded = false;
   classifierQuestionOverrides = {};
   classifierNoulThresholds = {};
@@ -598,10 +598,11 @@ function navigate(): void {
     page.hidden = !active;
     page.setAttribute("aria-hidden", String(!active));
   });
-  const title=document.querySelector("#current-page-title");if(title)title.textContent=({overview:"Overview",providers:"Providers",models:"Models",routing:"Smart routing",intelligence:"Benchmarks",credentials:"API keys",activity:"Activity",state:"Usage & quota",server:"Server"} as Record<string,string>)[current]||"Overview";
+  const title=document.querySelector("#current-page-title");if(title)title.textContent=({overview:"Overview",providers:"Providers",models:"Models",routing:"Smart routing",intelligence:"Benchmarks",credentials:"API keys",activity:"Activity","provider-balances":"Provider Balances",state:"Usage & quota",server:"Server"} as Record<string,string>)[current]||"Overview";
   syncConsoleNavigation(current);
   if(current==="overview"){renderOverview();if(configurationLoaded)void loadOverview();}
   if(current==="activity")void startActivity();else if(activityStream)stopActivity();
+  if(current==="provider-balances" && configurationLoaded)void loadProviderBalancesPage();
   if(current==="state" && configurationLoaded)void loadUsagePage();
   if(current==="models"){if(configurationLoaded)void loadModelsPage();else document.querySelector("#models-list")!.innerHTML=modelLoadingMarkup;}
   if (current === "routing") updateClassifierOptions();

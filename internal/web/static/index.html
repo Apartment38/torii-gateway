@@ -24,6 +24,7 @@
         <nav id="nav" aria-label="Console sections"><p class="nav-caption">Monitor</p>
           <a class="nav-link active" href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
           <a class="nav-link" href="#activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h5l3-8 4 16 3-8h5"/></svg><span>Activity</span></a>
+          <a class="nav-link" href="#provider-balances"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M9 10v9"/></svg><span>Provider Balances</span></a>
           <p class="nav-caption nav-divider">Manage</p>
           <a class="nav-link" href="#state"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M9 10v9"/></svg><span>Usage & quota</span></a>
           <a class="nav-link" href="#credentials"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="5"/><path d="m12 13 8 8m-5-5 3-3m0 6 3-3"/></svg><span>API keys</span></a>
@@ -167,6 +168,12 @@
           </section>
 
           <section id="activity" class="page section-block"><div class="section-heading"><div><h2>Activity</h2></div><span class="live-label"><span class="status-dot"></span> Live events</span></div><p>Recent request metadata only. Prompts, responses and credentials are excluded. Usage and costs may be conservative estimates.</p><p id="activity-status" role="status">Connecting…</p><div id="activity-list"></div></section>
+
+          <section id="provider-balances" class="page section-block">
+            <div class="section-heading"><div><h2>Provider Balances</h2></div><button id="refresh-provider-balances" type="button" class="button secondary">Refresh balances</button></div>
+            <p class="page-description">Monitor provider balances, subscription limits, and reset times.</p>
+            <div id="provider-balances-list" role="region" aria-label="Provider balances and subscription limits"></div>
+          </section>
 
           <section id="state" class="page section-block">
             <div class="section-heading"><div><h2>Usage &amp; quota</h2></div><span class="section-note">Persistence and guardrails</span></div>

@@ -2,6 +2,18 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Console monitoring navigation
+
+Implemented on `chore/sidebar-sections` in `/workspace/torii-sidebar`. Sidebar
+sections are Monitor, Manage, and Configure. Provider Balances is a dedicated
+Monitor page for provider balances, subscription limits, and resets; Usage & quota
+retains operator accounting and budget controls. The new page loads independently
+of API-key metadata, supports refresh and explicit empty/error states, and clears
+cached telemetry when the administrator session ends. The console guide is updated.
+
+Validation: console tests, generated-script freshness, and diff checks pass.
+No push, merge, or deployment was performed.
+
 ## Codex browser login
 
 Implemented on `fix/codex-browser-login` in

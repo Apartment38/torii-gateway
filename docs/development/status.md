@@ -2,6 +2,35 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Decision-model passthrough and provider namespaces
+
+Implemented on `feat/jev-provider-passthrough` in `/workspace/torii-jev`,
+starting from current main `d55248f` before implementation (verified against
+GitHub, then fetched full history). Decision catalogs now carry System One
+capability evidence and appear in public/management model discovery. The client
+model list includes a TypeSafe-compatible `models` array alongside OpenAI `data`.
+`POST /v1/systemone` transparently forwards physical decision models, with
+provider credentials, aliases, model controls and operator accounting. Virtual
+routers/non-decision models are rejected; decision-only models stay out of chat
+pools. Mixed-provider decision models can run the smart-router judge.
+
+OpenRouter additionally discovers `output_modalities=decisions`; a read-only live
+check detected 480 total models including 21 decision models, with both
+`typesafe/jev-1.13` and `~typesafe/jev-latest`. Detection uses catalog evidence,
+not model names. TypeSafe uses profile/default ID `typesafe`; legacy `jev`
+profiles remain accepted and saved IDs are retained until explicitly edited.
+All provider IDs are editable. Saves update router references, model controls
+and pricing while preserving upstream judge namespaces and API-key references.
+Subscription IDs retain their OAuth binding; the editor offers login under the
+new ID before save. Provider/API/configuration/console guides are updated.
+
+Validation: all-package Go tests and race tests, vet, build, gofmt, unchanged
+module metadata after tidy, generated-script freshness and 148 console tests
+pass. Go commands use `GOFLAGS=-buildvcs=false` because this executor's VCS
+stamping fails despite valid repository history. Protocol and judge tests use
+controlled fixtures; the live check only reads public catalogs, with no billable
+decision requests. Container/release checks are outside this change's scope.
+
 ## Console monitoring and routing fixes
 
 Implemented on `fix/console-monitoring-routing-balances` in

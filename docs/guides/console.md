@@ -70,7 +70,7 @@ Disabling logging stops new capture; older captures expire under the configured 
 
 ## Apply changes
 
-1. Complete a field edit or toggle a setting; it saves automatically. Provider Add/Edit dialogs save when you click **Save provider**. Cancel discards that dialog's changes.
+1. Complete a field edit or toggle a setting; it saves automatically. Provider Add/Edit dialogs save when you click **Save provider**. Cancel discards that dialog's changes. New router drafts save when you click **Save** on Smart routing.
 2. Wait for **Saving…** to become **Saved**, then check provider/model state.
 3. A validation error preserves your draft. Correct it and retry. A conflict means another tab saved first: copy your edits, refresh configuration, and reconcile them before saving.
 
@@ -95,7 +95,7 @@ headers still appear. See [provider tracking](../reference/configuration.md#prov
 
 Provider editors show connection checks and save progress inside the card. A successful check and save closes the editor; connection or save errors keep the draft open for correction. Overview counts include discovered classifier models, even though those models are excluded from the chat catalog.
 
-Smart routing supports **Create router** and named provider/model pools. Choose a router in the selector to edit its full policy. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
+Smart routing supports named provider/model pools. The top selector loads a router's full policy. **Create router** clears the editor to default options; enter a unique **Router Name**, configure the policy, and click **Save**. **Remove router** stays beside the name and cannot remove the default router. **Save** also applies a named router's name changes. Existing policy edits continue to save automatically. Double-click providers from **Allowed providers** into **Enabled providers**, or use **Enable →** / **← Remove**. This updates **Available models** and removes enabled models outside a restricted provider pool. An empty enabled provider list allows all providers. Double-click models to move them from **Available models** to **Enabled models**, or use **Enable →** / **← Remove**. A router supports at most 250 choices. Jev evaluates each prompt using model prices, capabilities and benchmark evidence to choose the cheapest capable model. **Allow paid models** and **Allow free models** are independent and enabled by default. Usage shows provider quota windows with reset countdowns when telemetry is available.
 
 On **Benchmarks**, expand **Custom benchmarks · upload and edit** to download the
 CSV template, upload your measurements, or **Load measurements** and **Edit** a

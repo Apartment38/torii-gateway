@@ -694,7 +694,7 @@ function readConfig(): Record<string, any> {
   const config: Record<string, any> = structuredClone(loadedConfiguration);
  config.server={...config.server};config.state={...config.state};config.router=structuredClone(smartRouterDrafts[selectedSmartRouter]||config.router||{});config.router={...config.router,classifier:{},sessions:{...config.router?.sessions},quota:{...config.router?.quota},selection:{...config.router?.selection}};
   config.activity={...config.activity};
-  new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality" || name==="router.intelligence_weights") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); });
+  new FormData(form).forEach((raw, name) => { if (name === "router.quota.allowances") return; if (name === "router.allow_paid_models") setNested(config, name, true); else if (name === "router.selection.minimum_quality" || name==="router.intelligence_weights") { try { setNested(config, name, JSON.parse(String(raw))); } catch { /* keep invalid drafts editable */ } } else if (String(raw).trim() !== "") setNested(config, name, raw); else if(name.startsWith("router.")){const parts=name.split(".");let parent:any=config;for(const part of parts.slice(0,-1))parent=parent?.[part];if(parent)delete parent[parts[parts.length-1]];} });
   config.server.timezone=String((form.elements.namedItem("server.timezone") as HTMLInputElement)?.value||"").trim();
   if(config.server.timezone){try{new Intl.DateTimeFormat("en-US",{timeZone:config.server.timezone});}catch{throw new Error("Enter a valid IANA timezone, such as America/New_York or UTC");}}
   for(const name of ["prompt_logging","jev_decision_logging"])config.activity[name]=Boolean((form.elements.namedItem(`activity.${name}`) as HTMLInputElement)?.checked);
@@ -731,12 +731,14 @@ function readConfig(): Record<string, any> {
   for (const name of ["timeout", "minimum_confidence", "questions", "noul_thresholds"]) delete config.router.classifier[name];
   config.router.classifier = { ...config.router.classifier, ...controls };
   const allowances = String((form.elements.namedItem("router.quota.allowances") as HTMLTextAreaElement)?.value || "").split("\n").map(line => line.split("=").map(v => v.trim())).filter(pair => pair.length === 2 && pair[0]).reduce((all, [key, raw]) => { const value = Number(raw); if (Number.isFinite(value)) all[key] = value; return all; }, {} as Record<string, number>);
-  if (Object.keys(allowances).length) config.router.quota.allowances = allowances;
+  if (Object.keys(allowances).length) config.router.quota.allowances = allowances;else delete config.router.quota.allowances;
   config.intelligence = readBenchmarkConfiguration();
   if(!String((form.elements.namedItem("router.intelligence_weights") as HTMLInputElement)?.value||"").trim())delete config.router.intelligence_weights;
+  // Router names change only through Save, which validates uniqueness and rekeys the draft.
+  if(selectedSmartRouter)config.router.model_name=smartRouterDrafts[selectedSmartRouter]?.model_name||selectedSmartRouter;
   smartRouterDrafts[selectedSmartRouter]=structuredClone(config.router);
   config.router=structuredClone(smartRouterDrafts.smart||{});
-  config.smart_routers=Object.entries(smartRouterDrafts).filter(([name])=>name!=="smart").map(([,draft])=>structuredClone(draft));
+  config.smart_routers=Object.entries(smartRouterDrafts).filter(([name])=>name!=="smart"&&name!=="").map(([,draft])=>structuredClone(draft));
   return config;
 }
 
@@ -886,9 +888,9 @@ document.querySelector("#inspect-benchmarks")!.addEventListener("click", () => {
 document.querySelector("#save-button")!.addEventListener("click", () => { void saveConfig(); });
 document.querySelector("#reset-button")!.addEventListener("click", () => { location.reload(); });
 document.querySelector("#theme-toggle")!.addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("torii-theme", dark ? "dark" : "light"); });
-function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
+function isConsoleViewControl(target:HTMLElement):boolean{return ["smart-router-select","smart-router-new-name","smart-router-providers","smart-router-providers-available","smart-router-models","smart-router-models-available","benchmark-record-filter","benchmark-csv-file","budget-scope","classifier-question","classifier-question-option","model-search","model-provider-filter","model-status-filter","model-sort","model-page-size","model-page-size-top","model-pricing-csv","activity-search","activity-outcome","activity-page-size","usage-period","activity-view","benchmark-table-view","benchmark-table-filter","benchmark-page-size"].includes(target.id);}
 form.addEventListener("input",event=>{if(!isConsoleViewControl(event.target as HTMLElement))markDirty();});
-form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
+form.addEventListener("change",event=>{const target=event.target as HTMLElement;if(!(selectedSmartRouter===""&&(target.closest("#routing")||(target as HTMLInputElement).name?.startsWith("router."))) && !isConsoleViewControl(target) && !target.closest("dialog") && !target.dataset.modelEnabled && !["classifier-question","classifier-question-option","budget-scope"].includes(target.id) && !target.id.startsWith("budget-")){void saveConfig();}});
 window.addEventListener("hashchange", navigate);
 document.documentElement.dataset.theme = localStorage.getItem("torii-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 classifierSelect.addEventListener("change", () => { requestedClassifier = classifierSelect.value; legacyClassifier = null; markDirty(); });
@@ -983,9 +985,11 @@ async function detectOllama(provider:Record<string,any>):Promise<void>{
 
 function renderSmartRouterScope():void{
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
- const providerControl=document.querySelector<HTMLSelectElement>("#smart-router-providers");
- const providerIDs=[...new Set([...providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),...(draft.providers||[])])].sort();
- if(providerControl)providerControl.innerHTML=providerIDs.map(id=>`<option value="${escapeHTML(id)}" ${(draft.providers||[]).includes(id)?"selected":""}>${escapeHTML(id)}</option>`).join("");
+ const enabled:string[]=draft.providers||[];
+ const providerIDs=[...new Set([...providers.filter(p=>!classifierProvider(p)).map(p=>String(p.id)),...enabled])].sort();
+ for(const [selector,ids] of [["#smart-router-providers-available",providerIDs.filter(id=>!enabled.includes(id))],["#smart-router-providers",[...enabled].sort()]] as [string,string[]][]){
+  const control=document.querySelector<HTMLSelectElement>(selector);if(control)control.innerHTML=ids.map(id=>`<option value="${escapeHTML(id)}">${escapeHTML(id)}</option>`).join("");
+ }
  const chosen:string[]=draft.models||[];
  const available=(overviewModels||[]).filter(m=>!chosen.includes(m.id)&&(!(draft.providers||[]).length||draft.providers.includes(m.provider_id))).map(m=>m.id).sort();
  for(const [selector,ids] of [["#smart-router-models-available",available],["#smart-router-models",[...chosen].sort()]] as [string,string[]][]){
@@ -999,10 +1003,10 @@ async function transferSmartModels(enable:boolean, single?:string):Promise<void>
  readConfig();const draft=smartRouterDrafts[selectedSmartRouter];const current:string[]=draft.models||[];
  const next=enable?[...new Set([...current,...ids])]:current.filter(id=>!ids.includes(id));
  if(next.length>250){toast("Smart routers support at most 250 enabled models.");return;}
- draft.models=next;renderSmartRouterScope();markDirty();await saveConfig();
+ draft.models=next;renderSmartRouterScope();markDirty();if(selectedSmartRouter!=="")await saveConfig();
 }
 function renderSmartRouterEditor():void{
- const selector=document.querySelector<HTMLSelectElement>("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name)}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
+ const selector=document.querySelector<HTMLSelectElement>("#smart-router-select");if(selector){selector.innerHTML=Object.keys(smartRouterDrafts).map(name=>`<option value="${escapeHTML(name)}">${escapeHTML(name||"New router")}${name==="smart"?" · default":""}</option>`).join("");selector.value=selectedSmartRouter;}
  const draft=smartRouterDrafts[selectedSmartRouter]||{};
  const fields=["model_name","allow_paid_models","allow_free_models","sessions.on_model_failure","sessions.inactivity_timeout","quota.cache_ttl","quota.allowances","selection.context_utilization_limit","selection.default_expected_output_tokens","selection.location_preference","selection.minimum_quality","intelligence_weights","classifier.on_failure","classifier.timeout","classifier.minimum_confidence"];
  for(const field of fields){const control=form.elements.namedItem(`router.${field}`) as HTMLInputElement|null;if(!control)continue;let value:any=draft;for(const part of field.split("."))value=value?.[part];
@@ -1012,16 +1016,38 @@ function renderSmartRouterEditor():void{
  requestedClassifier=c.type==="disabled"?"disabled":c.type==="jev"&&c.transport==="provider"?`${c.provider}/${c.model}`:c.model||"";
  legacyClassifier=c.type&&!["jev","disabled"].includes(c.type)?structuredClone(c):null;
  renderClassifierQuestion();updateClassifierOptions();renderSmartRouterScope();
- const remove=document.querySelector<HTMLButtonElement>("#remove-smart-router");if(remove)remove.disabled=selectedSmartRouter==="smart";
+ const remove=document.querySelector<HTMLButtonElement>("#remove-smart-router");if(remove)remove.disabled=selectedSmartRouter==="smart"||selectedSmartRouter==="";
 }
 document.querySelector<HTMLSelectElement>("#smart-router-select")?.addEventListener("change",event=>{readConfig();selectedSmartRouter=(event.target as HTMLSelectElement).value;renderSmartRouterEditor();});
-document.querySelector("#add-smart-router")?.addEventListener("click",async()=>{
- const input=document.querySelector<HTMLInputElement>("#smart-router-new-name")!;const name=input.value.trim();
- if(!/^[a-z0-9][a-z0-9._-]*$/.test(name)||name==="smart"||smartRouterDrafts[name]){toast("Enter a unique router name using letters, numbers, dots, underscores or hyphens.");return;}
- readConfig();smartRouterDrafts[name]={...structuredClone(smartRouterDrafts.smart),model_name:name};selectedSmartRouter=name;input.value="";renderSmartRouterEditor();markDirty();await saveConfig();
+document.querySelector("#add-smart-router")?.addEventListener("click",()=>{
+ readConfig();smartRouterDrafts[""]={};selectedSmartRouter="";renderSmartRouterEditor();
+ (form.elements.namedItem("router.model_name") as HTMLInputElement)?.focus?.();
 });
-document.querySelector("#remove-smart-router")?.addEventListener("click",async()=>{if(selectedSmartRouter==="smart")return;delete smartRouterDrafts[selectedSmartRouter];selectedSmartRouter="smart";renderSmartRouterEditor();markDirty();await saveConfig();});
-for(const [id,key] of [["smart-router-providers","providers"]])document.querySelector<HTMLSelectElement>(`#${id}`)?.addEventListener("change",event=>{readConfig();smartRouterDrafts[selectedSmartRouter][key]=Array.from((event.target as HTMLSelectElement).selectedOptions).map(option=>option.value);markDirty();void saveConfig();});
+async function saveSmartRouter():Promise<void>{
+ if(saveRunning)return;
+ const name=String((form.elements.namedItem("router.model_name") as HTMLInputElement).value).trim();
+ const oldName=selectedSmartRouter;
+ if(!/^[a-z0-9][a-z0-9._-]*$/.test(name)||(name!==oldName&&(name==="smart"||smartRouterDrafts[name]))){toast("Enter a unique router name using lowercase letters, numbers, dots, underscores or hyphens.");return;}
+ readConfig();smartRouterDrafts[oldName].model_name=name;
+ if(name!==oldName){smartRouterDrafts[name]=smartRouterDrafts[oldName];delete smartRouterDrafts[oldName];selectedSmartRouter=name;}
+ renderSmartRouterEditor();markDirty();await saveConfig();
+}
+document.querySelector("#save-smart-router")?.addEventListener("click",()=>void saveSmartRouter());
+document.querySelector("#remove-smart-router")?.addEventListener("click",async()=>{if(selectedSmartRouter==="smart"||selectedSmartRouter==="")return;delete smartRouterDrafts[selectedSmartRouter];selectedSmartRouter="smart";renderSmartRouterEditor();markDirty();await saveConfig();});
+async function transferSmartProviders(enable:boolean,single?:string):Promise<void>{
+ const control=document.querySelector<HTMLSelectElement>(enable?"#smart-router-providers-available":"#smart-router-providers");
+ const ids=single?[single]:Array.from(control?.selectedOptions||[]).map(option=>option.value);if(!ids.length)return;
+ readConfig();const draft=smartRouterDrafts[selectedSmartRouter];const current:string[]=draft.providers||[];
+ draft.providers=enable?[...new Set([...current,...ids])]:current.filter(id=>!ids.includes(id));
+ // Explicit model pools must remain inside the selected provider pool.
+ if(draft.providers.length)draft.models=(draft.models||[]).filter((id:string)=>draft.providers.includes(id.split("/")[0]));
+ renderSmartRouterScope();markDirty();if(selectedSmartRouter!=="")await saveConfig();
+}
+document.querySelector("#smart-router-provider-add")?.addEventListener("click",()=>void transferSmartProviders(true));
+document.querySelector("#smart-router-provider-remove")?.addEventListener("click",()=>void transferSmartProviders(false));
+for(const [id,enable] of [["smart-router-providers-available",true],["smart-router-providers",false]] as [string,boolean][]){
+ document.querySelector(`#${id}`)?.addEventListener("dblclick",event=>{const target=event.target as HTMLOptionElement;return transferSmartProviders(enable,target.tagName==="OPTION"?target.value:undefined);});
+}
 
 document.querySelector("#smart-router-model-add")?.addEventListener("click",()=>void transferSmartModels(true));
 document.querySelector("#smart-router-model-remove")?.addEventListener("click",()=>void transferSmartModels(false));

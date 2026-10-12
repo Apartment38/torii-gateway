@@ -2,6 +2,23 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Smart routing editor
+
+Implemented on `feat/smart-router-editor` in `/workspace/work/smart-router-editor`,
+starting from main `49fcb92`, rebased onto main `fddcc2f`. Exact main snapshots
+were imported through GitHub reads because the configured Git proxy is unavailable;
+main is a local shallow boundary. Create router now opens a default
+policy draft from the page header, beside the router selector. Router Name, Save
+and Remove router share a section. Provider transfers update the model pool;
+router selection restores its complete policy. New drafts wait for Save, while
+existing policy edits retain automatic saving. Failed saves preserve drafts.
+
+Validation: 133 console tests, generated script freshness, relevant Go web/config
+tests, and all-package build (`-buildvcs=false`) pass. Chromium verifies router
+selection, reset, provider double-click/filtering and persistence against a mocked
+gateway, plus 1440×1000 light and 390×844 dark layouts without page errors or
+horizontal page overflow. No deployment or live gateway configuration changes.
+
 ## Hermes auxiliary session titles
 
 Implemented on `fix/hermes-title-generation` in
@@ -29,6 +46,7 @@ No deployment source, Compose, environment or saved configuration was edited;
 Existing unreadable configuration files were untouched. Normal activity/usage
 records from verification remain in the existing database volume. A future image
 rebuild must use the fixed source branch to retain this repair.
+
 
 ## Models pricing status and pagination
 

@@ -486,3 +486,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible { outline: none;
 .pricing-status-tooltip { display: none; position: fixed; z-index: 5; width: 240px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-size: 12px; font-weight: 400; white-space: normal; }
 .pricing-status:hover .pricing-status-tooltip,.pricing-status:focus-within .pricing-status-tooltip { display: block; }
 #model-pricing-import-dialog { width: min(640px,calc(100vw - 32px)); }
+
+.router-heading-actions { display: flex; align-items: flex-end; gap: 16px; margin-left: auto; }
+.router-heading-actions label { margin: 0; min-width: 180px; }
+.router-heading-actions .button { white-space: nowrap; }
+.provider-transfer select { min-height: 160px; }
+@media (max-width: 600px) { #routing > .section-heading { flex-wrap: wrap; } .router-heading-actions { width: 100%; } .router-heading-actions label { min-width: 0; flex: 1; } }

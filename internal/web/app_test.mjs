@@ -2023,3 +2023,56 @@ test("pricing import opens an overlay and pricing refresh posts with CSRF and re
  assert.match(app.run('document.querySelector("#quota-refresh-status").textContent'),/unavailable/);
  assert.equal(app.run('document.querySelector("#refresh-pricing").disabled'),false);
 });
+
+
+test("Create router resets every policy and leaves an unnamed draft unsaved",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('applyConfig({providers:[],router:{model_name:"smart",allow_paid_models:false,models:["p/m"],providers:["p"],classifier:{type:"disabled",timeout:"9s",questions:{tools:{instructions:"custom"}}},quota:{allowances:{"p/m":5}},selection:{location_preference:"local"}},smart_routers:[{model_name:"coding",allow_free_models:false}]},fixtureRevision)');
+ app.run('document.querySelector("#add-smart-router").listeners.click()');
+ assert.equal(app.run('selectedSmartRouter'),"");
+ assert.equal(app.run('form.elements.namedItem("router.model_name").value'),"");
+ assert.equal(app.run('form.elements.namedItem("router.allow_paid_models").checked'),true);
+ assert.equal(app.run('form.elements.namedItem("router.allow_free_models").checked'),true);
+ for(const field of ["selection.location_preference","classifier.timeout","quota.allowances"])assert.equal(app.run(`form.elements.namedItem("router.${field}").value`),"");
+ assert.deepEqual(Object.keys(app.run('classifierQuestionOverrides')),[]);
+ assert.equal(app.run('document.querySelector("#remove-smart-router").disabled'),true);
+ const config=app.run('readConfig()');assert.equal(config.router.allow_paid_models,false);assert.equal(config.smart_routers.length,1);
+ assert.equal(app.calls.some(c=>c.options?.method==="PUT"),false);
+ app.run('document.querySelector("#smart-router-select").listeners.change({target:{value:"coding"}})');
+ assert.equal(app.run('form.elements.namedItem("router.model_name").value'),"coding");
+ assert.equal(app.run('form.elements.namedItem("router.allow_free_models").checked'),false);
+});
+
+test("Save creates and renames a router, rejects duplicate names and retains failed drafts",async()=>{
+ let stored={providers:[],router:{model_name:"smart"},smart_routers:[]};let fail=false;
+ const app=consoleFixture((url,options)=>{
+  if(url==="/gateway/v1/config"&&options?.method==="PUT"){
+   if(fail)return response({error:"save unavailable"},false);
+   stored=JSON.parse(options.body);return response({status:"saved"});
+  }
+  return response(stored);
+ });
+ app.run('applyConfig({providers:[],router:{model_name:"smart"}},fixtureRevision);consoleSession="active";document.querySelector("#add-smart-router").listeners.click();form.elements.namedItem("router.model_name").value="coding";form.elements.namedItem("router.allow_paid_models").checked=false');
+ await app.run('saveSmartRouter()');assert.equal(stored.smart_routers[0].model_name,"coding");assert.equal(stored.smart_routers[0].allow_paid_models,false);
+ app.run('form.elements.namedItem("router.model_name").value="renamed"');await app.run('saveSmartRouter()');assert.equal(stored.smart_routers.length,1);assert.equal(stored.smart_routers[0].model_name,"renamed");
+ const before=app.calls.filter(c=>c.options?.method==="PUT").length;
+ app.run('document.querySelector("#add-smart-router").listeners.click();form.elements.namedItem("router.model_name").value="renamed"');await app.run('saveSmartRouter()');assert.equal(app.calls.filter(c=>c.options?.method==="PUT").length,before);
+ fail=true;app.run('form.elements.namedItem("router.model_name").value="retry"');await app.run('saveSmartRouter()');assert.equal(app.run('selectedSmartRouter'),"retry");assert.equal(app.run('smartRouterDrafts.retry.model_name'),"retry");assert.match(app.run('saveState.textContent'),/Save failed/);
+ fail=false;await app.run('saveSmartRouter()');assert.equal(stored.smart_routers.length,2);
+});
+
+test("provider transfer filters available models and removes models outside the enabled pool",async()=>{
+ const app=consoleFixture(()=>response({}));
+ app.run('applyConfig({providers:[{id:"p",type:"ollama",base_url:"http://local.test"},{id:"q",type:"ollama",base_url:"http://local.test"},{id:"judge",type:"jev",base_url:"https://judge.test"}],router:{models:["q/b"]}});overviewModels=[{id:"p/a",provider_id:"p"},{id:"q/b",provider_id:"q"},{id:"q/c",provider_id:"q"}];saveConfig=async()=>true;renderSmartRouterScope()');
+ assert.match(app.run('document.querySelector("#smart-router-providers-available").innerHTML'),/value="p"/);
+ assert.ok(!app.run('document.querySelector("#smart-router-providers-available").innerHTML').includes("judge"));
+ await app.run('document.querySelector("#smart-router-providers-available").listeners.dblclick({target:{tagName:"OPTION",value:"p"}})');
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.providers')),["p"]);
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.models')),[]);
+ assert.match(app.run('document.querySelector("#smart-router-providers").innerHTML'),/value="p"/);
+ assert.ok(!app.run('document.querySelector("#smart-router-models-available").innerHTML').includes("q/"));
+ await app.run('transferSmartProviders(true,"p")');assert.equal(app.run('smartRouterDrafts.smart.providers.length'),1);
+ await app.run('document.querySelector("#smart-router-providers").listeners.dblclick({target:{tagName:"OPTION",value:"p"}})');
+ assert.deepEqual(Array.from(app.run('smartRouterDrafts.smart.providers')),[]);
+ assert.match(app.run('document.querySelector("#smart-router-models-available").innerHTML'),/q\/c/);
+});

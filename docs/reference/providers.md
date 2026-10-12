@@ -29,6 +29,9 @@ model supports it. Use an upstream model suited to the requested task.
 ## Compatibility details
 
 - Ollama discovery collapses duplicate loaded/installed entries with the same model ID.
+  Native `/api/show` metadata advertises structured output for completion models
+  verified as local by their architecture and absence of a remote alias. Cloud
+  aliases and incomplete discovery retain unknown structured-output support.
 
 - Codex credentials are endpoint-bound and separate from normal OpenAI API keys.
   Direct-scope helper tokens and legacy Codex OAuth tokens use their appropriate

@@ -300,6 +300,7 @@ func TestOllamaNativeDiscoveryPreservesUnknownAndCloudPolicy(t *testing.T) {
 	}{
 		{"local", `{"capabilities":["completion","tools","vision","thinking"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":32768}}`, 200, true, true},
 		{"cloud", `{"capabilities":["completion","tools"],"remote_host":"https://ollama.com","remote_model":"qwen3-cloud","model_info":{}}`, 200, true, false},
+		{"incomplete_local", `{"capabilities":["completion","tools"],"model_info":{}}`, 200, true, false},
 		{"names_only", `{"model_info":{}}`, 200, false, false},
 		{"failed_show", `{}`, 404, false, false},
 		{"malformed_show", `{"capabilities":["completion"]} {}`, 200, false, false},
@@ -329,14 +330,15 @@ func TestOllamaNativeDiscoveryPreservesUnknownAndCloudPolicy(t *testing.T) {
 				t.Fatalf("unknown capability promoted: %#v", metadata)
 			}
 			if f.known {
-				if metadata.Local == nil || *metadata.Local != f.local || !metadata.Endpoints["chat_completions"] || !metadata.Capabilities["tools"] {
+				if (metadata.Local != nil && *metadata.Local) != f.local || !metadata.Endpoints["chat_completions"] || !metadata.Capabilities["tools"] {
 					t.Fatalf("wrong native facts: %#v", metadata)
 				}
 				if _, known := metadata.Endpoints["responses"]; known {
 					t.Fatal("unverified Responses support advertised")
 				}
-				if _, known := metadata.Capabilities["structured_output"]; known {
-					t.Fatal("unverified structured support advertised")
+				structured, known := metadata.Capabilities["structured_output"]
+				if known != f.local || structured != f.local {
+					t.Fatalf("structured support must require verified local completion: %#v", metadata)
 				}
 				if f.local && (models[0].ContextWindow == nil || *models[0].ContextWindow != 32768) {
 					t.Fatal("native context absent")

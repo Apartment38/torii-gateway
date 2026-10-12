@@ -76,7 +76,7 @@ func ExtractRequirements(endpoint Endpoint, body []byte) (RequestRequirements, e
 	if text, ok := root["text"].(map[string]any); ok {
 		r.StructuredOutput = r.StructuredOutput || structuredFormat(text["format"])
 	}
-	_, r.Reasoning = firstPresent(root, "reasoning", "reasoning_effort")
+	r.Reasoning = reasoningRequested(root)
 	r.Vision = containsImage(root["messages"]) || containsImage(root["input"])
 	for _, key := range []string{"max_output_tokens", "max_completion_tokens", "max_tokens"} {
 		if n, ok := positiveInteger(root[key]); ok {
@@ -125,13 +125,21 @@ func containsTool(v any) bool {
 func validEndpoint(e Endpoint) bool {
 	return e == EndpointChat || e == EndpointCompletions || e == EndpointResponses || e == EndpointEmbeddings
 }
-func firstPresent(m map[string]any, keys ...string) (any, bool) {
-	for _, k := range keys {
-		if v, ok := m[k]; ok && v != nil {
-			return v, true
-		}
+
+// Disabling reasoning does not require a reasoning-capable model. Keep unknown
+// non-null controls conservative and combine both API forms independently.
+func reasoningRequested(root map[string]any) bool {
+	if effort, ok := root["reasoning_effort"]; ok && effort != nil && effort != "none" {
+		return true
 	}
-	return nil, false
+	value := root["reasoning"]
+	if value == nil {
+		return false
+	}
+	if reasoning, ok := value.(map[string]any); ok {
+		return reasoning["effort"] != "none" || len(reasoning) != 1
+	}
+	return true
 }
 func positiveInteger(v any) (int64, bool) {
 	n, ok := v.(json.Number)

@@ -43,3 +43,28 @@ func TestExtractRequirementsRejectsMalformedDocuments(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractRequirementsReasoningControls(t *testing.T) {
+	for _, tc := range []struct {
+		name, fields string
+		want         bool
+	}{
+		{"absent", ``, false},
+		{"null", `"reasoning_effort":null,"reasoning":null`, false},
+		{"chat_disabled", `"reasoning_effort":"none"`, false},
+		{"responses_disabled", `"reasoning":{"effort":"none"}`, false},
+		{"chat_enabled", `"reasoning_effort":"minimal"`, true},
+		{"responses_enabled", `"reasoning":{"effort":"high"}`, true},
+		{"independent_enabled", `"reasoning":{"effort":"none"},"reasoning_effort":"high"`, true},
+		{"independent_responses", `"reasoning":{"effort":"high"},"reasoning_effort":"none"`, true},
+		{"summary_required", `"reasoning":{"effort":"none","summary":"auto"}`, true},
+		{"unknown", `"reasoning":{}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := router.ExtractRequirements(router.EndpointChat, []byte(`{`+tc.fields+`}`))
+			if err != nil || got.Reasoning != tc.want {
+				t.Fatalf("reasoning=%v want=%v err=%v", got.Reasoning, tc.want, err)
+			}
+		})
+	}
+}

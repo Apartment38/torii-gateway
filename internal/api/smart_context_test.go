@@ -108,3 +108,25 @@ func TestSmartContextPreservesSimpleRequestState(t *testing.T) {
 		}
 	}
 }
+
+// Hermes titles use a schema and explicitly turn reasoning off. A local model
+// with structured output must remain eligible even without reasoning support.
+func TestSmartTitleWithDisabledReasoning(t *testing.T) {
+	for _, effort := range []string{"none", "high"} {
+		t.Run(effort, func(t *testing.T) {
+			p := &criticProvider{models: []string{"title"}}
+			m := criticModel("title")
+			m.Capabilities.StructuredOutput = catalog.Supported
+			h := criticHandler(t, p, m)
+			body := `{"model":"smart","messages":[{"role":"user","content":"Give this session a short title."}],"reasoning_effort":"` + effort + `","response_format":{"type":"json_schema","json_schema":{"name":"session_title","strict":true,"schema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}}}}`
+			w := criticPost(h, "/v1/chat/completions", body)
+			if effort == "none" {
+				if w.Code != 200 || len(p.calls) != 1 {
+					t.Fatalf("title rejected: status=%d calls=%v body=%s", w.Code, p.calls, w.Body.String())
+				}
+			} else if w.Code != 503 || len(p.calls) != 0 {
+				t.Fatalf("required reasoning bypassed: status=%d calls=%v", w.Code, p.calls)
+			}
+		})
+	}
+}

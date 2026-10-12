@@ -69,9 +69,13 @@ func (o *Ollama) enrichModel(ctx context.Context, model *Model) {
 	}
 	if capabilities["completion"] {
 		// Streaming is implemented by Ollama's compatible chat/completion
-		// transport. Structured outputs remain unknown: cloud and endpoint
-		// differences are not represented by the show capabilities list.
+		// transport. Local completion models also support schema-constrained
+		// output through response_format. Require native architecture evidence;
+		// incomplete discovery and cloud aliases retain unknown support.
 		model.Discovery.Capabilities["streaming"] = true
+		if locality != nil && *locality {
+			model.Discovery.Capabilities["structured_output"] = true
+		}
 	}
 	var architecture string
 	if json.Unmarshal(show.ModelInfo["general.architecture"], &architecture) == nil && architecture != "" {

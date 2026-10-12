@@ -560,10 +560,15 @@ relayed byte-for-byte and flushed as upstream bytes arrive.
 
 ### Current Limitations
 
-- Native Ollama metadata endpoints are not queried yet.
+- Native `/api/show` discovery supplies capabilities, context and locality.
+  Verified local completion models support schema-constrained `response_format`;
+  cloud aliases and incomplete metadata keep structured-output support unknown.
+  See [Ollama structured outputs](https://github.com/ollama/ollama/blob/main/docs/capabilities/structured-outputs.mdx)
+  and [OpenAI compatibility](https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx)
+  (checked 2026-10-12).
 - Ollama authentication is not currently configured or sent.
-- Model-discovery calls have a 10-second deadline; inference uses the caller's
-  context without that discovery-specific limit.
+- Model discovery has a 10-second deadline. Inference defaults to a configurable
+  five-minute whole-request deadline and propagates caller cancellation.
 
 ## Custom OpenAI-Compatible Providers
 

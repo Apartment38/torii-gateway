@@ -98,3 +98,9 @@ To explicitly end a session, call `DELETE /gateway/v1/sessions/SESSION_ID` with
 a gateway bearer key or administrator login. See [API](../reference/api.md).
 For the full decision and dispatch path, see
 [Smart routing end to end](../development/routing.md).
+
+Requests with `reasoning_effort: "none"` or `reasoning: {"effort": "none"}`
+do not require a reasoning-capable model. Other reasoning controls still enforce
+that capability. Auxiliary JSON-schema requests (such as Hermes session titles)
+require a model with known structured-output support; native Ollama discovery
+provides this for verified local completion models.

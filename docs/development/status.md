@@ -2,6 +2,38 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Administrator account and email password recovery
+
+Implemented on `feat/admin-password-reset` in `/workspace/torii-admin-reset`.
+Setup and CLI creation accept an optional recovery email. Server → Admin User
+supports username/email/password changes with current-password reauthentication.
+Login offers email recovery with a 30-minute, single-use link, transactional reset
+consumption, session revocation, generic asynchronous request responses, bounded
+workers/cooldowns, and verified TLS SMTP. Schema 10 preserves existing accounts
+and adds only hashed reset tokens. Deployment requires public HTTPS/SMTP runtime
+configuration; see the environment reference.
+
+Validation: full Go tests, full race suite, vet, build, unchanged module metadata,
+formatting, generated console freshness, 155 browser-script cases, and local docs
+links pass. State/gateway tests and race checks were repeated after the final
+migration/runtime changes; web tests and Chromium were repeated after the reset
+page fix. Chromium covers actual setup/email/admin edits/relogin and recovery
+requests, plus reset form submission against a mocked confirmation response at
+1440×1000 and 390×844 without page errors or horizontal overflow. Go tests cover
+actual transactional confirmation, expiry/replay/concurrency, legacy schema-9
+upgrade, persistence, TLS SMTP delivery, and plaintext-downgrade rejection.
+
+The non-root Docker image builds with a temporary proxy-CA secret mount, and a
+disposable Docker smoke test verifies schema 10, email/account changes, CSRF,
+reauthentication, revocation/relogin/restart persistence, generic reset requests,
+and public reset-page headers. The full Podman credential suite was unavailable
+because Podman and the host SQLite CLI are absent; its schema/setup assertions
+were updated and shell syntax checked. Provisioned Go 1.25.1/caches use
+`-buildvcs=false` because child builds cannot obtain VCS status in this sandbox.
+No existing deployment or live-mail service was changed. Worktree retained for
+review; deployment requires the documented HTTPS/SMTP environment configuration.
+Review: [PR #34](https://github.com/Apartment38/torii-gateway/pull/34).
+
 ## Decision-model passthrough and provider namespaces
 
 Implemented on `feat/jev-provider-passthrough` in `/workspace/torii-jev`,

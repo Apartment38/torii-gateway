@@ -62,7 +62,7 @@ for attempt in {1..100}; do [[ -s "$backup_directory/fixture-port" ]] && break; 
 fixture_port=$(cat "$backup_directory/fixture-port")
 launch
 mountpoint=$(podman volume inspect --format '{{.Mountpoint}}' "$data_volume")
-[[ $(podman unshare sqlite3 "$mountpoint/torii.db" 'PRAGMA user_version;') == 9 ]]
+[[ $(podman unshare sqlite3 "$mountpoint/torii.db" 'PRAGMA user_version;') == 10 ]]
 [[ $(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT count(*) FROM sqlite_master WHERE name='imports';") == 0 ]]
 host_id=$(podman unshare sqlite3 "$mountpoint/torii.db" "SELECT value FROM application_settings WHERE key='codex_host_id';")
 [[ $host_id == urn:uuid:* ]]
@@ -75,10 +75,11 @@ setup_code=$(podman logs "$container" 2>&1 | sed -n 's/.*expires in 30 minutes):
 [[ ${#setup_code} == 64 ]]
 password='synthetic-admin-password-42'
 basic="Basic $(printf 'test-admin:%s' "$password" | base64 -w0)"
-setup_body=$(printf '%s' "$setup_code" | jq -Rs '{username:"test-admin",password:"synthetic-admin-password-42",setup_code:.}')
+setup_body=$(printf '%s' "$setup_code" | jq -Rs '{username:"test-admin",email:"admin@example.test",password:"synthetic-admin-password-42",setup_code:.}')
 api_key=$(request POST /gateway/v1/setup '' "$setup_body" | jq -er .api_key)
 [[ $api_key == torii_* ]]
 [[ $(request GET /gateway/v1/config "Bearer $api_key" '' true) == 401 ]]
+[[ $(request GET /gateway/v1/admin/account "$basic" | jq -r .email) == admin@example.test ]]
 client_result=$(request POST /gateway/v1/admin/api-keys "$basic" '{"name":"Smoke client"}')
 client_key=$(printf '%s' "$client_result" | jq -er .api_key)
 client_id=$(printf '%s' "$client_result" | jq -er .key.id)
@@ -191,4 +192,4 @@ launch
 request DELETE /gateway/v1/session COOKIE >/dev/null
 [[ $(request GET /gateway/v1/session COOKIE '' true) == 401 ]]
 stop
-printf '%s\n' 'PASS: fresh schema 9, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, benchmark console assets/authenticated table/streamed refresh, usage/identity/benchmark status persistence, stopped backup restore, persistent cookie sessions, model eligibility, JSON/SSE/embedding accounting, restart-proof quotas, redacted activity, and wrong-key rejection.'
+printf '%s\n' 'PASS: fresh schema 10, non-root persistence, admin setup, named client key creation/revocation, console/CLI rotation, benchmark console assets/authenticated table/streamed refresh, usage/identity/benchmark status persistence, stopped backup restore, persistent cookie sessions, model eligibility, JSON/SSE/embedding accounting, restart-proof quotas, redacted activity, and wrong-key rejection.'

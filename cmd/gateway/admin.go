@@ -48,7 +48,11 @@ func (r *handlerRuntime) initializeAdminPrompt(output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		key, err := r.credentials.CreateAdmin(u, p)
+		email, err := promptAdminEmail(output)
+		if err != nil {
+			return err
+		}
+		key, err := r.credentials.CreateAdminWithEmail(u, email, p)
 		if err != nil {
 			return err
 		}
@@ -83,6 +87,7 @@ func (r *handlerRuntime) setupAdmin(w http.ResponseWriter, req *http.Request) {
 	}
 	var input struct {
 		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 		Code     string `json:"setup_code"`
 	}
@@ -97,7 +102,7 @@ func (r *handlerRuntime) setupAdmin(w http.ResponseWriter, req *http.Request) {
 		writeConfigError(w, 403, errors.New("invalid or expired setup code; inspect terminal output or use admin create locally"))
 		return
 	}
-	key, err := r.credentials.CreateAdmin(input.Username, input.Password)
+	key, err := r.credentials.CreateAdminWithEmail(input.Username, input.Email, input.Password)
 	if err != nil {
 		writeConfigError(w, 400, err)
 		return
@@ -232,6 +237,7 @@ func runAdmin(ctx context.Context, args []string, output io.Writer) error {
 	f := flag.NewFlagSet("admin", flag.ContinueOnError)
 	path := f.String("database", "", "SQLite database path")
 	username := f.String("username", "", "administrator username")
+	email := f.String("email", "", "administrator recovery email")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -261,7 +267,13 @@ func runAdmin(ctx context.Context, args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		key, err := db.CreateAdmin(u, p)
+		if *email == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+			*email, err = promptAdminEmail(output)
+			if err != nil {
+				return err
+			}
+		}
+		key, err := db.CreateAdminWithEmail(u, *email, p)
 		if err != nil {
 			return err
 		}
@@ -292,4 +304,13 @@ func runAdmin(ctx context.Context, args []string, output io.Writer) error {
 		return nil
 	}
 	return errors.New("unknown admin command")
+}
+
+func promptAdminEmail(output io.Writer) (string, error) {
+	fmt.Fprint(output, "Admin recovery email (optional): ")
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return state.NormalizeAdminEmail(line)
 }

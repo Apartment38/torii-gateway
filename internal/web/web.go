@@ -29,6 +29,15 @@ func Handler() http.Handler {
 			_, _ = w.Write(data)
 			return
 		}
+		if r.URL.Path == "/reset-password" {
+			r.URL.Path = "/reset-password.html"
+		}
+		if r.URL.Path == "/reset-password.html" || r.URL.Path == "/web/reset-password.html" {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		}
 		if r.URL.Path == "/login" {
 			r.URL.Path = "/login.html"
 		}
@@ -47,7 +56,9 @@ func Handler() http.Handler {
 		if contentType := mime.TypeByExtension(r.URL.Path[strings.LastIndex(r.URL.Path, "."):]); contentType != "" {
 			w.Header().Set("Content-Type", contentType)
 		}
-		w.Header().Set("Cache-Control", "no-cache")
+		if w.Header().Get("Cache-Control") == "" {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		_, _ = w.Write(data)
 	})
 }

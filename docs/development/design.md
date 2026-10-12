@@ -96,7 +96,7 @@ transactions; no silent reset/import/downgrade. Schema baseline 4 is retained.
 Inference keys are separate from administrator Basic credentials. Named keys
 are independently revocable; default rotation leaves named/provider keys intact.
 Saved secret values are not returned by management. Console login uses random opaque cookies; SQLite stores only token hashes and
-bounded session metadata. CSRF tokens and origin checks protect cookie mutations. Static asset availability does not waive API authentication.
+bounded session metadata. CSRF tokens and origin checks protect cookie mutations. Static asset availability does not waive API authentication. Account edits require current-password reauthentication. Email recovery uses expiring, single-use hashed tokens and transactional credential/session revocation; see [State and security](state-and-security.md).
 
 Legacy model routing counters flush asynchronously. Operator per-key accounting
 uses synchronous SQLite reservations and settlements with UTC period totals.

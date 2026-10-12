@@ -12,6 +12,8 @@ combinations are in [Provider support](providers.md).
 | Config, provider tests/login/status/helper download, credential/client-key management | Administrator cookie session (CSRF required for writes) or HTTP Basic (`curl -u USERNAME`, prompts for password) |
 | Intelligence and session deletion | Administrator session/Basic or gateway bearer key |
 | Static console, `/healthz`, setup status | Public |
+| Password reset request/confirmation | Public, same-origin POST; generic request responses and rate limits |
+| Admin account update | Administrator session/Basic plus current password in the body |
 | Initial setup write | Unused 30-minute setup code, only while no administrator exists |
 | Remote login session/import | One-time pairing bearer token (10-minute pending session), not an inference key |
 | OAuth callback | Pending authorization state validation |
@@ -20,6 +22,24 @@ Management responses use `Cache-Control: no-store` and enforce same-origin
 boundaries when an Origin header is present. Static console availability does
 not imply public access to configuration. Basic and bearer keys have different
 permissions. There is one administrator; named client keys do not create users.
+
+## Administrator account and password recovery
+
+All request bodies are JSON, limited to 4 KiB. Cookie-authenticated writes also
+require `X-CSRF-Token`. Secrets are never returned by account reads.
+
+| Method/path | Input | Successful result |
+| --- | --- | --- |
+| `POST /gateway/v1/setup` | `username`, optional `email`, `password`, `setup_code` | 201; singleton admin created, newly generated inference key shown once |
+| `GET /gateway/v1/admin/account` | Admin authentication | 200; `username` and `email` only |
+| `PUT /gateway/v1/admin/account` | `username`, `email`, `current_password`, optional `password` (empty preserves password) | 200; account changed, all cookie sessions and reset links revoked |
+| `POST /gateway/v1/password-reset` | `email` | 202; identical message for all accounts, including unavailable mail delivery |
+| `POST /gateway/v1/password-reset/confirm` | `token`, `password` | 200; password changed, link consumed atomically and sessions revoked; 400 for invalid/expired/replayed link or invalid password, 429 for rate limiting |
+
+The email links to public `/reset-password` with the token in its URL fragment.
+The page removes that fragment from the browser history and submits the token in
+the JSON body. It never signs the user in automatically. See [Credentials](../guides/credentials.md)
+and [mail delivery configuration](environment.md#password-reset-email-delivery).
 
 ## Inference and models
 

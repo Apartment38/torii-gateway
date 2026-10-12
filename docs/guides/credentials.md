@@ -19,16 +19,50 @@ for precedence. There is no startup `TORII_API_KEY` setting.
 
 ## Create the administrator
 
-Interactive `serve` prompts for a username/password. Unattended launches print
+Interactive `serve` prompts for a username, password, and optional recovery email. Unattended launches print
 a 30-minute setup code used in the console. Alternatively, run:
 
 ```sh
 ./bin/gateway admin create --database ./state/torii.db
 ```
 
+Use `--email admin@example.com` to supply a recovery email when creating the account
+from the CLI. The setup form also accepts an email; existing accounts can add one
+on the Server page.
+
 This prompts for a password of at least 12 characters and shows a new gateway key
 once. It cannot replace an existing administrator. The running gateway notices
 local administrator creation without a restart. Browser login uses an HttpOnly cookie session; reload and gateway restarts retain login until expiry. Use HTTPS for remote access.
+
+## Update the administrator
+
+1. Sign in and open **Server → Admin User**.
+2. Change the username or recovery email. To change the password, enter and
+   confirm a new password; leave both fields blank to keep the current password.
+3. Enter the current password and click **Save admin user**.
+4. Sign in again. All browser sessions and outstanding reset links are revoked.
+
+Account changes save separately from server settings. Inference and provider
+keys remain valid. Keep the recovery mailbox secure; access to it permits
+resetting the administrator password.
+
+## Reset a forgotten password
+
+First configure [password reset email delivery](../reference/environment.md#password-reset-email-delivery)
+on the gateway host and restart Torii. Accounts without a recovery email cannot
+use email recovery; add one while signed in before it is needed.
+
+1. Open the login page, expand **Forgot your password?**, enter the recovery
+   email, and click **Send reset link**.
+2. Follow the email link within 30 minutes. Only the most recently issued link works.
+3. Enter and confirm the new password, then click **Change password**.
+4. Return to sign in using the new password. Existing browser sessions end.
+
+The request always shows the same response, even for an unknown address or
+unconfigured delivery. If mail does not arrive, check spam and have the host
+operator verify SMTP configuration, connectivity, and gateway logs. Wait at least
+one minute before requesting another email. Reset submission permits one attempt
+every six seconds across the gateway; wait before retrying a limited submission.
 
 ## Give each client its own key
 

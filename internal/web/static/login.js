@@ -32,3 +32,20 @@ form.addEventListener('submit', async event => {
     button.innerHTML = label;
   }
 });
+
+if (new URLSearchParams(location.search).has('updated')) {
+ document.querySelector('#error').textContent = 'Administrator updated. Sign in again.';
+}
+const resetForm = document.querySelector('#password-reset-request');
+resetForm.addEventListener('submit', async event => {
+ event.preventDefault();
+ const button = resetForm.querySelector('button');
+ const status = document.querySelector('#reset-message');
+ button.disabled = true;
+ try {
+  const response = await fetch('/gateway/v1/password-reset', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:resetForm.elements.email.value.trim()})});
+  if (!response.ok) throw new Error('Unable to request a reset link. Please try again.');
+  status.textContent = (await response.json()).message;
+ } catch (error) { status.textContent = error.message; }
+ finally { button.disabled = false; }
+});

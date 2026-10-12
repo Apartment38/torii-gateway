@@ -20,6 +20,7 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 
 type Admin struct {
 	Username   string `json:"username"`
+	Email      string `json:"email,omitempty"`
 	Salt       []byte `json:"salt"`
 	Hash       []byte `json:"hash"`
 	Iterations int    `json:"iterations"`
@@ -60,21 +61,37 @@ func generatedAPIKey() (string, error) {
 // CreateAdmin atomically claims the singleton admin account. Existing imported
 // API keys are retained and never revealed. Only newly generated keys return.
 func (d *Database) CreateAdmin(username, password string) (string, error) {
+	return d.CreateAdminWithEmail(username, "", password)
+}
+
+func newAdmin(username, email, password string) (*Admin, error) {
 	if !usernamePattern.MatchString(username) {
-		return "", errors.New("username must contain 1-64 letters, digits, dots, underscores or hyphens")
+		return nil, errors.New("username must contain 1-64 letters, digits, dots, underscores or hyphens")
 	}
 	if len(password) < 12 || len(password) > 1024 {
-		return "", errors.New("password must contain 12-1024 bytes")
+		return nil, errors.New("password must contain 12-1024 bytes")
 	}
 	salt := make([]byte, 32)
 	if _, err := rand.Read(salt); err != nil {
-		return "", err
+		return nil, err
 	}
 	hash, err := pbkdf2.Key(sha256.New, password, salt, passwordIterations, 32)
 	if err != nil {
+		return nil, err
+	}
+	email, err = NormalizeAdminEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	return &Admin{Username: username, Email: email, Salt: salt, Hash: hash, Iterations: passwordIterations, Algorithm: "pbkdf2-hmac-sha256"}, nil
+}
+
+func (d *Database) CreateAdminWithEmail(username, email, password string) (string, error) {
+	a, err := newAdmin(username, email, password)
+	if err != nil {
 		return "", err
 	}
-	b, err := json.Marshal(Admin{Username: username, Salt: salt, Hash: hash, Iterations: passwordIterations, Algorithm: "pbkdf2-hmac-sha256"})
+	b, err := json.Marshal(a)
 	if err != nil {
 		return "", err
 	}

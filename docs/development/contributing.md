@@ -54,7 +54,7 @@ Run the gateway authentication tests while working on client authentication:
 
 Run browser-console tests and verify the generated script (Node.js 22.13+):
 
-    node --test internal/web/app_test.mjs
+    node --test internal/web/app_test.mjs internal/web/auth_test.mjs
     node scripts/build-console.mjs --check
 
 The dependency-free build combines `internal/intelligence/presets.json`,

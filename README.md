@@ -4,13 +4,17 @@
 
 # Torii Gateway
 
-Torii Gateway is a lightweight Go service that connects OpenAI-compatible AI
-clients to local and hosted models through one API. Use a specific
-`provider/model`, or let the `smart` model choose an eligible model for each task.
+Torii Gateway is a smart model router that connects clients to local and hosted models through one unified API.
 
-It includes a web configuration console, streaming, encrypted provider credentials,
-named client API keys, subscription login, and optional benchmark intelligence.
-SQLite is embedded; no separate database server or sidecar is required.
+
+Torii Gateway is targeted toward homelabbers and developers that want to aggregate various providers behind a single API, control public access via API keys, and reduce usuage costs. 
+Implemented as a lightweight Go service, it includes a web configuration console, streaming, encrypted provider credentials, named client API keys, subscription login, and optional benchmark intelligence.
+It uses embedded SQLite to maintain state; No separate database server or sidecar is required.
+It supports any OpenAI-Compatible API provider backend, local ollama installs, and some subscription services via OAuth.
+You choose which providers and models to expose, and control access through API keys.
+You can create multiple virtual `smart` models that use a decision model (like Jev) to choose the model best suited for a task according to criteria you define.
+
+> **Disclaimer:** This project was entirely vibe coded. It has not been tested or audited, and should not be deployed in a production environment. Use at your own risk. 
 
 ## Quickstart
 

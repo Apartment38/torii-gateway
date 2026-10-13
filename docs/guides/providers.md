@@ -6,14 +6,14 @@ key, or the subscription account required by the selected profile.
 
 ## Add an inference provider
 
-1. Open **Providers → Add provider** and choose its type from the list.
+1. Open **Providers → Add Provider** and choose its type from the list.
 2. Give it a unique lowercase ID, such as `local` or `openrouter`.
 3. Known hosted providers fill in their API URL when selected, including the
    required API path. Review or customize it using [Provider support](../reference/providers.md).
-   For **OpenAI compatible** and **Jev compatible**, enter your service's URL;
+   For **OpenAI Compatible** and **Jev Compatible**, enter your service's URL;
    for **Ollama**, use detection or enter a remote API URL.
 4. For API-key services, enter the upstream key in the provider's key field.
-   For Codex subscriptions, use **Log in** after configuring the provider.
+   For Codex subscriptions, use **Log In** after configuring the provider.
 5. Test the connection, inspect the returned model list, and choose **Save Provider**.
 6. List `/v1/models` or check the console, then use a discovered `provider/model`
    in your client. Connection tests exercise discovery, not billable inference.
@@ -25,11 +25,11 @@ provider `openrouter` with upstream model `google/MODEL`.
 
 If configuration changed in another tab or through the API, **Save Provider**
 rejects the outdated draft rather than restoring old provider settings. Copy
-your edits, choose **Refresh config**, then reconcile them with the current
+your edits, choose **Refresh**, then reconcile them with the current
 settings before saving. The same applies after a gateway restart. API clients
 must use the [configuration revision header](../reference/api.md#health-setup-configuration-and-providers).
 
-Connection tests query the live catalog even when **Discover models** is disabled.
+Connection tests query the live catalog even when **Discover Models** is disabled.
 The status then warns that **Save Provider** uses the static model list. Enable
 discovery to expose the returned models. For an Ollama server, choose **Ollama**
 and its server URL without `/v1`; Torii also queries native capability metadata
@@ -66,7 +66,7 @@ If both servers expose `llama3.2`, clients see `local/llama3.2` and
 `lab/llama3.2`. A request for either name goes only to the named server. Explicit model requests are never substituted with a different provider/model.
 
 Ollama inference has a **5-minute request timeout** by default to allow cold model
-loading. Change **Request timeout** on its provider card, or set `request_timeout`
+loading. Change **Request Timeout** on its provider card, or set `request_timeout`
 to a positive Go duration such as `10m` in its settings entry, then save through the configuration API.
 The deadline includes loading, generation, and reading the complete streamed or
 JSON response. Leave the field blank to restore the default. Discovery remains
@@ -121,7 +121,7 @@ gateway's persistent OAuth credential store.
 The `openai-codex` provider automatically discovers the visible models for
 the logged-in subscription. A `models` list is optional and is only a fallback,
 not an allowlist. Import credentials with `gateway auth login openai-codex`
-or **Log in** in the web console. Console login opens OpenAI in another browser
+or **Log In** in the web console. Console login opens OpenAI in another browser
 tab and displays a one-time code; no downloaded helper is required. Credentials
 remain endpoint-bound: existing `chatgpt.tokens.use.direct` tokens use the documented
 [ChatGPT plan-usage API](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)
@@ -143,18 +143,18 @@ You need an OpenAI account with Codex subscription access and device code
 authorization enabled in ChatGPT's security settings. Managed workspaces may
 require an administrator to enable it.
 
-1. On **Providers**, add or edit **OpenAI Codex**, then click **Log in**.
+1. On **Providers**, add or edit **OpenAI Codex**, then click **Log In**.
 2. Torii opens a new browser tab. Sign in with OpenAI and enter the one-time code
-   shown in the **One-time code** text box on the provider card. Click **Copy**
+   shown in the **One-Time Code** text box on the provider card. Click **Copy**
    to copy it; if clipboard access is unavailable, the code is selected for manual
    copying. If the tab is blocked or closed, click
-   **Open OpenAI login** on the card to open it yourself.
+   **Open OpenAI Login** on the card to open it yourself.
 3. Return to Torii. It completes authorization on the gateway, stores the
    credential encrypted in SQLite, and checks the subscription's model catalog.
    A successful check shows **Logged in · Working** and the discovered model count.
 
 No companion app, terminal command, or local callback listener is needed.
-The code expires after 15 minutes. If login expires or fails, click **Log in**
+The code expires after 15 minutes. If login expires or fails, click **Log In**
 again. OpenAI access and refresh tokens remain on the gateway; the console
 receives only the authorization URL, one-time code, and status. Use HTTPS for
 remote console access in production.
@@ -172,8 +172,8 @@ provider runs on the host, use a host-reachable address such as
 
 Add **TypeSafe** (`type: typesafe`, default provider ID `typesafe`) on the Providers page for the hosted
 TypeSafe service. Its default API URL is `https://api.typesafe.ai/v1`; paste your
-key into **API key**, or use a stored credential reference under Advanced.
-Add **Jev compatible · Laya / custom**
+key into **API Key**, or use a stored credential reference under Advanced.
+Add **Jev Compatible · Laya / Custom**
 (`type: jev_compatible`) for a self-hosted decision server; supply your own
 provider ID and API URL, with an optional bearer key. These providers use the
 [typed System One protocol](https://docs.typesafe.ai/api), not Chat Completions.
@@ -235,7 +235,7 @@ must be loaded and advertised by your server. For local, non-container builds,
 use the reachable server hostname (often `localhost`) instead.
 
 Classifier setup needs only a provider, a discovered model, and an automatic save.
-The optional **Classifier tuning** panel adjusts the 10-second timeout,
+The optional **Classifier Tuning** panel adjusts the 10-second timeout,
 minimum confidence, question instructions and option rubrics, and per-question
 yes thresholds. See [routing customization](smart-routing.md) for
 defaults, limits, and YAML examples. Edits retain the supported routing labels.
@@ -284,7 +284,7 @@ and remaining values are percentages of the reported allowance; other durations
 stay separate. Missing windows display unavailable. The Usage page also exposes
 these account snapshots alongside provider balances.
 
-Use **Refresh quotas** for a manual read. Background polling runs every minute by
+Use **Refresh Quotas** for a manual read. Background polling runs every minute by
 default; see [quota configuration](../reference/configuration.md#router).
 Rate limits and failures may delay the next attempt. Stale values retain their
 original successful timestamp, and a past reset waits for fresh provider data.

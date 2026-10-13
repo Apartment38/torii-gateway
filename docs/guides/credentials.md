@@ -39,7 +39,7 @@ local administrator creation without a restart. Browser login uses an HttpOnly c
 1. Sign in and open **Server → Admin User**.
 2. Change the username or recovery email. To change the password, enter and
    confirm a new password; leave both fields blank to keep the current password.
-3. Enter the current password and click **Save admin user**.
+3. Enter the current password and click **Save Admin User**.
 4. Sign in again. All browser sessions and outstanding reset links are revoked.
 
 Account changes save separately from server settings. Inference and provider
@@ -52,10 +52,10 @@ First configure [password reset email delivery](../reference/environment.md#pass
 on the gateway host and restart Torii. Accounts without a recovery email cannot
 use email recovery; add one while signed in before it is needed.
 
-1. Open the login page, expand **Forgot your password?**, enter the recovery
-   email, and click **Send reset link**.
+1. Open the login page, expand **Forgot Your Password?**, enter the recovery
+   email, and click **Send Reset Link**.
 2. Follow the email link within 30 minutes. Only the most recently issued link works.
-3. Enter and confirm the new password, then click **Change password**.
+3. Enter and confirm the new password, then click **Change Password**.
 4. Return to sign in using the new password. Existing browser sessions end.
 
 The request always shows the same response, even for an unknown address or
@@ -67,7 +67,7 @@ every six seconds across the gateway; wait before retrying a limited submission.
 ## Give each client its own key
 
 1. Sign in and open **API Keys**.
-2. Click **Create API key**, enter the client name, and generate its key.
+2. Click **Create API Key**, enter the client name, and generate its key.
 3. Copy the one-time value into your client's API-key setting before closing.
 4. To revoke access, delete that named key. Subsequent requests using it fail;
    already-authorized requests are not cancelled.
@@ -78,7 +78,7 @@ an older backup can reactivate keys revoked after that backup; revoke them again
 
 ## Replace a lost or compromised default API key
 
-Use **API keys → Rotate the default gateway key → Rotate default key**, or run:
+Use **API Keys → Rotate The Default Gateway Key → Rotate Default Key**, or run:
 
 ```sh
 ./bin/gateway admin api-key --database ./state/torii.db

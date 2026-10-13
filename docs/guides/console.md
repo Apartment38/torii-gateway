@@ -23,11 +23,11 @@ Benchmarks, Server), in that order.
 | Activity | Recent request events, live updates and optional prompt/Jev inspectors |
 | Usage & Quota | Inspect usage and allowance/quota state |
 
-The overview leads with current UTC requests, processed tokens, and estimated cost, plus success among the bounded recent request sample. Provider, enabled-model, and routing context link to their detailed pages. It shows current UTC token distribution, recent completed request metadata, and copyable client base URL/model settings. The model catalog supports search, provider and enablement filters; **Inspect metadata** expands full capabilities and benchmark provenance. **Activity** defaults to completed requests; choose **All events** to inspect request stages. **Usage & Quota** shows the chosen client scope and UTC period without combining daily and monthly totals. View filters change only the display. Budget limits and advanced settings expand below the usage summary.
+The overview leads with current UTC requests, processed tokens, and estimated cost, plus success among the bounded recent request sample. Provider, enabled-model, and routing context link to their detailed pages. It shows current UTC token distribution, recent completed request metadata, and copyable client base URL/model settings. The model catalog supports search, provider and enablement filters; **Inspect Metadata** expands full capabilities and benchmark provenance. **Activity** defaults to completed requests; choose **All Events** to inspect request stages. **Usage & Quota** shows the chosen client scope and UTC period without combining daily and monthly totals. View filters change only the display. Budget limits and advanced settings expand below the usage summary.
 
 The Overview client model selector includes token prices, provider allowance/reset
 information, and this month's gateway usage. **Models** shows the same tracking
-and expands provider-reported spend under **Inspect metadata**. **Provider Balances**
+and expands provider-reported spend under **Inspect Metadata**. **Provider Balances**
 shows one card per provider, combining shared account balances and independent quota
 windows without adding repeated balances together. It shows subscription limits
 separately from the operator budgets on **Usage & Quota**.
@@ -55,7 +55,7 @@ browser timezone. Usage periods remain UTC; a benchmark date without a time keep
 its published calendar date.
 
 Under **Activity Monitoring**, configure **Maximum Data (MiB)** (default
-100; 1 MiB is 1,048,576 bytes) and **Retention (days)** (default 7). Oldest events are
+100; 1 MiB is 1,048,576 bytes) and **Retention (Days)** (default 7). Oldest events are
 removed when either limit is exceeded; changing limits applies cleanup immediately.
 Expired events are also cleaned up at least every minute and open Activity views refresh.
 

@@ -18,9 +18,10 @@ Validation: console/auth tests (157 cases), generated-script freshness, release
 validator tests, affected documentation links and diff checks pass. Chromium
 fixture checks cover nine console pages at 1440×1000 and 390×844 in light/dark
 with no script errors, horizontal overflow, or unnamed icon actions; benchmark
-Edit states preserve icons and accessible names. Go web-package tests pass.
-Full Go test/build/vet/race checks are running before PR submission. No deployment
-or live provider calls are part of this change.
+Edit states preserve icons and accessible names. Full Go tests, race tests, vet and build pass. The initial full Go run hit an
+unrelated intelligence request-pacing timing assertion during concurrent
+compilation; the isolated test and full-suite rerun passed. No deployment or live
+provider calls are part of this change.
 
 ## Administrator account and email password recovery
 

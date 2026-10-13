@@ -24,7 +24,7 @@ which scores matter for the task; higher scores alone do not justify higher cost
 when a cheaper model can succeed. Decision models can share a provider with chat models; decision-only models
 are excluded from chat routing pools.
 
-1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev compatible**
+1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev Compatible**
    for a compatible decision server such as Laya.
 2. Supply a reachable URL and the service's key if required; test the connection.
 3. On **Smart Routing**, select the discovered classifier model in Smart Routing.
@@ -43,7 +43,7 @@ Disable classification to retain deterministic routing without classifier calls.
 
 ## Tune decisions and failure behavior
 
-Expand **Classifier tuning** only when needed. You can change timeout, minimum
+Expand **Classifier Tuning** only when needed. You can change timeout, minimum
 confidence, question instructions, option descriptions, and yes thresholds.
 Clear an edited value to restore its default; wait for **Saved** to apply.
 Changing questions/providers retains draft tuning; browser reload discards drafts.

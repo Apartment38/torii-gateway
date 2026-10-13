@@ -106,8 +106,9 @@ and versions with SemVer prerelease suffixes are GitHub prereleases.
 1. Choose an unused `vMAJOR.MINOR.PATCH` tag, optionally with a SemVer prerelease
    suffix. Image tags do not support `+build` metadata.
 2. Copy `docs/releases/TEMPLATE.md` to `docs/releases/VERSION.md`, replacing
-   VERSION with the exact tag, and complete the version heading and Installation section. For versions after `v0.2.0`, also complete all four
-   compatibility sections. Run `node scripts/check-release.mjs VERSION`.
+   VERSION with the exact tag, and complete the version heading and Installation
+   section. For versions after `v0.2.0`, also complete all four compatibility
+   sections. Run `node scripts/check-release.mjs VERSION`.
 3. Commit the notes and implementation; the maintainer creates and pushes the
    release tag. No local implementation command publishes a release.
 4. Release automation reuses the complete CI gate. Gateway binaries are

@@ -10,8 +10,9 @@ API and helper build artifacts. Device-code console login and native gateway
 OAuth remain. Release notes now cover fresh native/container installation;
 validation requires Installation and reserves compatibility sections for later
 versions. Baseline Go/console checks, five gateway cross-builds and device-login/
-removed-route regressions pass. Final container and race validation and replacement
-publication are pending. GitHub CLI authentication works; withdrawal dry-run
+removed-route regressions pass. Fresh native startup/health and non-root container setup, persistence and recovery
+checks pass; the amd64 image filesystem contains no helper. Final race validation
+and replacement publication are pending. GitHub CLI authentication works; withdrawal dry-run
 verified the old release/tag/run and exactly five image digests with no unrelated
 tags. The package and its access settings will be retained. Git history
 is retained and repository/package visibility remains private.

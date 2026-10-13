@@ -6,16 +6,15 @@
 
 Torii Gateway is a smart model router that connects clients to local and hosted models through one unified API.
 
-
-Torii Gateway is targeted toward homelabbers and developers that want to aggregate various providers behind a single API, control public access via API keys, and reduce usuage costs. 
+Torii Gateway is targeted toward homelabbers and developers that want to aggregate various providers behind a single API, control public access via API keys, and manage usage costs.
 Implemented as a lightweight Go service, it includes a web configuration console, streaming, encrypted provider credentials, named client API keys, subscription login, and optional benchmark intelligence.
-It uses embedded SQLite to maintain state; No separate database server or sidecar is required.
-It supports any OpenAI-Compatible API provider backend, local ollama installs, and some subscription services via OAuth.
+It uses embedded SQLite to maintain state; no separate database server or sidecar is required.
+It supports OpenAI-compatible API backends, local Ollama installs, and some subscription services via OAuth. Endpoint and model support varies by provider.
 You choose which providers and models to expose, and control access through API keys.
 You can create multiple virtual `smart` models that use a decision model (like Jev) to choose the model best suited for a task according to criteria you define.
 
 > ### DISCLAIMER:
-> This project was entirely vibe coded. It has not been tested or audited, and should not be deployed in a production environment.
+> This project was entirely vibe coded. It has automated tests, but has not been security audited and should not be deployed in a production environment.
 > Do not expose it to the open internet unless you are confident that you understand and accept the security implications.
 > The first public beta and first published release is [v0.2.0](docs/releases/v0.2.0.md).
 > The original Version 1 implementation is the [alpha, v0.1.0](docs/releases/v0.1.0.md). Use it at your own risk.
@@ -26,12 +25,12 @@ You can create multiple virtual `smart` models that use a decision model (like J
 | --- | --- | --- |
 | Unified API | Connect local Ollama and hosted providers through one OpenAI-compatible API. | Working |
 | Smart routing | Expose virtual `smart` models that select eligible models using configurable criteria. | Working |
-| Routing policies | Control model selection by capabilities, context, quality, estimated cost, location, quotas, and latency. | Implemented, untested |
+| Routing policies | Control model selection by capabilities, context, quality, estimated cost, location, quotas, and latency. | Implemented |
 | Streaming | Stream model responses with JSON and SSE transport support. | Working |
 | Web console | Configure providers and models, test connections, and save changes through an embedded UI. | Working |
-| Secure credentials | Encrypt provider credentials and manage access with named client API keys. | Implemented, untested |
+| Secure credentials | Encrypt provider credentials and manage access with named client API keys. | Implemented |
 | Subscription login | Connect eligible Codex accounts through local or remote login. | Working |
-| Benchmark intelligence | Optionally refresh and cache benchmark data to inform routing. | Implemented, untested |
+| Benchmark intelligence | Optionally refresh and cache benchmark data to inform routing. | Implemented |
 | Embedded persistence | Store configuration, credentials, benchmark data, and usage in SQLite without a separate database server. | Working |
 | TUI | Terminal User Interface; Feature parity with Web console. | Planned |
 | Skill Gateway | Centralized version controlled skill registry. | Planned |

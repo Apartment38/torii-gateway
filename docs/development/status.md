@@ -2,6 +2,41 @@
 
 Updated 2026-10-13. This is the sole project progress and backlog tracker.
 
+## v0.2.0 release preparation
+
+Prepared on `chore/prepare-v0.2.0` in `/tmp/torii-release-0.2.0`, based on
+current `origin/main` (`faa6066`). Removed committed Python bytecode, excluded
+generated Python caches and release artifacts from Git/container contexts,
+corrected stale README testing claims and completed the beta feature summary in
+[release notes](../releases/v0.2.0.md). Two deleted remote branches were pruned;
+the original `main` checkout remains clean. No application behavior changed.
+
+Validation: full Go tests and race tests, vet/build, formatting, unchanged module metadata,
+console/auth and release-validator tests, generated console freshness, example
+configuration validation, affected documentation links and diff checks pass.
+All ten gateway/helper binaries cross-build for the five release targets;
+checksums and native version/commit/build-time metadata verify. Validation
+binaries are retained in `/tmp/torii-release-artifacts-0.2.0` and describe
+implementation commit `7cf189d`; they must be rebuilt from the eventual tag.
+
+The production Dockerfile builds with Go 1.25.1. The amd64 non-root candidate
+image embeds baseline implementation commit `faa6066` (runtime code is unchanged),
+reports `v0.2.0`, schema 10/baseline 4, and passes the disposable credential,
+persistence, accounting/quota, session, backup/restore and wrong-key suite.
+Host Go checks use Go 1.27.2 with a writable temporary cache and local test-server
+access outside the sandbox. The initial race gate exposed a pre-existing reset
+test that checked a six-second cooldown after expensive password verification;
+the corrected test checks consecutive attempts before hashing and passes both
+normally and with race detection. The complete race-gate rerun passes.
+
+Release publication remains deferred (TASK-041). The maintainer must select the
+reviewed commit and push its unused `v0.2.0` tag; release automation reruns the
+full CI gate and produces the final multi-platform image and tagged assets.
+No tag, push, release, registry publication or deployment was performed. Native
+macOS/Windows execution, arm64 container execution and live provider/account
+checks remain unverified; cross-builds and controlled fixtures do not establish
+those results.
+
 ## Smart benchmark mapping and official model cards
 
 Implemented on `feat/smart-benchmark-mapping` in
@@ -401,7 +436,10 @@ contracts in [Design](design.md). The original Version 1 implementation is the
 alpha (v0.1.0); historical Version 2 plans do not define current support. The first public beta and first
 published release is [v0.2.0](../releases/v0.2.0.md).
 
-## Active work
+## Earlier integration work
+
+These retained records describe earlier work and historical checkout paths.
+Current release preparation is summarized above.
 
 Local `main` has been rebased onto merged provider-tracking PR #20, preserving provider balances/usage, scoped quota windows, Nous API-key authentication, local Ollama detection and named smart routers. Integration review added regression coverage for shared quota headers retaining independently collected billing data and for accounting wrappers preserving account-level cache identity. Full Go/race suites and final focused accounting/API/gateway race checks, vet/build, 109 console tests, two release-validator tests, generated assets, module/format checks, affected documentation links and exact-image disposable container persistence/recovery checks pass. The integration worktree is retained at `/tmp/torii-rebase-integration` on `fix/rebase-provider-router-integration`. No live deployment changes are part of this repair.
 

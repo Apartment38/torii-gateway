@@ -11,3 +11,7 @@ secrets
 *.db-shm
 bin
 *.test
+**/__pycache__
+**/*.py[cod]
+dist
+container-image.tar

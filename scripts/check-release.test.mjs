@@ -4,7 +4,7 @@ import { validateRelease } from "./check-release.mjs";
 
 const notes = version => `# ${version}\n` + ["Database compatibility", "Configuration changes", "Upgrade prerequisites", "Rollback"].map(h => `## ${h}\nComplete instructions.\n`).join("");
 test("release metadata accepts versions and complete compatibility notes", () => {
-  for (const version of ["v2.0.0", "v2.1.0-rc.1"]) assert.doesNotThrow(() => validateRelease(version, notes(version)));
+  for (const version of ["v0.1.0", "v0.2.0", "v0.2.1-beta.1", "v2.0.0", "v2.1.0-rc.1"]) assert.doesNotThrow(() => validateRelease(version, notes(version)));
 });
 test("release metadata rejects unsafe tags and incomplete notes", () => {
   for (const version of ["../secret", "v1", "v01.2.3", "v1.2.3-01", "v1.2.3+build", "v1.2.3;echo"]) assert.throws(() => validateRelease(version, notes(version)));

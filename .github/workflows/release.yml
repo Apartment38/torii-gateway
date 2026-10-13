@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,9 +32,14 @@ jobs:
       - name: Validate version and compatibility notes
         id: release
         env:
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
+          if [ "$RELEASE_REF_TYPE" != tag ]; then
+            echo "Select an existing release tag with gh workflow run release.yml --ref vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
           node scripts/check-release.mjs "$RELEASE_TAG"
           printf 'version=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -120,6 +126,8 @@ jobs:
           REGISTRY_USER: ${{ github.actor }}
           IMAGE: ${{ needs.metadata.outputs.image }}
           VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          RELEASE_EVENT: ${{ github.event_name }}
         run: |
           sudo apt-get update
           sudo apt-get install -y skopeo
@@ -134,17 +142,32 @@ jobs:
           if [ "$owner_type" = Organization ]; then owner_path=orgs; fi
           versions_file=$(mktemp)
           error_file=$(mktemp)
+          image_exists=false
           if gh api "$owner_path/$package_owner/packages/container/$package_name/versions?per_page=100" --paginate > "$versions_file" 2> "$error_file"; then
             matches=$(jq -sr --arg tag "$VERSION" '[.[][] | .metadata.container.tags[]? | select(. == $tag)] | length' "$versions_file")
             if [ "$matches" -ne 0 ]; then
-              echo "This versioned image already exists; publish a new release tag instead of overwriting it."
-              exit 1
+              image_exists=true
             fi
           elif ! grep -q 'HTTP 404' "$error_file"; then
             echo "Cannot establish that the release image is absent; check GHCR permissions and connectivity."
             exit 1
           fi
-          skopeo copy --all --preserve-digests oci-archive:dist/container-image.tar "docker://$IMAGE:$VERSION"
+          if [ "$image_exists" = true ]; then
+            if [ "$RELEASE_EVENT" != workflow_dispatch ]; then
+              echo "This versioned image already exists; use manual recovery for the same tag."
+              exit 1
+            fi
+            skopeo inspect "docker://$IMAGE:$VERSION" > dist/existing-image.json
+            if ! jq -e --arg version "$VERSION" --arg commit "$COMMIT" \
+              '.Labels["org.opencontainers.image.version"] == $version and .Labels["org.opencontainers.image.revision"] == $commit' \
+              dist/existing-image.json > /dev/null; then
+              echo "The published image does not match this tag's version and commit; refusing recovery."
+              exit 1
+            fi
+            echo "Reusing the published image for the same version and commit."
+          else
+            skopeo copy --all --preserve-digests oci-archive:dist/container-image.tar "docker://$IMAGE:$VERSION"
+          fi
           digest=$(skopeo inspect --raw "docker://$IMAGE:$VERSION" | sha256sum | cut -d' ' -f1)
           printf '%s@sha256:%s\n' "$IMAGE" "$digest" > dist/CONTAINER_IMAGE.txt
           printf 'Container: `%s@sha256:%s`\n' "$IMAGE" "$digest" >> "$GITHUB_STEP_SUMMARY"
@@ -154,8 +177,9 @@ jobs:
       - name: Publish release artifacts and compatibility notes
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.metadata.outputs.version }}
           body_path: docs/releases/${{ needs.metadata.outputs.version }}.md
-          prerelease: ${{ contains(needs.metadata.outputs.version, '-') }}
+          prerelease: ${{ startsWith(needs.metadata.outputs.version, 'v0.') || contains(needs.metadata.outputs.version, '-') }}
           fail_on_unmatched_files: true
           files: |
             dist/torii-gateway-*

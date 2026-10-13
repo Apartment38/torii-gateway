@@ -99,6 +99,10 @@ packages or new runtime services are required.
 
 ## Manual releases
 
+The original Version 1 implementation is the historical alpha, `v0.1.0`.
+The first published release is the public beta, `v0.2.0`. All `v0.x` versions
+and versions with SemVer prerelease suffixes are GitHub prereleases.
+
 1. Choose an unused `vMAJOR.MINOR.PATCH` tag, optionally with a SemVer prerelease
    suffix. Image tags do not support `+build` metadata.
 2. Copy `docs/releases/TEMPLATE.md` to `docs/releases/VERSION.md`, replacing
@@ -112,11 +116,25 @@ packages or new runtime services are required.
 5. Only after all jobs succeed does publication upload the image to GHCR and
    create a GitHub Release containing binaries, `SHA256SUMS`, compatibility notes,
    and `CONTAINER_IMAGE.txt` with the multi-platform digest. Existing image tags
-   are not overwritten; a re-release must use a new version.
+   are not overwritten; changes to a released commit require a new version.
 6. Repository settings must allow Actions to create releases and packages.
    Grant the publishing job access if a GHCR package already exists. Set the
    package visibility to public for anonymous pulls; initial visibility depends
    on repository/package settings. No extra registry password is committed.
+
+### Recover a failed release
+
+Run `gh workflow run release.yml --ref v0.2.0` from an authenticated maintainer
+terminal, replacing the example with the existing release tag. The tag must
+already contain the manual trigger. Branch dispatches fail validation before
+publication. Keep the tag on its original commit; the full CI gate runs again.
+
+If GHCR publication succeeded before a later step failed, manual recovery reuses
+the existing versioned image only when its embedded version and commit match.
+It records that image's digest and uploads the release assets again. Binaries
+are rebuilt from the same tag and checksums regenerated; build timestamps may
+change. A version/commit mismatch fails recovery and requires investigation.
+An unpublished image is published normally. Do not delete or move release tags.
 
 Images and binaries embed version, commit and build time. Inspect with
 `gateway version` or `torii-auth version`. Source builds report `dev` unless

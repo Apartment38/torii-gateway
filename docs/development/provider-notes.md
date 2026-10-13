@@ -217,7 +217,7 @@ Document support for:
 ### Status
 
 Research status: verified from official API reference
-Implementation status: complete for the transparent Version 1 endpoint set
+Implementation status: complete for the transparent alpha (v0.1.0) endpoint set
 Last verified: 2026-09-30
 
 ### Authentication
@@ -596,7 +596,7 @@ relayed byte-for-byte and flushed as upstream bytes arrive.
 
 ### Status
 
-Implementation status: complete for the transparent Version 1 endpoint set
+Implementation status: complete for the transparent alpha (v0.1.0) endpoint set
 Last verified: 2026-09-30
 
 ### Protocol profile

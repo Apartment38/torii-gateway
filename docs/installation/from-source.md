@@ -1,6 +1,6 @@
 # Compile from source
 
-Build a gateway and, optionally, the remote subscription-login helper.
+Build the gateway.
 You need Git, Go 1.25.1 or newer, and network access to fetch Go dependencies.
 
 1. Check your toolchain in a terminal:
@@ -17,9 +17,7 @@ You need Git, Go 1.25.1 or newer, and network access to fetch Go dependencies.
    cd torii-gateway
    mkdir -p bin
    go build -trimpath -o ./bin/gateway ./cmd/gateway
-   go build -trimpath -o ./bin/torii-auth ./cmd/torii-auth
    ./bin/gateway version
-   ./bin/torii-auth version
    ```
 
    A source build reports `dev` unless release metadata is supplied. SQLite and
@@ -34,7 +32,6 @@ On Windows PowerShell, replace the build commands with:
 ```powershell
 New-Item -ItemType Directory -Force bin | Out-Null
 go build -trimpath -o ./bin/gateway.exe ./cmd/gateway
-go build -trimpath -o ./bin/torii-auth.exe ./cmd/torii-auth
 ./bin/gateway.exe version
 ```
 

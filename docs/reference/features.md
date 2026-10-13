@@ -13,14 +13,14 @@ still depends on your account, model capabilities, quotas, and upstream availabi
 | Administrator account | Username/email/password updates and single-use email password recovery | Current password required for account edits; recovery needs a saved email and configured HTTPS/SMTP |
 | Client accounting | Persistent per-key usage and daily/monthly request, token and estimated-cost budgets | Named keys are not users; estimates are not provider billing |
 | Credentials | AES-256-GCM encrypted SQLite payloads, provider references, default/named client keys | Master key required; saved secrets cannot be retrieved; no automatic key rotation |
-| Subscription access | Codex device/browser OAuth and optional remote helper; Nous API-key access | Account eligibility and provider token scopes required |
+| Subscription access | Codex device/browser OAuth; Nous API-key access | Account eligibility and provider token scopes required |
 | Smart routing | Default `smart` and additional named routers with independent pools/policies; optional connected, embedding, typed Jev/Laya classification | Only eligible candidates; decision-only models never answer chat |
 | Routing policies | Capabilities/context, quality floors, paid-model gate, estimated cost, location, quotas, latency | Unknown measurements remain unknown; estimates are not bills |
 | Sessions | In-memory bounded affinity, explicit deletion, safe tool pinning, pre-stream rerouting | Lost on restart; tool continuation cannot move to an unpinned model; no retry after bytes sent |
 | Benchmarks | Five source families, background/manual refresh, cache, aliases, scores, raw inspection, progress | Opt-in; source terms/schema/availability apply; approximate display matches never route |
 | Runtime | Request IDs, typed errors, structured logs, bounded Activity history with opt-in body capture, graceful shutdown, healthcheck | TLS needs reverse proxy; body limit 32 MiB |
 | Persistence | Embedded SQLite settings/revisions, credentials, administrator sessions, accounting, Activity, benchmark evidence and host identity | One gateway per local data volume; conversation affinity, provider quota caches and pending login flows remain in memory |
-| Release tooling | Versioned gateway/helper builds, checksums, multiarch container workflow | Workflow existence does not guarantee a published release |
+| Release tooling | Versioned gateway builds, checksums, multiarch container workflow | Workflow existence does not guarantee a published release |
 
 ## Current limitations
 

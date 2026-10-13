@@ -2,6 +2,50 @@
 
 Updated 2026-10-13. This is the sole project progress and backlog tracker.
 
+## Private first-release correction
+
+The first `v0.2.0` candidate is being replaced before public availability.
+Removed the standalone authentication helper, remote pairing/import/download
+API and helper build artifacts. Device-code console login and native gateway
+OAuth remain. Release notes now cover fresh native/container installation;
+validation requires Installation and reserves compatibility sections for later
+versions. Baseline Go/console checks, five gateway cross-builds and device-login/
+removed-route regressions pass. Fresh native startup/health and non-root container setup, persistence and recovery
+checks pass; the amd64 image filesystem contains no helper. Final race validation
+and replacement publication are pending. GitHub CLI authentication works; withdrawal dry-run
+verified the old release/tag/run and exactly five image digests with no unrelated
+tags. The package and its access settings will be retained. Git history
+is retained and repository/package visibility remains private.
+
+## Superseded private v0.2.0 candidate (TASK-041)
+
+[PR #40](https://github.com/Apartment38/torii-gateway/pull/40) is merged.
+The unchanged `v0.2.0` tag points to `628032d9ab256de7a3adb4dec20849b77e049657`.
+The [release workflow](https://github.com/Apartment38/torii-gateway/actions/runs/38353272961)
+passed CI, all five binary targets and the multi-platform container build.
+[v0.2.0](https://github.com/Apartment38/torii-gateway/releases/tag/v0.2.0)
+is published as a prerelease with ten binaries, `SHA256SUMS` and
+`CONTAINER_IMAGE.txt`. Repository visibility remains private; an unauthenticated
+registry pull returns HTTP 401. No deployment or visibility change was performed.
+
+Downloaded build archives match their artifact digests. All twelve published
+asset SHA-256 digests match local files, the release checksum file verifies,
+native gateway/helper metadata matches the tag commit, and both OCI platforms
+have the expected version/commit labels and non-root users. Verified files are
+retained in `/tmp/torii-v0.2.0-published`. The published image index digest is
+`sha256:1fcdf1b8318c06f902652fbe1b0a41e6381afa4ad13aa23706fca986afd2d368`.
+Native macOS/Windows and arm64 execution remain unverified.
+
+The first publish attempt failed while writing the arm64 manifest with
+`permission_denied: read_package`. Its setup log explicitly granted
+`Contents: write` and `Packages: write`; the operator confirmed existing
+repository Admin access to the package. The failed-job rerun succeeded using
+the same commit, artifacts, actor, Skopeo version and granted permissions.
+No workflow permission edit, PAT substitution or tag movement was applied.
+The original registry denial's root cause remains unconfirmed; successful
+recovery does not establish a first-publication or transient-auth explanation.
+Workflow-level package grants would not fix an already-granted publish-job scope.
+
 ## v0.2.0 release preparation
 
 Prepared on `chore/prepare-v0.2.0` in `/tmp/torii-release-0.2.0`, based on
@@ -528,8 +572,8 @@ No delivery dates or plugin APIs are committed. See
   persistence/recovery check, complete compatibility notes, verify all artifacts,
   and run opt-in live checks for the provider/account combinations being claimed.
   Code and local test completion is distinct from publication (TASK-041).
-- Published release availability and current GitLab template bodies could not be fetched
-  in this session. Archived first-party tutorial/how-to materials were inspected
+- Earlier documentation research could not fetch release availability or current
+  GitLab template bodies. Archived first-party tutorial/how-to materials were inspected
   for structure. Installation keeps source builds as a complete path and refers
   to actual release assets rather than claiming a release exists.
 - Docker, macOS, and Windows native/service workflows need validation on their

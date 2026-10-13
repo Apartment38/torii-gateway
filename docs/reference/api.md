@@ -9,13 +9,12 @@ combinations are in [Provider support](providers.md).
 | Boundary | Authorization |
 | --- | --- |
 | `/v1/*` inference and model routes | `Authorization: Bearer GATEWAY_KEY` |
-| Config, provider tests/login/status/helper download, credential/client-key management | Administrator cookie session (CSRF required for writes) or HTTP Basic (`curl -u USERNAME`, prompts for password) |
+| Config, provider tests/login/status, credential/client-key management | Administrator cookie session (CSRF required for writes) or HTTP Basic (`curl -u USERNAME`, prompts for password) |
 | Intelligence and session deletion | Administrator session/Basic or gateway bearer key |
 | Static console, `/healthz`, setup status | Public |
 | Password reset request/confirmation | Public, same-origin POST; generic request responses and rate limits |
 | Admin account update | Administrator session/Basic plus current password in the body |
 | Initial setup write | Unused 30-minute setup code, only while no administrator exists |
-| Remote login session/import | One-time pairing bearer token (10-minute pending session), not an inference key |
 | OAuth callback | Pending authorization state validation |
 
 Management responses use `Cache-Control: no-store` and enforce same-origin
@@ -135,9 +134,6 @@ provider's initial model list; the endpoint returns the complete catalog.
 | `POST /gateway/v1/providers/test` | `{"provider": PROVIDER_CONFIG}` JSON, admin | Actual discovery status/models, including classifier-only metadata; no inference test |
 | `POST /gateway/v1/providers/login` | `{"provider_id":"ID"}` or `{"provider":"ID"}`, admin | Pending browser login; `login_method: "device"` explicitly selects device authorization; remote requests default to it |
 | `GET /gateway/v1/providers/login?provider=ID` | Admin | Login status without stored tokens |
-| `GET /gateway/v1/providers/login/helper/{asset}` | Admin | OS/architecture-matching binary; unavailable assets fail |
-| `GET /gateway/v1/providers/login/session` | Pairing bearer token | Pending session metadata used by helper |
-| `POST /gateway/v1/providers/login/import` | Pairing bearer token and helper-generated OAuth payload | Validated single-use credential import; token/state/endpoint/scopes checked |
 | `GET /gateway/v1/providers/login/callback` or `/auth/callback` | Authorization code/state query | Complete matching pending login; use generated flow rather than constructing callback |
 | `DELETE /gateway/v1/sessions/{id}` | Bearer/admin | End in-memory affinity for that identity |
 
@@ -161,11 +157,7 @@ code there. Authorization expires after 15 minutes; successful completion stores
 the credential on the gateway and refreshes discovery. Login responses are not
 cacheable and never include stored OAuth tokens. See [Providers](../guides/providers.md).
 
-For legacy helper clients only, `POST /gateway/v1/providers/login` with
-`login_method: "helper"` explicitly requests a 10-minute single-use pairing
-session. Its URL/token must not be logged or shared. The console does not offer
-helper downloads or commands. Do not hand-author credential import payloads.
-Omitting `login_method` on a loopback request retains the legacy local PKCE flow;
+Omitting `login_method` on a loopback request selects the local PKCE flow;
 use `"device"` for the same browser-only flow as the console.
 
 ## Credentials and client keys
@@ -240,7 +232,7 @@ Inference errors use an OpenAI-style envelope, for example:
 | --- | --- |
 | 400 | Invalid JSON/config/parameter or unsupported endpoint/capability |
 | 401 | Invalid/missing credentials for this authentication boundary |
-| 403 | Cross-origin/unauthorized management or invalid setup/pairing flow |
+| 403 | Cross-origin/unauthorized management or invalid setup flow |
 | 404 | Unknown model/path/resource |
 | 409 | Setup already complete or conflicting management state |
 | 413 | Inference body exceeds 32 MiB |

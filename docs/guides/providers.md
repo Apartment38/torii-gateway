@@ -159,10 +159,6 @@ again. OpenAI access and refresh tokens remain on the gateway; the console
 receives only the authorization URL, one-time code, and status. Use HTTPS for
 remote console access in production.
 
-The optional legacy helper protocol remains available to API clients that
-explicitly request it; see [API](../reference/api.md) and
-[CLI](../reference/cli.md). It is not part of console login.
-
 On SELinux-enabled hosts, the `:Z` volume labels in the compose file allow the
 container to read the configuration and write its database volume. If an upstream
 provider runs on the host, use a host-reachable address such as

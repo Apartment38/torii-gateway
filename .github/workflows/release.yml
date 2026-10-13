@@ -63,7 +63,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Build gateway and login helper
+      - name: Build gateway
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -76,7 +76,6 @@ jobs:
           mkdir -p dist
           flags="-s -w -X github.com/Apartment38/torii-gateway/internal/buildinfo.Version=$VERSION -X github.com/Apartment38/torii-gateway/internal/buildinfo.Commit=$COMMIT -X github.com/Apartment38/torii-gateway/internal/buildinfo.BuildDate=$BUILD_DATE"
           CGO_ENABLED=0 go build -trimpath -ldflags="$flags" -o "dist/torii-gateway-${GOOS}-${GOARCH}$suffix" ./cmd/gateway
-          CGO_ENABLED=0 go build -trimpath -ldflags="$flags" -o "dist/torii-auth-${GOOS}-${GOARCH}$suffix" ./cmd/torii-auth
       - uses: actions/upload-artifact@v7
         with:
           name: torii-binaries-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -173,8 +172,8 @@ jobs:
           printf 'Container: `%s@sha256:%s`\n' "$IMAGE" "$digest" >> "$GITHUB_STEP_SUMMARY"
       - name: Generate binary checksums
         working-directory: dist
-        run: sha256sum torii-gateway-* torii-auth-* CONTAINER_IMAGE.txt > SHA256SUMS
-      - name: Publish release artifacts and compatibility notes
+        run: sha256sum torii-gateway-* CONTAINER_IMAGE.txt > SHA256SUMS
+      - name: Publish release artifacts and installation notes
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.version }}
@@ -183,6 +182,5 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/torii-gateway-*
-            dist/torii-auth-*
             dist/SHA256SUMS
             dist/CONTAINER_IMAGE.txt

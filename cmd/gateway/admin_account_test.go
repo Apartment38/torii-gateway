@@ -100,6 +100,17 @@ func TestPasswordResetRequestDeliveryGenericResponsesAndConfirmation(t *testing.
 	}
 	browser, _, _ := db.NewAdminSession(time.Hour)
 	body, _ := json.Marshal(map[string]string{"token": token, "password": "new-password-123"})
+	// Check consecutive attempts before password hashing can outlast the
+	// cooldown on slower machines or under the race detector.
+	if w := call("/gateway/v1/password-reset/confirm", `{"token":"invalid","password":"new-password-123"}`, ""); w.Code != 400 {
+		t.Fatal("invalid reset token accepted", w.Code)
+	}
+	if w := call("/gateway/v1/password-reset/confirm", string(body), ""); w.Code != 429 || w.Header().Get("Retry-After") == "" {
+		t.Fatal("reset attempts not limited", w.Code)
+	}
+	r.resetMu.Lock()
+	r.resetAttemptAfter = time.Time{}
+	r.resetMu.Unlock()
 	if w := call("/gateway/v1/password-reset/confirm", string(body), ""); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -108,9 +119,6 @@ func TestPasswordResetRequestDeliveryGenericResponsesAndConfirmation(t *testing.
 	}
 	if _, err := db.AdminSession(browser); err == nil {
 		t.Fatal("session survived reset")
-	}
-	if w := call("/gateway/v1/password-reset/confirm", string(body), ""); w.Code != 429 {
-		t.Fatal("reset attempts not limited")
 	}
 	r.resetMu.Lock()
 	r.resetAttemptAfter = time.Time{}

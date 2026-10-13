@@ -119,7 +119,7 @@
           <section id="routing" class="page section-block">
             <div class="section-heading"><div><h1>Smart Routing</h1></div><div class="router-heading-actions"><label>Router<select id="smart-router-select"><option value="smart">Smart · Default</option></select></label><button id="add-smart-router" aria-label="Create Router" title="Create Router" class="button primary" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="action-label">Create Router</span></button></div></div>
             <div class="router-identity-card" aria-label="Router Settings">
-            <div class="grid two"><label data-tooltip="The virtual model name clients use to invoke this router.">Router Name<input id="smart-router-new-name" name="router.model_name" value="smart" placeholder="coding-local" /></label><div class="check-row"><button id="save-smart-router" class="button primary" type="button">Save</button><button id="remove-smart-router" class="button danger" type="button" disabled><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg><span class="action-label">Remove Router</span></button></div></div>
+            <div class="grid two"><label data-tooltip="The virtual model name clients use to invoke this router.">Router Name<input id="smart-router-new-name" name="router.model_name" value="smart" placeholder="coding-local" /></label><div class="check-row"><button id="save-smart-router" class="button primary" type="button">Save</button><button id="remove-smart-router" class="button danger" type="button" disabled><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg><span class="action-label">Remove Router</span></button></div></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow Paid Models</label><label class="checkbox"><input name="router.allow_free_models" type="checkbox" checked /> Allow Free Models</label></div>
             </div>
             <div class="model-transfer provider-transfer"><label>Allowed Providers<select id="smart-router-providers-available" multiple size="6" aria-describedby="smart-router-scope-note"></select></label><div class="model-transfer-actions"><button id="smart-router-provider-add" class="action-icon-only button primary" type="button" aria-label="Enable Providers" title="Enable Providers"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button><button id="smart-router-provider-remove" class="action-icon-only button danger" type="button" aria-label="Remove Providers" title="Remove Providers"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button></div><label>Enabled Providers<select id="smart-router-providers" multiple size="6" aria-describedby="smart-router-scope-note"></select></label></div>
@@ -217,7 +217,7 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=18"></script>
+    <script type="module" src="/web/app.js?v=19"></script>
 
 </body>
 </html>

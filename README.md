@@ -38,6 +38,9 @@ You can create multiple virtual `smart` models that use a decision model (like J
 | User Accounts | Add other users with their own accounting and settings. | Planned |
 | Authentik Integration | Use Authentik for web console logins. | Planned |
 
+See [Features and limitations](docs/reference/features.md) for details on the supported
+endpoints, constraints, and features that are not implemented.
+
 ## Quickstart
 
 Choose a source build, Podman, or Podman Compose below.
@@ -73,7 +76,10 @@ placeholder with your generated key, then send a request:
 
 ```sh
 export GATEWAY_API_KEY='PASTE_YOUR_GENERATED_GATEWAY_KEY'
-curl --fail http://127.0.0.1:8080/v1/chat/completions   -H "Authorization: Bearer $GATEWAY_API_KEY"   -H 'Content-Type: application/json'   -d '{"model":"local/llama3.2","messages":[{"role":"user","content":"Hello!"}]}'
+curl --fail http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local/llama3.2","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
 The response contains the model's answer. Your client's base URL is

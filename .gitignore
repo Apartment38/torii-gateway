@@ -42,3 +42,9 @@ secrets/
 *.db
 *.db-wal
 *.db-shm
+
+# Generated Python caches and release artifacts
+__pycache__/
+*.py[cod]
+/dist/
+/container-image.tar

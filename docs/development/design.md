@@ -175,7 +175,9 @@ levels semantic and use the shared styles rather than shrinking sections locally
 Add/Create actions use `button primary`, matching Add Provider, with an inline
 SVG plus icon. Edit actions pair an SVG pencil with an Edit label. Remove/Delete
 use `button danger`, the same dimensions and spacing with a red background,
-white foreground, and SVG minus/trash icon. SVGs are decorative (`aria-hidden`).
+white foreground, and an SVG icon. Removing providers or routers uses the same
+trash icon as deleting API keys; removing entries from an enabled list uses a
+minus icon. SVGs are decorative (`aria-hidden`).
 Use `action-icon-only` for transfer controls and dense table/card actions; retain
 an explicit accessible name and a tooltip (`aria-label` and `title`). Labels that
 collapse on narrow screens must keep an accessible name in every action state.

@@ -1,6 +1,26 @@
 # Project status
 
-Updated 2026-10-12. This is the sole project progress and backlog tracker.
+Updated 2026-10-13. This is the sole project progress and backlog tracker.
+
+## Smart benchmark mapping and official model cards
+
+Implemented on `feat/smart-benchmark-mapping` in
+`/workspace/work/smart-mapping`. Benchmark Intelligence offers **Smart Mapping**
+with a configured decision-model selector, cost warning, Start and cancellation.
+Family search shortlists cached benchmark names before bounded System One calls;
+validated high-confidence choices become source-specific identities through the
+revision-checked configuration save. Manual mappings, ambiguous results, stale
+models and provider credential boundaries retain their existing safeguards.
+Models links identified publisher model/system cards and retains its mobile layout.
+Affected benchmark/console guides and API reference are updated.
+
+Validation: Go tests and race tests across all packages, build, vet, module tidy,
+console/auth tests, release-validator tests, generated-script freshness, formatting
+and diff checks pass. Go validation uses the downloaded Go 1.25.1 toolchain with
+`-buildvcs=false` because VCS discovery selects the outer managed workspace;
+module files are unchanged. Chromium fixtures exercise the complete Smart Mapping
+save and model-card links at 1440×1000 and 390×844 without page errors or dialog
+overflow. No live paid decision requests were made.
 
 ## Console design language consistency
 

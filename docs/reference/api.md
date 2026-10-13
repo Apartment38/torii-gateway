@@ -193,7 +193,7 @@ See [Credentials](../guides/credentials.md) for consequences of rotation/deletio
 ## Benchmark intelligence
 
 All routes below use the `/gateway/v1/intelligence` prefix and accept admin Basic
-or gateway bearer authentication for reads/refresh. Uploads and edits require
+or gateway bearer authentication for reads/refresh. Smart mapping, uploads and edits require
 administrator authentication. Disabled intelligence returns 503, except for the
 CSV template download.
 
@@ -209,6 +209,7 @@ CSV template download.
 | `POST /import` | Administrator-only CSV body, ≤8 MiB/10,000 rows; atomically merge into reserved `custom` source |
 | `GET /records` | Paginated editable records using observation pagination/filter parameters; `configured_only=true` limits records to current catalog associations (including display-only matches); each has `source`, `index`, `revision`, `observation` |
 | `PUT /observations/edit` | Administrator-only JSON `{source,index,revision,observation}` from `/records`; validates and saves one row, HTTP 409 for stale revisions |
+| `POST /smart-mapping` | Administrator-only JSON `{ "model": "provider/decision-model" }` (≤4 KiB); proposes source-scoped `mappings` with `checked`, `requests`, `failed`, `ambiguous` counts. Uses available configured System One models and cached enabled sources, bounded 200-option batches, 30-second per-request deadlines, and confidence ≥0.9. Does not persist: merge into `intelligence.identities` using the revision-checked config API. HTTP 409 for an active check; disconnect cancels calls. |
 | `POST /refresh` | JSON `updated`, `partial_failure`, `sources`, model/unmatched counts; failed sources retain cache |
 
 ```sh

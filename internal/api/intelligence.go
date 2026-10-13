@@ -42,6 +42,10 @@ func (h *OpenAIHandler) intelligenceAPI(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusServiceUnavailable, "Benchmark intelligence is disabled", "invalid_request_error", "intelligence_disabled")
 		return
 	}
+	if r.URL.Path == "/gateway/v1/intelligence/smart-mapping" {
+		h.smartMapping(w, r)
+		return
+	}
 	if r.URL.Path == "/gateway/v1/intelligence/import" || r.URL.Path == "/gateway/v1/intelligence/observations/edit" {
 		h.customBenchmarkMutation(w, r)
 		return

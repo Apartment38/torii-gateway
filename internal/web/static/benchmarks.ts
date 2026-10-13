@@ -45,6 +45,8 @@ function applyBenchmarkConfig(config: Record<string, any> = {}): void {
   updateBenchmarkControls();
 }
 function clearBenchmarkConsole(): void {
+  smartMappingAbort?.abort(); smartMappingAbort=null;
+  document.querySelector<HTMLDialogElement>("#benchmark-smart-mapping-dialog")?.close?.();
   clearBenchmarkRecords();closeBenchmarkEvidence();
   benchmarkEditing=false;benchmarkInlineDrafts={};benchmarkInlineSaving=false;benchmarkInlineSaveSequence++;benchmarkSummaryEnabled=["model","overall","capabilities","sources","freshness","evidence"];benchmarkMeasurementEnabled=benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
   for(const id of ["benchmark-configuration","benchmark-upload-dialog","benchmark-fields-dialog"])document.querySelector<HTMLDialogElement>(`#${id}`)?.close?.();
@@ -500,3 +502,72 @@ document.querySelector("#benchmark-table-body")?.addEventListener("keydown",even
  const input=event.target as HTMLInputElement;
  if((event as KeyboardEvent).key==="Enter"&&input.dataset.benchmarkCell){event.preventDefault();void saveBenchmarkInlineRow(Number(input.dataset.benchmarkRecord));}
 });
+
+let smartMappingAbort:AbortController|null=null;
+let smartMappingRunning=false;
+async function openSmartMapping():Promise<void>{
+ const dialog=document.querySelector<HTMLDialogElement>("#benchmark-smart-mapping-dialog")!;
+ const select=document.querySelector<HTMLSelectElement>("#benchmark-smart-mapping-model")!;
+ const start=document.querySelector<HTMLButtonElement>("#benchmark-smart-mapping-start")!;
+ const status=document.querySelector<HTMLElement>("#benchmark-smart-mapping-status")!;
+ dialog.showModal?.();
+ if(smartMappingRunning)return;
+ smartMappingAbort?.abort();const controller=new AbortController();smartMappingAbort=controller;
+ const login=consoleSession;
+ select.innerHTML='<option value="">Loading configured decision models…</option>';select.disabled=true;start.disabled=true;status.textContent="";
+ try{
+  const response=await gatewayFetch("/gateway/v1/models",{headers:await authProvider.headers(),signal:controller.signal});
+  if(!response.ok)throw new Error("Unable to load configured decision models.");
+  const data=await response.json();if(login!==consoleSession||controller.signal.aborted)return;
+  const models=(data.models||[]).filter((model:any)=>model.enabled!==false&&model.endpoints?.systemone==="supported"&&model.availability?.available&&!model.availability?.stale);
+  select.innerHTML=models.length?models.map((model:any)=>`<option value="${escapeHTML(model.id)}">${escapeHTML(model.id)}</option>`).join(""):'<option value="">No configured decision models available</option>';
+  select.value=models.some((model:any)=>model.id===requestedClassifier)?requestedClassifier:models[0]?.id||"";
+  select.disabled=!models.length;start.disabled=!models.length||!benchmarksEnabledSaved;
+  status.textContent=!benchmarksEnabledSaved?"Enable benchmark intelligence and wait for Saved first.":!models.length?"Connect and enable a decision model on the Providers page first.":"Refresh benchmarks first if no cached data is available.";
+ }catch(error){if(!controller.signal.aborted&&login===consoleSession)status.textContent=error instanceof Error?error.message:"Decision models unavailable.";}
+}
+// Merge only new source IDs. Explicit physical assignments and source aliases
+// retain precedence, including edits made while the decision requests were running.
+function mergeSmartMappings(proposals:any[]):number{
+ const identities=structuredClone(benchmarkConfiguration.identities||[]);
+ const normalize=(id:string)=>id.trim().toLowerCase().replace(/_/g," ").split(/\s+/).join("-");
+ let added=0;
+ for(const proposal of proposals){
+  const owners=identities.filter((identity:any)=>(identity.provider_ids||[]).some((id:string)=>proposal.provider_ids.includes(id))||identity.canonical_id===proposal.canonical_id);
+  if(owners.length>1)continue;
+  const target=owners[0]||{canonical_id:proposal.canonical_id,provider_ids:proposal.provider_ids,source_ids:{}};
+  for(const [source,ids] of Object.entries(proposal.source_ids||{}) as [string,string[]][]){
+   // Keep existing mappings for this model/source, even if the model disagrees.
+   if(target.source_ids?.[source]?.length)continue;
+   const claimed=identities.some((identity:any)=>identity!==target&&(identity.source_ids?.[source]||[]).some((id:string)=>ids.some(candidate=>normalize(candidate)===normalize(id))));
+   if(claimed)continue;
+   (target.source_ids||={})[source]=ids;added+=ids.length;
+  }
+  if(!owners.length&&Object.keys(target.source_ids).length)identities.push(target);
+ }
+ if(added){benchmarkConfiguration.identities=identities;benchmarkDirty=true;markDirty();}
+ return added;
+}
+async function startSmartMapping():Promise<void>{
+ if(smartMappingRunning||!benchmarksEnabledSaved)return;
+ const model=document.querySelector<HTMLSelectElement>("#benchmark-smart-mapping-model")!.value;if(!model)return;
+ const start=document.querySelector<HTMLButtonElement>("#benchmark-smart-mapping-start")!;
+ const select=document.querySelector<HTMLSelectElement>("#benchmark-smart-mapping-model")!;
+ const status=document.querySelector<HTMLElement>("#benchmark-smart-mapping-status")!;
+ smartMappingAbort?.abort();const controller=new AbortController();smartMappingAbort=controller;const login=consoleSession;
+ smartMappingRunning=true;start.disabled=true;select.disabled=true;status.textContent="Checking available models… This may take a while. Close to cancel.";
+ try{
+  const response=await gatewayFetch("/gateway/v1/intelligence/smart-mapping",{method:"POST",headers:{"Content-Type":"application/json",...await authProvider.headers()},body:JSON.stringify({model}),signal:controller.signal});
+  const result=await response.json();if(controller.signal.aborted||login!==consoleSession)return;
+  if(!response.ok)throw new Error(result.error?.message||"Smart mapping failed.");
+  const added=mergeSmartMappings(result.mappings||[]);
+  const saved=added?await saveConfig():true;if(login!==consoleSession)return;
+  status.textContent=`${result.checked} models checked · ${result.requests} decision requests · ${added} mappings ${saved?"saved":"added to your draft; save pending or failed"} · ${result.failed} failed requests · ${result.ambiguous} ambiguous results.`;
+  if(saved&&added){void loadBenchmarkData();void loadModelsPage();}
+ }catch(error){if(!controller.signal.aborted&&login===consoleSession)status.textContent=error instanceof Error?error.message:"Smart mapping failed.";}
+ finally{smartMappingRunning=false;if(login===consoleSession){start.disabled=!benchmarksEnabledSaved||!select.value;select.disabled=false;}}
+}
+document.querySelector("#benchmark-smart-mapping")?.addEventListener("click",()=>void openSmartMapping());
+document.querySelector("#benchmark-smart-mapping-start")?.addEventListener("click",()=>void startSmartMapping());
+document.querySelector("#benchmark-smart-mapping-close")?.addEventListener("click",()=>document.querySelector<HTMLDialogElement>("#benchmark-smart-mapping-dialog")?.close?.());
+document.querySelector("#benchmark-smart-mapping-dialog")?.addEventListener("close",()=>{smartMappingAbort?.abort();document.querySelector<HTMLElement>("#benchmark-smart-mapping")?.focus?.();});

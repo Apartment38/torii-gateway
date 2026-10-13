@@ -10,6 +10,14 @@
     <link rel="stylesheet" href="/web/styles.css?v=18" />
   </head>
   <body>
+    <dialog id="benchmark-smart-mapping-dialog" aria-labelledby="benchmark-smart-mapping-title" aria-describedby="benchmark-smart-mapping-description benchmark-smart-mapping-warning">
+      <h1 id="benchmark-smart-mapping-title">Smart Mapping</h1>
+      <p id="benchmark-smart-mapping-description">Compare available provider models with cached benchmarks. Fuzzy search narrows the options, then your decision model confirms exact matches. Confirmed mappings are saved without replacing existing mappings.</p>
+      <p id="benchmark-smart-mapping-warning" class="notice">Warning: this check could make many requests to the decision model and incur costs on a paid provider.</p>
+      <label>Decision Model<select id="benchmark-smart-mapping-model"><option value="">Loading configured decision models…</option></select></label>
+      <p id="benchmark-smart-mapping-status" role="status" aria-live="polite"></p>
+      <div class="dialog-actions"><button id="benchmark-smart-mapping-start" type="button" class="button primary" disabled>Start</button><button id="benchmark-smart-mapping-close" type="button" class="button quiet">Close</button></div>
+    </dialog>
     <dialog id="benchmark-configuration" class="benchmark-overlay" aria-labelledby="benchmark-configuration-title"><h1 id="benchmark-configuration-title">Benchmark Sources · Configure Ingestion</h1>
               <div class="section-heading"><h2>Benchmark Sources</h2><button id="inspect-benchmarks" class="button quiet" type="button">Reload Cached Data</button></div>
               <div id="benchmark-sources-list" class="provider-list"></div>
@@ -119,7 +127,7 @@
           <section id="routing" class="page section-block">
             <div class="section-heading"><div><h1>Smart Routing</h1></div><div class="router-heading-actions"><label>Router<select id="smart-router-select"><option value="smart">Smart · Default</option></select></label><button id="add-smart-router" aria-label="Create Router" title="Create Router" class="button primary" type="button"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span class="action-label">Create Router</span></button></div></div>
             <div class="router-identity-card" aria-label="Router Settings">
-            <div class="grid two"><label data-tooltip="The virtual model name clients use to invoke this router.">Router Name<input id="smart-router-new-name" name="router.model_name" value="smart" placeholder="coding-local" /></label><div class="check-row"><button id="save-smart-router" class="button primary" type="button">Save</button><button id="remove-smart-router" class="button danger" type="button" disabled><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg><span class="action-label">Remove Router</span></button></div></div>
+            <div class="grid two"><label data-tooltip="The virtual model name clients use to invoke this router.">Router Name<input id="smart-router-new-name" name="router.model_name" value="smart" placeholder="coding-local" /></label><div class="check-row"><button id="save-smart-router" class="button primary" type="button">Save</button><button id="remove-smart-router" class="button danger" type="button" disabled><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg><span class="action-label">Remove Router</span></button></div></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Allows the selector to choose models that have a configured paid cost. When disabled, paid models are excluded from smart routing."><input name="router.allow_paid_models" type="checkbox" checked /> Allow Paid Models</label><label class="checkbox"><input name="router.allow_free_models" type="checkbox" checked /> Allow Free Models</label></div>
             </div>
             <div class="model-transfer provider-transfer"><label>Allowed Providers<select id="smart-router-providers-available" multiple size="6" aria-describedby="smart-router-scope-note"></select></label><div class="model-transfer-actions"><button id="smart-router-provider-add" class="action-icon-only button primary" type="button" aria-label="Enable Providers" title="Enable Providers"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button><button id="smart-router-provider-remove" class="action-icon-only button danger" type="button" aria-label="Remove Providers" title="Remove Providers"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button></div><label>Enabled Providers<select id="smart-router-providers" multiple size="6" aria-describedby="smart-router-scope-note"></select></label></div>
@@ -165,6 +173,7 @@
           <section id="intelligence" class="page section-block">
             <div class="section-heading"><div><h1>Benchmark Intelligence</h1></div><div class="button-row benchmark-header-actions"><button id="benchmark-edit-data" aria-label="Edit Data" title="Edit Data" class="button quiet" type="button" aria-pressed="false"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m16 3 5 5-12 12H4v-5L16 3ZM13 6l5 5"/></svg><span class="action-label">Edit Data</span></button><button id="benchmark-upload" class="button quiet" type="button" aria-haspopup="dialog">Upload Data</button><button id="benchmark-configure" class="button quiet" type="button" aria-haspopup="dialog">Configure Ingestion</button><button id="refresh-benchmarks" class="button secondary" type="button">Refresh Benchmarks</button></div></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Automatic saves to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable Benchmark Intelligence</label></div>
+            <div class="benchmark-mapping-actions"><button id="benchmark-smart-mapping" class="button secondary" type="button" aria-haspopup="dialog">Smart Mapping</button></div>
             <div id="benchmark-source-notice" class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it; wait for Saved before refreshing.</span></div>
             <section id="benchmark-refresh-panel" class="benchmark-refresh" aria-label="Benchmark refresh activity" hidden>
               <h2>Refresh Activity</h2><p id="benchmark-progress-label" role="status" aria-live="polite"></p>
@@ -217,7 +226,7 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/web/app.js?v=18"></script>
+    <script type="module" src="/web/app.js?v=19"></script>
 
 </body>
 </html>

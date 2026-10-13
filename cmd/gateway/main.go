@@ -850,6 +850,7 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		benchmarkAuth = benchmarkAuthenticator{basic: managementAuth, bearer: authenticator}
 	}
 	mux.Handle("POST /gateway/v1/intelligence/import", managementBoundary(managementAuth, openAI))
+	mux.Handle("/gateway/v1/intelligence/smart-mapping", managementBoundary(managementAuth, openAI))
 	mux.Handle("PUT /gateway/v1/intelligence/observations/edit", managementBoundary(managementAuth, openAI))
 	mux.Handle("/gateway/v1/", managementBoundary(benchmarkAuth, openAI))
 	mux.Handle("/", web.Handler())

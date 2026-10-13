@@ -2,37 +2,54 @@
 
 Updated 2026-10-13. This is the sole project progress and backlog tracker.
 
-## Private first-release correction
+## Completed private first-release correction
 
-The first `v0.2.0` candidate is being replaced before public availability.
-Removed the standalone authentication helper, remote pairing/import/download
-API and helper build artifacts. Device-code console login and native gateway
-OAuth remain. Release notes now cover fresh native/container installation;
-validation requires Installation and reserves compatibility sections for later
-versions. Baseline Go/console checks, five gateway cross-builds and device-login/
-removed-route regressions pass. Fresh native startup/health and non-root container setup, persistence and recovery
-checks pass; the amd64 image filesystem contains no helper. Final race validation
-and replacement publication are pending. GitHub CLI authentication works; withdrawal dry-run
-verified the old release/tag/run and exactly five image digests with no unrelated
-tags. The package and its access settings will be retained. Git history
-is retained and repository/package visibility remains private.
+[PR #41](https://github.com/Apartment38/torii-gateway/pull/41) removed the standalone
+authentication helper, remote pairing/import/download API and helper build
+artifacts. Device-code console login and native gateway OAuth remain. The first
+release notes now cover fresh native/container installation; subsequent versions
+still require compatibility sections. Git history is retained.
+
+The old private candidate's release, tag, five OCI image versions and workflow
+run/artifacts were withdrawn. GitHub rejects deleting a package's last tagged
+version, so a verified helper-free staging image temporarily preserved the package
+and its access settings. Staging was deleted after replacement verification.
+Obsolete task-owned local binaries, archives and the old validation image were
+removed; existing deployments were not changed.
+
+The recreated `v0.2.0` tag points to `c79441877fef393accb9530fa4e57885897db47c`.
+The [replacement workflow](https://github.com/Apartment38/torii-gateway/actions/runs/38433314922)
+passed on its first attempt. The [release](https://github.com/Apartment38/torii-gateway/releases/tag/v0.2.0)
+contains exactly five gateway binaries, `SHA256SUMS` and `CONTAINER_IMAGE.txt`.
+Repository and GHCR package remain private. The image index is
+`sha256:bf17082d3e855cafaa6b3608d33849fc873ca86d7b236eca7c2ffad5e5e5b7c0`.
+
+Validation: baseline and final Go/console checks, race tests, vet/build, unchanged
+module metadata, all five cross-builds, login regressions, native fresh-install
+startup/health, disposable non-root container persistence/recovery, release
+validation, documentation links and diff checks pass. All seven published asset
+hashes and release checksums match. Both OCI platforms have the corrected commit,
+version and non-root user and contain no helper binaries or directory. Verified
+replacement files are retained in `/tmp/torii-v0.2.0-corrected`. Native macOS,
+Windows and arm64 execution remain unverified. The original clean main checkout
+was fast-forwarded; the task worktree is retained for review.
 
 ## Superseded private v0.2.0 candidate (TASK-041)
 
 [PR #40](https://github.com/Apartment38/torii-gateway/pull/40) is merged.
-The unchanged `v0.2.0` tag points to `628032d9ab256de7a3adb4dec20849b77e049657`.
-The [release workflow](https://github.com/Apartment38/torii-gateway/actions/runs/38353272961)
-passed CI, all five binary targets and the multi-platform container build.
+The original candidate tag pointed to `628032d9ab256de7a3adb4dec20849b77e049657`.
+The withdrawn workflow run `38353272961` passed CI, all five binary targets and the multi-platform container build.
 [v0.2.0](https://github.com/Apartment38/torii-gateway/releases/tag/v0.2.0)
-is published as a prerelease with ten binaries, `SHA256SUMS` and
+originally contained ten binaries, `SHA256SUMS` and
 `CONTAINER_IMAGE.txt`. Repository visibility remains private; an unauthenticated
 registry pull returns HTTP 401. No deployment or visibility change was performed.
 
 Downloaded build archives match their artifact digests. All twelve published
 asset SHA-256 digests match local files, the release checksum file verifies,
 native gateway/helper metadata matches the tag commit, and both OCI platforms
-have the expected version/commit labels and non-root users. Verified files are
-retained in `/tmp/torii-v0.2.0-published`. The published image index digest is
+have the expected version/commit labels and non-root users. Obsolete downloaded artifacts were removed;
+sanitized verification evidence remains in `/tmp/torii-v0.2.0-published`.
+The withdrawn image index digest was
 `sha256:1fcdf1b8318c06f902652fbe1b0a41e6381afa4ad13aa23706fca986afd2d368`.
 Native macOS/Windows and arm64 execution remain unverified.
 

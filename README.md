@@ -17,7 +17,8 @@ You can create multiple virtual `smart` models that use a decision model (like J
 > ### DISCLAIMER:
 > This project was entirely vibe coded. It has not been tested or audited, and should not be deployed in a production environment.
 > Do not expose it to the open internet unless you are confident that you understand and accept the security implications.
-> Consider it a public beta. Use it at your own risk.
+> The first public beta and first published release is [v0.2.0](docs/releases/v0.2.0.md).
+> The original Version 1 implementation is the [alpha, v0.1.0](docs/releases/v0.1.0.md). Use it at your own risk.
 
 ## Features
 

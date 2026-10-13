@@ -2,7 +2,7 @@
 
 These contracts describe current implementation. Configuration/API syntax belongs
 in [Reference](../reference/configuration.md); work status belongs in [Status](status.md).
-This replaces the historical Version 1 implementation specification.
+This replaces the historical alpha (v0.1.0) implementation specification.
 
 ## Compatibility and transport
 

@@ -359,9 +359,9 @@ binary passes startup, management authentication, console assets and restart
 persistence. Podman-specific full credential/container checks were not run. The original live HTTP 401 remains unverified:
 no affected credential or authenticated service is available in this environment.
 
-## v1 implementation and rollout
+## Alpha (v0.1.0) implementation and rollout
 
-The v1 implementation and authorized Podman rollout are complete on
+The alpha (v0.1.0) implementation and authorized Podman rollout are complete on
 `feat/gateway-v1` in `/tmp/torii-gateway-v1`. SQLite now owns settings and revisions;
 legacy YAML is used only for explicit transactional import/validation. The console
 automatically saves validated edits, preserves conflicting drafts, and uses persistent
@@ -390,14 +390,16 @@ settings were restored, the test key revoked and the session logged out. The
 original database, master key, provider credentials, model IDs and benchmark state
 were preserved. Stopped backups and rollback images remain in the deployment;
 the final correction backup is
-`backups/before-v1-accounting-final-20261008T043837Z`, and the original pre-v1
+`backups/before-v1-accounting-final-20261008T043837Z`, and the original pre-alpha
 backup is `backups/before-v1-20261008T035917Z`. Task-owned changes are replicated
-into both authorized Torii directories. The v1 commit history is integrated into
-the project's `main` branch. The review worktree is retained; release publication
+into both authorized Torii directories. The alpha (v0.1.0) commit history is
+integrated into the project's `main` branch. The review worktree is retained; release publication
 remains deferred.
 
 Current user-visible support is in [Features](../reference/features.md), with
-contracts in [Design](design.md). Old Version 1/2 labels no longer define support.
+contracts in [Design](design.md). The original Version 1 implementation is the
+alpha (v0.1.0); historical Version 2 plans do not define current support. The first public beta and first
+published release is [v0.2.0](../releases/v0.2.0.md).
 
 ## Active work
 
@@ -459,8 +461,8 @@ critiques, comparison limits and [validation](evaluations/console-design/validat
 These subjective comparisons do not establish whole-product superiority. No push,
 merge, publication or deployment was performed.
 
-V1 implementation and authorized rollout are complete. Release publication and
-platform-native checks remain below. The Smart-first catalog repair and
+Alpha (v0.1.0) implementation and authorized rollout are complete. Release
+publication and platform-native checks remain below. The Smart-first catalog repair and
 configuration revision protection are deployed and validated.
 Hermes remains unchanged as requested; its model-label formatting and custom
 endpoint Fast controls remain outside scope. Its saved-endpoint re-test also
@@ -743,7 +745,7 @@ Goal:
 Define objective request requirements and one validated classifier contract.
 
 Completed:
-- added the fixed Version 1 task, complexity, requirement, preference, confidence,
+- added the fixed alpha (v0.1.0) task, complexity, requirement, preference, confidence,
   failure-policy, request, classifier, and runner contracts
 - extracted endpoint, tools, images, structured output, reasoning, streaming,
   approximate input size, and output limits without modifying raw request bytes
@@ -900,9 +902,9 @@ Decisions:
 - treat the presence of a stateful Responses field as unsupported, including a
   null value, rather than silently changing request semantics
 
-### Pre-v1 usage documentation
+### Pre-alpha usage documentation
 
-Prepared public-facing documentation for the currently implemented pre-v1
+Prepared public-facing documentation for the currently implemented pre-alpha
 feature set and a configuration example.
 
 Completed:

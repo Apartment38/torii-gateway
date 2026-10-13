@@ -2,6 +2,8 @@
 
 Copy this file to docs/releases/vMAJOR.MINOR.PATCH.md and replace the first
 heading with that exact version. Complete all sections before tagging.
+The historical alpha is v0.1.0; the first public beta and first published release
+is v0.2.0. All v0.x releases are marked as prereleases.
 
 ## Database compatibility
 

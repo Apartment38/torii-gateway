@@ -32,4 +32,6 @@ An **upstream provider** is the service that runs a model; Torii routes requests
 with the supported behavior above when configuring an installation today.
 
 For implementation details, architecture, tests, and the project roadmap, see
-[Development](development/README.md). Release compatibility notes belong in [releases](releases/TEMPLATE.md).
+[Development](development/README.md). The original implementation is the [alpha, v0.1.0](releases/v0.1.0.md);
+the first public beta and first published release is [v0.2.0](releases/v0.2.0.md).
+Release compatibility notes follow the [release template](releases/TEMPLATE.md).

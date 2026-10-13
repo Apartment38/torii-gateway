@@ -6,15 +6,15 @@ Imported scores do not grant unverified tool, vision, or endpoint support.
 
 ## Enable and refresh sources
 
-1. Open **Benchmarks** and select **Enable benchmark intelligence**.
+1. Open **Benchmarks** and select **Enable Benchmark Intelligence**.
 2. Select **Configure Ingestion** to open the source card. Enable the individual
    sources you want; the master switch does not enable
    every source automatically.
 3. Enter an Artificial Analysis key if using that source. Hugging Face,
    LiveBench, and LMArena accept an optional Hugging Face token; public datasets
    need no separate LiveBench or Arena key.
-4. Wait for **Saved** before **Refresh benchmarks**. Refresh uses saved settings.
-5. Watch **Refresh activity** and the source cards. The progress bar counts
+4. Wait for **Saved** before **Refresh Benchmarks**. Refresh uses saved settings.
+5. Watch **Refresh Activity** and the source cards. The progress bar counts
    completed sources (including failures), then table loading, not download bytes.
 
 Saved keys are encrypted. Leaving a key field blank retains its reference;
@@ -40,14 +40,14 @@ are never forwarded across redirects. Use HTTPS for remote authenticated sources
 
 ## Read the table
 
-**Current model benchmark data** shows a compact scorecard per model with overall
+**Current Model Benchmark Data** shows a compact scorecard per model with overall
 and capability scores, sources, match safety, and freshness. **Inspect** opens all
 available scores, operational measurements, provenance, dates, age, and validity.
 Choose **All
-benchmark models** or **Configured models only**, filter rows, and select
+Benchmark Models** or **Configured Models Only**, filter rows, and select
 5, 10, 25, 50, or 100 models per page (default 25 on desktop, 5 on mobile).
-Select **Display Fields**, beside **Rows per page**, to choose table columns.
-Double-click fields between **Available fields** and **Enabled fields**, or use
+Select **Display Fields**, beside **Rows Per Page**, to choose table columns.
+Double-click fields between **Available Fields** and **Enabled Fields**, or use
 **Enable →** / **← Remove**. Keep at least one field enabled. Summary and editing
 views retain separate field choices until sign-out; no gateway settings change.
 
@@ -71,7 +71,7 @@ does not cancel the worker. Rate-limit pauses/heartbeats can indicate active wor
 ## Upload custom benchmarks
 
 1. Enable benchmark intelligence and wait for **Saved**.
-2. Select **Upload Data**, then **Download CSV template** in the overlay card.
+2. Select **Upload Data**, then **Download CSV Template** in the overlay card.
 3. Replace the sample with your measurements, keeping the header and column order.
 4. Choose the file under **Benchmark CSV**, then select **Upload CSV**.
 5. Inspect matched scores in the benchmark table. Use exact provider/model IDs
@@ -101,11 +101,11 @@ custom data; uploading an old evaluation does not make it new evidence.
 
 ## Edit loaded measurements
 
-Select **Edit data** at the top of **Benchmarks**. The current data table switches
+Select **Edit Data** at the top of **Benchmarks**. The current data table switches
 from calculated model summaries to individual measurements. Edit the model ID,
 benchmark, category, original/normalized scores, unit, version or evaluation time
 inline, then select **Save** on that row. **Cancel** discards that row's draft;
-**Done editing** returns to summaries and asks before discarding unsaved drafts.
+**Done Editing** returns to summaries and asks before discarding unsaved drafts.
 **Display Fields** selects measurement columns while editing. Source, matched ID,
 retrieval time and date basis are calculated provenance and remain read-only.
 

@@ -19,7 +19,7 @@ or policy restriction. Explicit `provider/model` requests bypass smart selection
 
 Use additional routers when clients need different model pools or policies.
 
-1. Open **Smart routing** and select **Create router**.
+1. Open **Smart Routing** and select **Create Router**.
 2. Enter a unique **Router Name**, for example `coding`; `smart` is reserved for
    the default router.
 3. Choose its enabled providers/models and routing policy, then click **Save**.
@@ -40,12 +40,13 @@ which scores matter for the task; higher scores alone do not justify higher cost
 when a cheaper model can succeed. Decision models can share a provider with chat models; decision-only models
 are excluded from chat routing pools.
 
-1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev compatible**
+1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev Compatible**
    for a compatible decision server such as Laya.
 2. Supply a reachable URL and the service's key if required; test the connection.
-3. On **Smart routing**, select the router to configure and its discovered classifier model.
-4. Move models from **Available models** to **Enabled models** by double-clicking,
-   or select them and press **Enable →**. Use **← Remove** to disable choices.
+3. On **Smart Routing**, select the router to configure and its discovered classifier model.
+4. Move models from **Available Models** to **Enabled Models** by double-clicking,
+   or select them and press the blue **Enable** plus icon. Use the red **Remove**
+   minus icon to disable choices.
    Each router supports at most 250 models. An empty list allows all models from
    its allowed providers; pools over 250 must be narrowed explicitly.
 5. Wait for **Saved**, then send a `smart` request.
@@ -59,7 +60,7 @@ Disable classification to retain deterministic routing without classifier calls.
 
 ## Tune decisions and failure behavior
 
-Expand **Classifier tuning** only when needed. You can change timeout, minimum
+Expand **Classifier Tuning** only when needed. You can change timeout, minimum
 confidence, question instructions, option descriptions, and yes thresholds.
 Clear an edited value to restore its default; wait for **Saved** to apply.
 Changing questions/providers retains draft tuning; browser reload discards drafts.

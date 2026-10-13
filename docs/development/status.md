@@ -2,6 +2,27 @@
 
 Updated 2026-10-12. This is the sole project progress and backlog tracker.
 
+## Console design language consistency
+
+Implemented on `codex/console-design-consistency` in
+`/workspace/console-design-consistency`. Smart Routing groups its paid/free policy
+switches with Router Name and Save/Remove. Add/Create actions share blue primary
+buttons with SVG plus icons; Edit uses a pencil, and Remove/Delete uses red
+buttons with minus/trash icons. Dense actions retain accessible names and tooltips
+when icon-only. Authored headings, labels, navigation and buttons use Title Case;
+page/section headings are larger. Operator names and protocol identifiers retain
+their spelling. Design/contributor conventions and affected console guides are
+updated; generated assets remain synchronized.
+
+Validation: console/auth tests (157 cases), generated-script freshness, release
+validator tests, affected documentation links and diff checks pass. Chromium
+fixture checks cover nine console pages at 1440×1000 and 390×844 in light/dark
+with no script errors, horizontal overflow, or unnamed icon actions; benchmark
+Edit states preserve icons and accessible names. Full Go tests, race tests, vet and build pass. The initial full Go run hit an
+unrelated intelligence request-pacing timing assertion during concurrent
+compilation; the isolated test and full-suite rerun passed. No deployment or live
+provider calls are part of this change.
+
 ## Administrator account and email password recovery
 
 Implemented on `feat/admin-password-reset` in `/workspace/torii-admin-reset`.

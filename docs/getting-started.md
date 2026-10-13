@@ -36,12 +36,12 @@ follow [Connect to host Ollama](installation/containers.md#connect-to-ollama-on-
 
 ## 3. Add and test the provider
 
-1. Sign in to Torii, open **Providers**, and click **Add provider**.
+1. Sign in to Torii, open **Providers**, and click **Add Provider**.
 2. Choose the Ollama provider type and use provider ID `local`.
 3. Set its URL to `http://127.0.0.1:11434` for native Torii, or
    `http://host.containers.internal:11434` for the included Compose deployment.
 4. Test the connection. You should see the installed model in the discovered list.
-5. Choose **Save provider**. A successful save applies the settings and reloads
+5. Choose **Save Provider**. A successful save applies the settings and reloads
    the active configuration. If validation fails, fix the indicated setting;
    the previous configuration stays active.
 

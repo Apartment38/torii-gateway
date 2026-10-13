@@ -178,5 +178,6 @@ Before introducing a dependency, determine:
 5. Leave work buildable and reviewable, with meaningful unresolved checks recorded.
 
 Before provider work, read [Provider notes](provider-notes.md). Before editing the
-console, read `scripts/build-console.mjs` and preserve generated `app.js` freshness.
+console, follow [Console design language](design.md#console-design-language) and
+read `scripts/build-console.mjs` and preserve generated `app.js` freshness.
 See [Documentation conventions](documentation.md) for document types and validation.

@@ -52,7 +52,7 @@ is needed for this Markdown migration.
 | Previous README/document topic | Current home |
 | --- | --- |
 | Purpose/logo/license and brief quickstart | Root README |
-| Requirements, source/helper build, downloads/native launch | Installation overview/source/native |
+| Requirements, source build, downloads/native launch | Installation overview/source/native |
 | Compose setup, secrets/ownership/mounts/ports/SELinux, host Ollama | Container installation |
 | First admin, named/default keys, credential replacement | Getting Started and Credentials |
 | Console pages, themes, save/reload | Console guide |

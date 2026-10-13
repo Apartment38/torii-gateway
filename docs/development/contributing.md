@@ -106,15 +106,15 @@ and versions with SemVer prerelease suffixes are GitHub prereleases.
 1. Choose an unused `vMAJOR.MINOR.PATCH` tag, optionally with a SemVer prerelease
    suffix. Image tags do not support `+build` metadata.
 2. Copy `docs/releases/TEMPLATE.md` to `docs/releases/VERSION.md`, replacing
-   VERSION with the exact tag, and complete the version heading and all four
+   VERSION with the exact tag, and complete the version heading and Installation section. For versions after `v0.2.0`, also complete all four
    compatibility sections. Run `node scripts/check-release.mjs VERSION`.
 3. Commit the notes and implementation; the maintainer creates and pushes the
    release tag. No local implementation command publishes a release.
-4. Release automation reuses the complete CI gate. Gateway/helper binaries are
+4. Release automation reuses the complete CI gate. Gateway binaries are
    cross-built for Linux amd64/arm64, macOS amd64/arm64 and Windows amd64. An
    amd64/arm64 OCI image archive is built separately without publication.
 5. Only after all jobs succeed does publication upload the image to GHCR and
-   create a GitHub Release containing binaries, `SHA256SUMS`, compatibility notes,
+   create a GitHub Release containing binaries, `SHA256SUMS`, installation notes,
    and `CONTAINER_IMAGE.txt` with the multi-platform digest. Existing image tags
    are not overwritten; changes to a released commit require a new version.
 6. Repository settings must allow Actions to create releases and packages.
@@ -134,10 +134,13 @@ the existing versioned image only when its embedded version and commit match.
 It records that image's digest and uploads the release assets again. Binaries
 are rebuilt from the same tag and checksums regenerated; build timestamps may
 change. A version/commit mismatch fails recovery and requires investigation.
-An unpublished image is published normally. Do not delete or move release tags.
+An unpublished image is published normally. Do not delete or move public release tags.
+The private first `v0.2.0` candidate is being replaced before public availability;
+this one-time correction removes its old release, tag, image versions and build
+artifacts before tagging the corrected commit.
 
 Images and binaries embed version, commit and build time. Inspect with
-`gateway version` or `torii-auth version`. Source builds report `dev` unless
+`gateway version`. Source builds report `dev` unless
 metadata is supplied through linker flags. See [backup and upgrades](../guides/backup-and-upgrade.md)
 for backup, reset and rollback requirements.
 

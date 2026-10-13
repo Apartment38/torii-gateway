@@ -2,7 +2,21 @@
 
 Updated 2026-10-13. This is the sole project progress and backlog tracker.
 
-## v0.2.0 publication (TASK-041)
+## Private first-release correction
+
+The first `v0.2.0` candidate is being replaced before public availability.
+Removed the standalone authentication helper, remote pairing/import/download
+API and helper build artifacts. Device-code console login and native gateway
+OAuth remain. Release notes now cover fresh native/container installation;
+validation requires Installation and reserves compatibility sections for later
+versions. Baseline Go/console checks, five gateway cross-builds and device-login/
+removed-route regressions pass. Final container and race validation and replacement
+publication are pending. GitHub CLI authentication works; withdrawal dry-run
+verified the old release/tag/run and exactly five image digests with no unrelated
+tags. The package and its access settings will be retained. Git history
+is retained and repository/package visibility remains private.
+
+## Superseded private v0.2.0 candidate (TASK-041)
 
 [PR #40](https://github.com/Apartment38/torii-gateway/pull/40) is merged.
 The unchanged `v0.2.0` tag points to `628032d9ab256de7a3adb4dec20849b77e049657`.

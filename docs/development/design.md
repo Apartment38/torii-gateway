@@ -156,3 +156,30 @@ credentials remain on the gateway and retain their account/client/issuer context
 in encrypted SQLite. Browser tabs open during the login click, with a visible
 link when popup opening is blocked. The optional legacy helper API requires an
 explicit login method; console login does not require a helper or loopback listener.
+
+
+## Console design language
+
+Use Title Case for authored page titles, section headings, field labels, table
+headers, navigation, and buttons: capitalize the first letter of every word
+(`Add Provider`, `Benchmark Intelligence`). Preserve acronyms, brand spelling,
+operator-supplied names, model IDs, CSV field identifiers, and API/configuration
+syntax. Descriptions and status sentences use sentence case.
+
+Page and dialog titles use H1 (32px and 28px); sections use H2 (22px), and nested
+headings use H3 (18px). Mobile page titles use 28px and sections 21px. Keep heading
+levels semantic and use the shared styles rather than shrinking sections locally.
+
+Add/Create actions use `button primary`, matching Add Provider, with an inline
+SVG plus icon. Edit actions pair an SVG pencil with an Edit label. Remove/Delete
+use `button danger`, the same dimensions and spacing with a red background,
+white foreground, and SVG minus/trash icon. SVGs are decorative (`aria-hidden`).
+Use `action-icon-only` for transfer controls and dense table/card actions; retain
+an explicit accessible name and a tooltip (`aria-label` and `title`). Labels that
+collapse on narrow screens must keep an accessible name in every action state.
+Never use a plaintext plus/minus in place of an action icon.
+
+Group Router Name, Save/Remove, Allow Paid Models, and Allow Free Models in the
+router identity card. Keep the two independent switches bound to their existing
+configuration fields. Rebuild committed `app.js` after TypeScript changes and
+validate dynamic button states as well as static markup.

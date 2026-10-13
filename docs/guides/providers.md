@@ -14,7 +14,7 @@ key, or the subscription account required by the selected profile.
    for **Ollama**, use detection or enter a remote API URL.
 4. For API-key services, enter the upstream key in the provider's key field.
    For Codex subscriptions, use **Log in** after configuring the provider.
-5. Test the connection, inspect the returned model list, and choose **Save provider**.
+5. Test the connection, inspect the returned model list, and choose **Save Provider**.
 6. List `/v1/models` or check the console, then use a discovered `provider/model`
    in your client. Connection tests exercise discovery, not billable inference.
 
@@ -23,14 +23,14 @@ key in your client. These keys have different jobs and are not interchangeable.
 Model names can contain additional slashes: `openrouter/google/MODEL` belongs to
 provider `openrouter` with upstream model `google/MODEL`.
 
-If configuration changed in another tab or through the API, **Save provider**
+If configuration changed in another tab or through the API, **Save Provider**
 rejects the outdated draft rather than restoring old provider settings. Copy
 your edits, choose **Refresh config**, then reconcile them with the current
 settings before saving. The same applies after a gateway restart. API clients
 must use the [configuration revision header](../reference/api.md#health-setup-configuration-and-providers).
 
 Connection tests query the live catalog even when **Discover models** is disabled.
-The status then warns that **Save provider** uses the static model list. Enable
+The status then warns that **Save Provider** uses the static model list. Enable
 discovery to expose the returned models. For an Ollama server, choose **Ollama**
 and its server URL without `/v1`; Torii also queries native capability metadata
 so `smart` can select models that support the request. A leftover `setup` entry
@@ -203,7 +203,7 @@ Smart Routing fills its classifier-model selector from successful provider
 checks, retains the saved choice, and selects the first discovered classifier
 when none was configured. URLs, keys, and transport are no longer configured
 on that page. If no models are available, the console explains how to add a
-classifier while keeping **Smart routing** available for deterministic policy
+classifier while keeping **Smart Routing** available for deterministic policy
 settings. Deterministic routing still works without a classifier. The selected classifier and completed field edits save automatically; wait for **Saved**. Legacy direct Jev configuration
 is moved into a provider draft, preserving its key reference; save to persist
 the migration.

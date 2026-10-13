@@ -245,8 +245,8 @@ test("all provider types show a working status and discovered model count", asyn
     return response(models(provider.type === "openai-codex" ? 5 : 1));
   });
   app.setProviders([draft("openai-codex"), draft("nous"), draft("ollama")]);
-  assert.match(app.list.innerHTML, /Check status/);
-  assert.match(app.list.innerHTML, /Log in/);
+  assert.match(app.list.innerHTML, /Check Status/);
+  assert.match(app.list.innerHTML, /Log In/);
   await app.run("testAllProviders()");
   assert.equal(app.calls.length, 3);
   assert.equal(app.status(0).textContent, "Logged in · Working · 5 models discovered");
@@ -589,7 +589,7 @@ test("direct provider keys are masked, revealable, and never included in HTML at
   assert.equal(input.type, "password");
   assert.equal(input.value, key);
   assert.equal(app.list.innerHTML.includes(key), false);
-  assert.match(app.list.innerHTML, />API key<span/);
+  assert.match(app.list.innerHTML, />API Key<span/);
   assert.match(app.list.innerHTML, />Reveal<\/button>/);
   assert.doesNotMatch(app.list.innerHTML, /New API key|Show new/);
   button.listeners.click();
@@ -945,7 +945,7 @@ test("compact benchmark scorecards retain every available score and operational 
  app.context.models={"external/claude-opus-5":{display_name:"claude-opus-5",match:"unmatched",scores:{overall:.9,coding:.92,agentic:.88,knowledge:.94,math:0},operations:{input_price:.25,output_price:1.2,latency:2,ttft:.3,throughput:48,context_length:128000},provider_ids:["p/model"],sources:["source-a"],observation_count:8,latest_retrieval:"2026-10-08",latest_evaluation:"2026-10-01",age_seconds:120,valid_until:"2026-10-09",metadata:{hidden:"metadata-sentinel"}}};
  app.run('benchmarkModels=models;renderBenchmarkTable()');
  const headers=[...app.run('document.querySelector("#benchmark-table-head").innerHTML').matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(match=>match[1]);
- assert.deepEqual(headers,["Model","Overall %","Capability scores","Sources","Match / freshness","Evidence"]);
+ assert.deepEqual(headers,["Model","Overall %","Capability Scores","Sources","Match / Freshness","Evidence"]);
  app.run('openBenchmarkEvidence("external/claude-opus-5")');
  const html=app.run('document.querySelector("#benchmark-table-body").innerHTML + document.querySelector("#benchmark-evidence-content").innerHTML');
  assert.equal([...html.matchAll(/<tr>/g)].length,1);
@@ -1030,7 +1030,7 @@ test("refresh button shows activity immediately and table requests cannot block 
   await refresh;
   assert.match(app.run('document.querySelector("#benchmark-table-body").innerHTML'),/ready/);
   assert.match(app.run('document.querySelector("#benchmark-status").textContent'),/finished; table updated/);
-  assert.equal(app.run('document.querySelector("#refresh-benchmarks").textContent'),"Refresh benchmarks");
+  assert.equal(app.run('document.querySelector("#refresh-benchmarks").textContent'),"Refresh Benchmarks");
 });
 
 test("unmatched model summaries populate the table and scopes never fall back to score rows",async()=>{
@@ -1153,9 +1153,9 @@ test("credential cards group wrapping metadata separately from their delete acti
   await app.run("loadCredentialMetadata()");
   const html = app.run('document.querySelector("#credential-list").innerHTML');
   assert.equal([...html.matchAll(/class="credential-card"/g)].length,2);
-  assert.match(html, /<div class="credential-card-content"><h3 class="credential-card-name">Hermes &lt;client&gt; &quot;work&quot;<\/h3><p class="credential-card-meta">Created <time title="2026-10-02T12:34:56\.123456789Z">[^<]+<\/time><\/p><\/div><button/);
-  assert.ok(html.includes(`<h3 class="credential-card-name">${longName}</h3>`));
-  assert.match(html,/class="button quiet credential-card-delete"[^>]*aria-label="Delete API key Hermes &lt;client&gt; &quot;work&quot;"/);
+  assert.match(html, /<div class="credential-card-content"><h2 class="credential-card-name">Hermes &lt;client&gt; &quot;work&quot;<\/h2><p class="credential-card-meta">Created <time title="2026-10-02T12:34:56\.123456789Z">[^<]+<\/time><\/p><\/div><button/);
+  assert.ok(html.includes(`<h2 class="credential-card-name">${longName}</h2>`));
+  assert.match(html,/class="action-icon-only button credential-card-delete danger"[^>]*aria-label="Delete API key Hermes &lt;client&gt; &quot;work&quot;"/);
   assert.doesNotMatch(html, /class="card"/);
   assert.equal(app.run('document.querySelector("#credential-list").buttons.length'),2);
 });
@@ -1350,7 +1350,7 @@ test("Codex login reserves a tab before requesting device authorization and keep
    assert.match(status.copyStatus.textContent,/Copy the selected code/);
    assert.equal(status.copyButton.textContent,"Copy");
    assert.equal(app.list.editorStatuses.get("0").codeInput.value,"ONE-TIME");
-   assert.match(status.innerHTML,/Open OpenAI login/);
+   assert.match(status.innerHTML,/Open OpenAI Login/);
    assert.match(app.status(0).innerHTML,/noopener noreferrer/);
    return response({status:"success"});
   }
@@ -1372,7 +1372,7 @@ test("blocked Codex login tabs keep the code and link visible through delayed au
  app=consoleFixture((url)=>{
   if(url.includes("/login?")){
    polls++;
-   if(polls>180){assert.equal(app.status(0).codeInput.value,"CODE");assert.match(app.status(0).innerHTML,/Open OpenAI login/);return response({status:"success"});}
+   if(polls>180){assert.equal(app.status(0).codeInput.value,"CODE");assert.match(app.status(0).innerHTML,/Open OpenAI Login/);return response({status:"success"});}
   }
   if(url.includes("/login"))return response({status:"pending",verification_url:"https://auth.openai.com/codex/device",user_code:"CODE"});
   return response(models(1));
@@ -1418,8 +1418,8 @@ test("overview request counts exclude model attempts and monthly totals",()=>{
  const app=consoleFixture(()=>response({}));
  app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"local",type:"ollama"}];overviewModels=[{id:"local/a",enabled:true},{id:"local/b",enabled:false}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:3},{key_id:"*",period:"2026-10-08",model:"local/a",requests:12},{key_id:"*",period:"2026-10",model:"",requests:99},{key_id:"client",period:"2026-10-08",model:"",requests:3}];renderOverview()');
  const summary=app.run('document.querySelector("#overview-summary").innerHTML');
- assert.match(summary,/Requests today<\/span><strong class="metric-value">3<\/strong>/);
- assert.match(summary,/<strong>1<\/strong> enabled models/);
+ assert.match(summary,/Requests Today<\/span><strong class="metric-value">3<\/strong>/);
+ assert.match(summary,/<strong>1<\/strong> Enabled Models/);
  assert.match(summary,/href="#models"/);
 });
 
@@ -1547,8 +1547,8 @@ test("overview period changes use exact monthly totals and qualify bounded activ
  app.run('overviewPeriod="monthly";renderOverview()');
  assert.equal(app.run('overviewModelUsage()[0].tokens'),1300);
  assert.equal(app.run('overviewModelUsage()[0].cost'),4);
- assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/Requests this month<\/span><strong class="metric-value">17<\/strong>/);
- assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/<strong>1<\/strong> enabled models/);
+ assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/Requests This Month<\/span><strong class="metric-value">17<\/strong>/);
+ assert.match(app.run('document.querySelector("#overview-summary").innerHTML'),/<strong>1<\/strong> Enabled Models/);
  assert.match(app.run('renderOverviewMonitoring()'),/Current UTC month/);
 });
 
@@ -1583,11 +1583,11 @@ test("authenticated initial model deep links load the catalog after configuratio
 test("provider selection groups integrations and explains the current type",()=>{
  const app=consoleFixture(()=>response({}));app.setProviders([draft("jev_compatible","laya")]);
  const html=app.list.innerHTML;
- for(const label of ["API providers","Subscriptions","Self-hosted","Classifiers"])assert.ok(html.includes(`<optgroup label="${label}">`));
+ for(const label of ["API Providers","Subscriptions","Self-Hosted","Classifiers"])assert.ok(html.includes(`<optgroup label="${label}">`));
  assert.match(html,/Jev-compatible classifier, such as Laya/);
  app.setProviders([draft("openai-codex","codex")]);
  assert.match(app.list.innerHTML,/<optgroup label="Subscriptions">/);
- assert.doesNotMatch(app.list.innerHTML,/<optgroup label="API providers">/);
+ assert.doesNotMatch(app.list.innerHTML,/<optgroup label="API Providers">/);
  assert.match(app.list.innerHTML,/subscription using OAuth login/);
 });
 
@@ -1609,7 +1609,7 @@ test("new provider drafts can switch out of subscriptions and cancel without cha
   app.context.nextType=type;
   app.run('updateProvider({target:{dataset:{provider:"1",key:"type"},value:nextType}})');
   assert.equal(app.run('providers[1].type'),type);
-  for(const label of ["API providers","Subscriptions","Self-hosted","Classifiers"])assert.ok(app.list.innerHTML.includes(`<optgroup label="${label}">`));
+  for(const label of ["API Providers","Subscriptions","Self-Hosted","Classifiers"])assert.ok(app.list.innerHTML.includes(`<optgroup label="${label}">`));
   assert.doesNotMatch(app.list.innerHTML,/value="draft-provider-secret"/);
  }
  app.run('cancelProviderEditor()');await new Promise(resolve=>setImmediate(resolve));
@@ -1640,7 +1640,7 @@ test("changing provider type restores keyboard focus to the replacement chooser"
 test("benchmark evidence groups readable UTC dates and preserves exact provenance",()=>{
  const app=consoleFixture(()=>response({}));app.run('consoleTimezone="UTC"');app.context.evidenceRow={id:"fixture/model",scores:{overall:.9},latest_retrieval:"2026-10-08T14:23:12.123456789Z",latest_evaluation:"2026-10-01",age_seconds:123.456789};
  const html=app.run('benchmarkEvidence(evidenceRow)');
- for(const heading of ["Capability scores","Operating metrics","Provenance & freshness"])assert.ok(html.includes(`<h3>${heading}</h3>`));
+ for(const heading of ["Capability Scores","Operating Metrics","Provenance & Freshness"])assert.ok(html.includes(`<h2>${heading}</h2>`));
  assert.match(html,/title="2026-10-08T14:23:12\.123456789Z">Oct 8, 2026 · 14:23 UTC/);
  assert.match(html,/title="123\.456789">123<\/dd>/);
  assert.equal(app.run('benchmarkDate("0001-01-01T00:00:00Z")'),"Unknown");
@@ -1659,14 +1659,14 @@ test("operational overview avoids duplicate accounting and qualifies unknown cos
  const app=consoleFixture(()=>response({}));
  app.run('configurationLoaded=true;providers=[{...providerDefaults,id:"p"}];overviewModels=[{id:"p/m",enabled:true}];overviewUsage=[{key_id:"*",period:"2026-10-08",model:"",requests:2,input_tokens:999,estimated_cost:99},{key_id:"*",period:"2026-10-08",model:"p/m",input_tokens:100,output_tokens:20,estimated_cost:.5,unknown_cost_attempts:1},{key_id:"client",period:"2026-10-08",model:"p/m",input_tokens:100,output_tokens:20,estimated_cost:.5,unknown_cost_attempts:1},{key_id:"*",period:"2026-10",model:"p/m",input_tokens:5000,estimated_cost:20}];overviewRecent=[{kind:"request_start"},{kind:"routing"},{kind:"request_complete",outcome:"success",status:200},{kind:"request_complete",outcome:"interrupted",status:200},{kind:"request_complete",outcome:"error",status:500}];renderOverview()');
  const summary=app.run('document.querySelector("#overview-summary").innerHTML');
- assert.match(summary,/Requests today<\/span><strong class="metric-value">2<\/strong>/);
- assert.match(summary,/Processed tokens<\/span><strong class="metric-value">120<\/strong>/);
- assert.match(summary,/Estimated cost<\/span><strong class="metric-value">\$0.5000<\/strong>/);
+ assert.match(summary,/Requests Today<\/span><strong class="metric-value">2<\/strong>/);
+ assert.match(summary,/Processed Tokens<\/span><strong class="metric-value">120<\/strong>/);
+ assert.match(summary,/Estimated Cost<\/span><strong class="metric-value">\$0.5000<\/strong>/);
  assert.match(summary,/Partial USD total · 1 unknown-cost attempts/);
- assert.match(summary,/Recent success<\/span><strong class="metric-value">33.3%<\/strong>/);
+ assert.match(summary,/Recent Success<\/span><strong class="metric-value">33.3%<\/strong>/);
  assert.match(summary,/1 of 3 completed · last 5 recorded events/);
  assert.match(summary,/<div class="overview-context"/);
- assert.match(summary,/<strong>Deterministic<\/strong> routing/);
+ assert.match(summary,/<strong>Deterministic<\/strong> Routing/);
  assert.equal(app.calls.length,0);
 });
 
@@ -1674,15 +1674,15 @@ test("overview distinguishes absent data from real zero usage and zero successfu
  const app=consoleFixture(()=>response({}));
  app.run('renderOverview()');
  let summary=app.run('document.querySelector("#overview-summary").innerHTML');
- for(const label of ["Requests today","Processed tokens","Estimated cost","Recent success"])assert.match(summary,new RegExp(`${label}<\\/span><strong class="metric-value">—<\\/strong>`));
+ for(const label of ["Requests Today","Processed Tokens","Estimated Cost","Recent Success"])assert.match(summary,new RegExp(`${label}<\\/span><strong class="metric-value">—<\\/strong>`));
  app.run('overviewUsage=[];overviewRecent=[];renderOverview()');
  summary=app.run('document.querySelector("#overview-summary").innerHTML');
- assert.match(summary,/Processed tokens<\/span><strong class="metric-value">0<\/strong>/);
- assert.match(summary,/Estimated cost<\/span><strong class="metric-value">\$0.0000<\/strong>/);
- assert.match(summary,/Recent success<\/span><strong class="metric-value">—<\/strong>/);
+ assert.match(summary,/Processed Tokens<\/span><strong class="metric-value">0<\/strong>/);
+ assert.match(summary,/Estimated Cost<\/span><strong class="metric-value">\$0.0000<\/strong>/);
+ assert.match(summary,/Recent Success<\/span><strong class="metric-value">—<\/strong>/);
  app.run('overviewRecent=[{kind:"request_start"},{kind:"request_complete",outcome:"error",status:500}];renderOverview()');
  summary=app.run('document.querySelector("#overview-summary").innerHTML');
- assert.match(summary,/Recent success<\/span><strong class="metric-value">0.0%<\/strong>/);
+ assert.match(summary,/Recent Success<\/span><strong class="metric-value">0.0%<\/strong>/);
  assert.match(summary,/0 of 1 completed · last 2 recorded events/);
 });
 
@@ -1958,7 +1958,7 @@ test("activity debug inspectors format bodies safely and clear content on dismis
  assert.equal(app.run('document.querySelector("#activity-inspector-dialog").open'),true);
  assert.match(app.run('document.querySelector("#activity-inspector-note").textContent'),/truncated/);
  app.run('openActivityInspector(123,"jev")');html=app.run('document.querySelector("#activity-inspector-content").innerHTML');
- assert.match(html,/Request sent to Jev/);assert.match(html,/Jev response/);assert.match(html,/&lt;unsafe&gt;/);assert.doesNotMatch(html,/<unsafe>/);
+ assert.match(html,/Request Sent To Jev/);assert.match(html,/Jev Response/);assert.match(html,/&lt;unsafe&gt;/);assert.doesNotMatch(html,/<unsafe>/);
  app.run('document.querySelector("#close-activity-inspector").listeners.click()');
  assert.equal(app.run('document.querySelector("#activity-inspector-dialog").open'),false);assert.equal(app.run('document.querySelector("#activity-inspector-content").textContent'),"");
  app.run('loadedConfiguration.activity={};renderActivity()');assert.doesNotMatch(app.run('document.querySelector("#activity-results").innerHTML'),/data-inspect-activity/);
@@ -2141,7 +2141,7 @@ test("inline editing uses table pagination, filter, scope and refreshes untouche
 
 
 test("Activity size displays MiB and saves exact byte limits",()=>{
- const html=readFileSync(new URL("./static/index.html",import.meta.url),"utf8");assert.match(html,/Maximum data \(MiB\)/);assert.match(html,/min="0.0078125" step="any" placeholder="100"/);
+ const html=readFileSync(new URL("./static/index.html",import.meta.url),"utf8");assert.match(html,/Maximum Data \(MiB\)/);assert.match(html,/min="0.0078125" step="any" placeholder="100"/);
  const app=consoleFixture(()=>response({}));app.run('applyConfig({providers:[],activity:{max_bytes:104857601}})');
  assert.equal(app.run('Number(form.elements.namedItem("activity.max_bytes").value)'),104857601/1048576);
  assert.equal(app.run('readConfig().activity.max_bytes'),104857601);
@@ -2256,4 +2256,31 @@ test("admin user rejects mismatched passwords and preserves failures without exp
  await app.run('document.querySelector("#save-admin-user").listeners.click()');
  assert.equal(app.run('document.querySelector("#admin-account-status").textContent'),"Incorrect current password");assert.equal(app.context.redirect,undefined);
  assert.equal(app.run('document.querySelector("#admin-current-password").value'),"");
+});
+
+
+test("router policy switches share the identity card and compact actions stay named",()=>{
+ const html=readFileSync(new URL("./static/index.html",import.meta.url),"utf8");
+ const card=html.split('<div class="router-identity-card"')[1].split('<div class="model-transfer provider-transfer">')[0];
+ for(const field of ['id="smart-router-new-name"','name="router.allow_paid_models"','name="router.allow_free_models"','id="remove-smart-router"'])assert.ok(card.includes(field));
+ for(const id of ["benchmark-field-add","benchmark-field-remove","smart-router-provider-add","smart-router-provider-remove","smart-router-model-add","smart-router-model-remove"]){
+  const button=html.match(new RegExp(`<button id="${id}"[^>]*>.*?</button>`))[0];
+  assert.match(button,/aria-label="(?:Enable|Remove) (?:Fields|Providers|Models)"/);
+  assert.match(button,/title="(?:Enable|Remove) (?:Fields|Providers|Models)"/);
+  assert.match(button,/<svg[^>]*aria-hidden="true"/);
+  assert.doesNotMatch(button,/action-label|[＋←]/);
+ }
+});
+
+test("benchmark edit toggle preserves its icon and accessible name across states",async()=>{
+ const app=consoleFixture(()=>response({records:[],total:0}));
+ const markup=()=>app.run('document.querySelector("#benchmark-edit-data").innerHTML');
+ app.run('clearBenchmarkConsole()');
+ assert.match(markup(),/<svg[^>]*aria-hidden="true"/);assert.match(markup(),/>Edit Data</);
+ await app.run('document.querySelector("#benchmark-edit-data").listeners.click()');
+ assert.match(markup(),/<svg[^>]*aria-hidden="true"/);assert.match(markup(),/>Done Editing</);
+ assert.equal(app.run('document.querySelector("#benchmark-edit-data").attributes["aria-label"]'),"Done Editing");
+ await app.run('document.querySelector("#benchmark-edit-data").listeners.click()');
+ assert.match(markup(),/>Edit Data</);
+ assert.equal(app.run('document.querySelector("#benchmark-edit-data").attributes["aria-label"]'),"Edit Data");
 });

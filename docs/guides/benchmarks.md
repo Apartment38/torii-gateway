@@ -99,7 +99,7 @@ custom data; uploading an old evaluation does not make it new evidence.
 
 ## Edit loaded measurements
 
-Select **Edit data** at the top of **Benchmarks**. The current data table switches
+Select **Edit Data** at the top of **Benchmarks**. The current data table switches
 from calculated model summaries to individual measurements. Edit the model ID,
 benchmark, category, original/normalized scores, unit, version or evaluation time
 inline, then select **Save** on that row. **Cancel** discards that row's draft;

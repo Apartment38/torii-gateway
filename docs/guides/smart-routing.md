@@ -27,8 +27,8 @@ are excluded from chat routing pools.
 1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev compatible**
    for a compatible decision server such as Laya.
 2. Supply a reachable URL and the service's key if required; test the connection.
-3. On **Smart routing**, select the discovered classifier model in Smart Routing.
-4. Move models from **Available models** to **Enabled models** by double-clicking,
+3. On **Smart Routing**, select the discovered classifier model in Smart Routing.
+4. Move models from **Available Models** to **Enabled Models** by double-clicking,
    or select them and press **Enable →**. Use **← Remove** to disable choices.
    Each router supports at most 250 models. An empty list allows all models from
    its allowed providers; pools over 250 must be narrowed explicitly.

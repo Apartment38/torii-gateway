@@ -48,7 +48,9 @@ function clearBenchmarkConsole(): void {
   clearBenchmarkRecords();closeBenchmarkEvidence();
   benchmarkEditing=false;benchmarkInlineDrafts={};benchmarkInlineSaving=false;benchmarkInlineSaveSequence++;benchmarkSummaryEnabled=["model","overall","capabilities","sources","freshness","evidence"];benchmarkMeasurementEnabled=benchmarkMeasurementFields.slice(0,8).map(field=>field.key);
   for(const id of ["benchmark-configuration","benchmark-upload-dialog","benchmark-fields-dialog"])document.querySelector<HTMLDialogElement>(`#${id}`)?.close?.();
-  document.querySelector("#benchmark-edit-data")!.textContent="Edit data";document.querySelector("#benchmark-edit-data")!.setAttribute("aria-pressed","false");
+  document.querySelector("#benchmark-edit-data")!.innerHTML=consoleEditButtonMarkup("Edit Data");document.querySelector("#benchmark-edit-data")!.setAttribute("aria-pressed","false");
+  document.querySelector("#benchmark-edit-data")!.setAttribute("aria-label","Edit Data");
+  document.querySelector("#benchmark-edit-data")!.setAttribute("title","Edit Data");
   document.querySelector("#benchmark-inline-status")!.textContent="";inspectedBenchmarkModel="";document.querySelector("#benchmark-evidence-content")!.textContent="";
   benchmarkAbort?.abort(); benchmarkAbort = null; benchmarkReloadSequence++;
   benchmarkConfiguration = {}; benchmarkSources = []; benchmarkSourceStatus = {}; benchmarkSourceActivity = {}; benchmarkModels = {};
@@ -73,11 +75,11 @@ function renderBenchmarkSources(): void {
     const definition = benchmarkDefinitions.find(item => item.settings.type === source.type);
     const huggingFaceToken = ["huggingface", "livebench", "lmarena"].includes(source.type);
     const needsKey = definition?.requires_api_key || source.api_key || huggingFaceToken;
-    return `<article class="provider-card"><div class="provider-card-head"><h3>${escapeHTML(definition?.name || source.type)}${source._new ? "" : ` · ${escapeHTML(source.id)}`}</h3><label class="checkbox" data-tooltip="Enable this preconfigured source for background and manual refreshes. Save and reload before ingestion starts."><input type="checkbox" ${benchmarkAttributes(index, "enabled")} ${source.enabled ? "checked" : ""} /> Enabled</label></div>
+    return `<article class="provider-card"><div class="provider-card-head"><h2>${escapeHTML(definition?.name || source.type)}${source._new ? "" : ` · ${escapeHTML(source.id)}`}</h2><label class="checkbox" data-tooltip="Enable this preconfigured source for background and manual refreshes. Save and reload before ingestion starts."><input type="checkbox" ${benchmarkAttributes(index, "enabled")} ${source.enabled ? "checked" : ""} /> Enabled</label></div>
       <div class="provider-result" data-benchmark-status="${index}" role="status" aria-live="polite"></div>
       <div class="benchmark-source-options" ${source.enabled ? "" : "hidden"}>
       <p>${escapeHTML(definition?.note || "Uses your saved source configuration.")}</p>
-      ${needsKey ? `<label data-tooltip="Save encrypts new values in SQLite; saved credentials cannot be revealed. Public Hugging Face datasets allow anonymous access; an optional token authenticates requests to Hugging Face.">${huggingFaceToken ? "Hugging Face token (optional)" : "API key"}<span class="password-field"><input type="password" autocomplete="new-password" ${benchmarkAttributes(index, "api_key_input")} placeholder="${source.api_key?.credential ? "Configured · leave blank to keep" : huggingFaceToken ? "Optional Hugging Face token" : "Enter source API key"}" /><button type="button" class="reveal-button" data-benchmark-action="reveal-key" ${benchmarkAttributes(index, "")}>Reveal</button></span></label>` : ""}
+      ${needsKey ? `<label data-tooltip="Save encrypts new values in SQLite; saved credentials cannot be revealed. Public Hugging Face datasets allow anonymous access; an optional token authenticates requests to Hugging Face.">${huggingFaceToken ? "Hugging Face Token (Optional)" : "API Key"}<span class="password-field"><input type="password" autocomplete="new-password" ${benchmarkAttributes(index, "api_key_input")} placeholder="${source.api_key?.credential ? "Configured · leave blank to keep" : huggingFaceToken ? "Optional Hugging Face token" : "Enter source API key"}" /><button type="button" class="reveal-button" data-benchmark-action="reveal-key" ${benchmarkAttributes(index, "")}>Reveal</button></span></label>` : ""}
       </div></article>`;
   }).join("");
   list.querySelectorAll<HTMLInputElement>('[data-benchmark-field="api_key_input"]').forEach(input => { input.value = benchmarkSources[Number(input.dataset.benchmarkSource)].api_key_input || ""; });
@@ -130,15 +132,15 @@ function benchmarkSafeMessage(message: string): string {
   return message;
 }
 function benchmarkNumber(raw: any, score = false): string { return typeof raw === "number" && Number.isFinite(raw) ? (score ? (raw * 100).toFixed(1) : String(Number(raw.toFixed(4)))) : "—"; }
-function benchmarkLabel(name:string):string{return name.replace(/_/g," ").replace(/^./,letter=>letter.toUpperCase());}
+function benchmarkLabel(name:string):string{return name.replace(/_/g," ").replace(/\b[a-z]/g,letter=>letter.toUpperCase());}
 function benchmarkEvidence(row:any):string{
  const scores=["overall",...benchmarkCapabilities];
- const operations:Record<string,string>={input_price:"Input USD / 1M",output_price:"Output USD / 1M",latency:"Latency seconds",ttft:"First token seconds",throughput:"Tokens / second",context_length:"Context tokens"};
+ const operations:Record<string,string>={input_price:"Input USD / 1M",output_price:"Output USD / 1M",latency:"Latency Seconds",ttft:"First Token Seconds",throughput:"Tokens / Second",context_length:"Context Tokens"};
  const scoreFields=scores.map(name=>[`${benchmarkLabel(name)} %`,benchmarkNumber(row.scores?.[name],true)]);
  const operationFields=Object.entries(operations).map(([name,label])=>[label,benchmarkNumber(row.operations?.[name])]);
- const provenanceFields=[["Model ID",row.id],["Providers",(row.provider_ids||[]).join(", ")||"—"],["Sources",(row.sources||[]).join(", ")||"—"],["Match",["approximate","ambiguous","unmatched"].includes(row.match)?`${benchmarkLabel(row.match)} · display only`:"Matched"],["Data status",row.stale?"Stale":"Current"],["Observations",String(row.observation_count||0)],["Latest evaluation",benchmarkDate(row.latest_evaluation),String(row.latest_evaluation||"")],["Last retrieval",benchmarkDate(row.latest_retrieval),String(row.latest_retrieval||"")],["Age seconds",typeof row.age_seconds==="number"&&Number.isFinite(row.age_seconds)?String(Math.round(row.age_seconds)):"—",String(row.age_seconds??"")],["Valid until",benchmarkDate(row.valid_until),String(row.valid_until||"")]];
- const group=(title:string,fields:any[][]):string=>`<section class="benchmark-evidence-section"><h3>${title}</h3><dl class="benchmark-evidence-grid">${fields.map(([label,value,exact])=>`<div><dt>${escapeHTML(label)}</dt><dd${exact?` title="${escapeHTML(exact)}"`:""}>${escapeHTML(String(value))}</dd></div>`).join("")}</dl></section>`;
- return `<div class="benchmark-evidence-content">${group("Capability scores",scoreFields)}${group("Operating metrics",operationFields)}${group("Provenance & freshness",provenanceFields)}</div>`;
+ const provenanceFields=[["Model ID",row.id],["Providers",(row.provider_ids||[]).join(", ")||"—"],["Sources",(row.sources||[]).join(", ")||"—"],["Match",["approximate","ambiguous","unmatched"].includes(row.match)?`${benchmarkLabel(row.match)} · display only`:"Matched"],["Data Status",row.stale?"Stale":"Current"],["Observations",String(row.observation_count||0)],["Latest Evaluation",benchmarkDate(row.latest_evaluation),String(row.latest_evaluation||"")],["Last Retrieval",benchmarkDate(row.latest_retrieval),String(row.latest_retrieval||"")],["Age Seconds",typeof row.age_seconds==="number"&&Number.isFinite(row.age_seconds)?String(Math.round(row.age_seconds)):"—",String(row.age_seconds??"")],["Valid Until",benchmarkDate(row.valid_until),String(row.valid_until||"")]];
+ const group=(title:string,fields:any[][]):string=>`<section class="benchmark-evidence-section"><h2>${title}</h2><dl class="benchmark-evidence-grid">${fields.map(([label,value,exact])=>`<div><dt>${escapeHTML(label)}</dt><dd${exact?` title="${escapeHTML(exact)}"`:""}>${escapeHTML(String(value))}</dd></div>`).join("")}</dl></section>`;
+ return `<div class="benchmark-evidence-content">${group("Capability Scores",scoreFields)}${group("Operating Metrics",operationFields)}${group("Provenance & Freshness",provenanceFields)}</div>`;
 }
 
 let inspectedBenchmarkModel="";
@@ -153,15 +155,15 @@ function openBenchmarkEvidence(id:string):void{
 function closeBenchmarkEvidence():void{document.querySelector<HTMLDialogElement>("#benchmark-evidence-dialog")?.close?.();}
 type BenchmarkTableField = { key:string; label:string };
 const benchmarkSummaryFields: BenchmarkTableField[] = [
- {key:"model",label:"Model"},{key:"overall",label:"Overall %"},{key:"capabilities",label:"Capability scores"},{key:"sources",label:"Sources"},{key:"freshness",label:"Match / freshness"},{key:"evidence",label:"Evidence"},
- {key:"id",label:"Model ID"},{key:"display_name",label:"Display name"},{key:"provider_ids",label:"Providers"},{key:"external_ids",label:"External model IDs"},
+ {key:"model",label:"Model"},{key:"overall",label:"Overall %"},{key:"capabilities",label:"Capability Scores"},{key:"sources",label:"Sources"},{key:"freshness",label:"Match / Freshness"},{key:"evidence",label:"Evidence"},
+ {key:"id",label:"Model ID"},{key:"display_name",label:"Display Name"},{key:"provider_ids",label:"Providers"},{key:"external_ids",label:"External Model IDs"},
  ...benchmarkCapabilities.map(key=>({key:`score:${key}`,label:`${benchmarkLabel(key)} %`})),
  ...Object.keys(benchmarkOperations).map(key=>({key:`operation:${key}`,label:benchmarkLabel(key)})),
- {key:"match",label:"Match"},{key:"stale",label:"Data status"},{key:"observation_count",label:"Observations"},{key:"latest_evaluation",label:"Latest evaluation"},{key:"latest_retrieval",label:"Last retrieval"},{key:"age_seconds",label:"Age seconds"},{key:"valid_until",label:"Valid until"}
+ {key:"match",label:"Match"},{key:"stale",label:"Data Status"},{key:"observation_count",label:"Observations"},{key:"latest_evaluation",label:"Latest Evaluation"},{key:"latest_retrieval",label:"Last Retrieval"},{key:"age_seconds",label:"Age Seconds"},{key:"valid_until",label:"Valid Until"}
 ];
 const benchmarkMeasurementFields: BenchmarkTableField[] = [
- {key:"external_model_id",label:"Model ID"},{key:"benchmark",label:"Benchmark"},{key:"category",label:"Category"},{key:"original_score",label:"Original score"},{key:"normalized_score",label:"Normalized score (0–1)"},{key:"unit",label:"Unit"},{key:"version",label:"Version"},{key:"evaluated_at",label:"Evaluation time"},
- {key:"source",label:"Source"},{key:"model_id",label:"Matched model ID"},{key:"retrieved_at",label:"Retrieved at"},{key:"date_basis",label:"Date basis"}
+ {key:"external_model_id",label:"Model ID"},{key:"benchmark",label:"Benchmark"},{key:"category",label:"Category"},{key:"original_score",label:"Original Score"},{key:"normalized_score",label:"Normalized Score (0–1)"},{key:"unit",label:"Unit"},{key:"version",label:"Version"},{key:"evaluated_at",label:"Evaluation Time"},
+ {key:"source",label:"Source"},{key:"model_id",label:"Matched Model ID"},{key:"retrieved_at",label:"Retrieved At"},{key:"date_basis",label:"Date Basis"}
 ];
 let benchmarkEditing = false;
 let benchmarkSummaryEnabled = ["model","overall","capabilities","sources","freshness","evidence"];
@@ -479,8 +481,10 @@ document.querySelector("#benchmark-edit-data")?.addEventListener("click",async()
  if(benchmarkInlineSaving)return;
  if(benchmarkEditing&&Object.keys(benchmarkInlineDrafts).length&&!confirm("Discard unsaved measurement edits?"))return;
  benchmarkEditing=!benchmarkEditing;benchmarkInlineDrafts={};benchmarkPage=0;
- document.querySelector("#benchmark-edit-data")!.textContent=benchmarkEditing?"Done editing":"Edit data";
+ document.querySelector("#benchmark-edit-data")!.innerHTML=consoleEditButtonMarkup(benchmarkEditing?"Done Editing":"Edit Data");
  document.querySelector("#benchmark-edit-data")!.setAttribute("aria-pressed",String(benchmarkEditing));
+ document.querySelector("#benchmark-edit-data")!.setAttribute("aria-label",benchmarkEditing?"Done Editing":"Edit Data");
+ document.querySelector("#benchmark-edit-data")!.setAttribute("title",benchmarkEditing?"Done Editing":"Edit Data");
  document.querySelector("#benchmark-inline-status")!.textContent=benchmarkEditing?"Edit measurement fields, then Save each row. A source refresh can replace downloaded measurements; custom uploads are retained.":"";
  renderBenchmarkFields();if(benchmarkEditing)await loadBenchmarkRecords();renderBenchmarkTable();
 });

@@ -43,8 +43,9 @@ Torii is running. Advanced online backups require SQLite's backup API or `.backu
 ## Supported databases
 
 Torii's database-only baseline is SQLite schema **4**; the current schema is
-**9**. Fresh installations create the baseline and apply the registered upgrade.
-Schema 4 upgrades automatically, preserving all data and adding settings, sessions, accounting and activity storage. Schemas 1–3 and nonempty unversioned databases are
+**10**. Fresh installations create the baseline and apply sequential registered upgrades.
+Schemas 4–9 upgrade automatically, preserving existing data and adding any missing
+settings, sessions, accounting, activity and password-reset storage. Schemas 1–3 and nonempty unversioned databases are
 rejected without an automatic import, deletion or reset. Future releases retain
 schema 4 as their supported starting point and preserve data through sequential,
 transactional database migrations. Unsupported newer schemas are also rejected.

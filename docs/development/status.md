@@ -448,11 +448,21 @@ requires re-entering the actual key rather than a credential preview.
 
 ## Pending release checks and future work
 
-- MCP aggregation and a skills library.
-- A TUI with CLI and web-console feature parity.
-- Multiple users with usage tracking, quotas and allowed providers/models/tools/skills.
-- Hermes plugin.
-- Pi plugin.
+The [README feature table](../../README.md#features) lists future scope. The
+roadmap below also retains the planned client plugins:
+
+| Feature | Planned scope and current boundary |
+| --- | --- |
+| MCP Gateway | Aggregate Model Context Protocol servers; current model tool-call transport does not host an MCP gateway |
+| Skill Gateway | Centralized version-controlled skill registry; no skill storage/versioning/serving in the current gateway |
+| TUI | Terminal interface with CLI/web-console feature parity; current interfaces are CLI, HTTP API and browser console |
+| Multiple users | Per-user usage, quotas and allowed providers/models/tools/skills; current single-admin installation has named client-key accounting/budgets, without per-user permissions |
+| Authentik Integration | Authentik web-console login; current administrator session/Basic authentication has no OIDC integration |
+| Hermes plugin | Dedicated client integration; Hermes can already connect through the generic OpenAI-compatible endpoint |
+| Pi plugin | Dedicated client integration; no Torii-specific Pi plugin is shipped |
+
+No delivery dates or plugin APIs are committed. See
+[Features and limitations](../reference/features.md) for current support.
 
 - Before publishing a release, rerun the CI gate and disposable container
   persistence/recovery check, complete compatibility notes, verify all artifacts,
@@ -464,7 +474,7 @@ requires re-entering the actual key rather than a credential preview.
   to actual release assets rather than claiming a release exists.
 - Docker, macOS, and Windows native/service workflows need validation on their
   respective hosts; documented build targets are not platform test results.
-- Future scope, currently unimplemented: administrator password reset, Authentik/OIDC, automated master-key rotation, stateful Responses,
+- Future scope, currently unimplemented: Authentik/OIDC, automated master-key rotation, stateful Responses,
   automatic updater, and MCP/tool/skill gateways.
 - Performance measurements beyond the transparent dispatch microbenchmark require
   a reproducible harness; no production answer-quality, savings, actual billing,

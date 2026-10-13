@@ -55,7 +55,7 @@ and [mail delivery configuration](environment.md#password-reset-email-delivery).
 
 Bodies are JSON objects and limited to 32 MiB. Transparent forwarding replaces
 only the top-level model value, preserving other fields/bytes. The model may be
-`smart`, or a provider-qualified ID. `previous_response_id` and `conversation`
+`smart`, an additional configured router name, or a provider-qualified ID. `previous_response_id` and `conversation`
 on Responses are rejected with `unsupported_parameter`. Context must be supplied
 in each request. Provider-specific endpoint, tool, vision, and format limits apply.
 

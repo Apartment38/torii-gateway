@@ -28,5 +28,8 @@ An **upstream provider** is the service that runs a model; Torii routes requests
 [Configuration](reference/configuration.md) · [Environment variables](reference/environment.md) ·
 [CLI](reference/cli.md) · [HTTP API](reference/api.md)
 
+[Planned features](reference/features.md#planned-features) describes future scope. Start
+with the supported behavior above when configuring an installation today.
+
 For implementation details, architecture, tests, and the project roadmap, see
 [Development](development/README.md). Release compatibility notes belong in [releases](releases/TEMPLATE.md).

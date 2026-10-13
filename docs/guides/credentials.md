@@ -129,6 +129,7 @@ A lost inference key can be rotated with administrator login. A lost master key
 requires its original backup; a new key cannot decrypt an old database. If no
 backup exists, preserve the inaccessible database and explicitly create a new
 installation with new credentials. Follow [Backup and upgrade](backup-and-upgrade.md).
-Administrator password reset, multiple administrators, Authentik/OIDC, and
-automatic master-key rotation are not implemented. Keep the administrator
-password in a password manager. Technical details are in [State and security](../development/state-and-security.md).
+For a lost administrator password, use [email recovery](#reset-a-forgotten-password)
+if it was configured beforehand. There is no local CLI password-reset command.
+Multiple administrators, Authentik/OIDC, and automatic master-key rotation are
+not implemented. Keep the administrator password in a password manager. Technical details are in [State and security](../development/state-and-security.md).

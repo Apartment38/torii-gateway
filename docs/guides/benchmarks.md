@@ -52,7 +52,9 @@ Double-click fields between **Available fields** and **Enabled fields**, or use
 views retain separate field choices until sign-out; no gateway settings change.
 
 Evidence is grouped into capability scores, operating metrics, and provenance;
-dates display in UTC with exact timestamps available in tooltips.
+timestamps use the saved console timezone (the browser timezone when unset),
+with exact timestamps available in tooltips. Date-only labels retain their
+published calendar date.
 
 Missing scores are unknown, not zero. Exact identities and explicit aliases
 can supply routing evidence. **Approximate** associations are for display only:

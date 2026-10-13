@@ -42,8 +42,10 @@ same-origin restrictions; access the console and API through the same origin.
 
 ## Timeouts, shutdown, and durability
 
-Inference bodies are limited to 32 MiB. Default inference has no gateway-imposed
-completion timeout; compatible provider `request_timeout` can set one. Client
+Inference bodies are limited to 32 MiB. Ollama has a five-minute whole-request
+timeout by default. Other compatible profiles have no completion timeout unless
+`request_timeout` is set. Discovery/authentication have separate deadlines. See
+[provider settings](../reference/configuration.md#providers). Client
 disconnects cancel upstream work. The server allows 10 seconds to finish active
 requests on SIGINT/SIGTERM, then attempts final usage persistence with a separate
 deadline. Idle HTTP connections close after 60 seconds.

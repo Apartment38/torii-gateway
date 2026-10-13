@@ -87,7 +87,8 @@ with the current benchmark website.
 The default complete-source timeout is **30 minutes** to allow large datasets
 to import politely. Previously saved explicit `source_timeout` values remain
 unchanged; if an installation still specifies `10m`, increase it to `30m` in
-`config.yaml` for combined large imports. These protections reduce avoidable
+the saved `intelligence.source_timeout` setting through the configuration API
+for combined large imports; editing YAML does not update a running installation. These protections reduce avoidable
 429s, but cannot guarantee access if the upstream quota is exhausted by other
 applications or the service is overloaded. Inference requests are unaffected.
 Rate-limit pauses are logged safely and appear in manual refresh activity.

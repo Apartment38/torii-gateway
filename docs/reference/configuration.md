@@ -21,6 +21,8 @@ Optional defaults refer to code defaults when omitted, not enabled example value
 | --- | --- | --- |
 | `server.listen` | Required string | TCP `host:port`; `127.0.0.1:8080` local, `0.0.0.0:8080` inside container |
 | `server.timezone` | Optional IANA timezone string, browser timezone when omitted/empty | Console-wide date/time display, for example `America/New_York` or `UTC`; `Local` is rejected. Takes effect after saving without restart. Stored timestamps and accounting periods remain UTC. Date-only benchmark labels retain their calendar date. |
+| `server.admin_session_ttl` | Positive duration, `168h` (seven days) | Expiry for newly created administrator cookie sessions; at most `720h` (30 days). Existing session expiries are unchanged |
+| `server.trusted_proxies` | CIDR string list, empty | Immediate proxy networks trusted to assert `X-Forwarded-Proto: https` for Secure cookies and browser origin checks. IPv4/IPv6 CIDRs only; list only your actual proxies |
 | `state.database_path` | String, `/data/torii.db` | Legacy import bootstrap path; normal commands select `--database`, then `TORII_DB_PATH`, then `/data/torii.db`; SQLite URIs/in-memory paths are not supported |
 | `providers` | List, empty allowed | Unique provider IDs; inference needs an eligible physical model |
 

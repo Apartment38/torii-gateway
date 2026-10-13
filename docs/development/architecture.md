@@ -12,7 +12,8 @@ is required. Durable state requires local storage and a separate master key.
 ```mermaid
 flowchart LR
     Client[AI client] -->|Bearer API| Gateway[Torii Go process]
-    Admin[Administrator browser] -->|Basic management| Gateway
+    Admin[Administrator browser] -->|Cookie and CSRF| Gateway
+    Scripts[Management scripts] -->|Basic authentication| Gateway
     Gateway --> Local[Ollama]
     Gateway --> Hosted[Compatible hosted APIs]
     Gateway --> Native[Codex / Anthropic translated APIs]
@@ -23,8 +24,9 @@ flowchart LR
 ```
 
 Native deployments bind loopback by default in documented examples. Containers
-bind all container interfaces and run as UID/GID 65532 with `/config` and `/data`
-mounts. HTTPS termination belongs to a trusted reverse proxy. One process owns
+bind all container interfaces and run as UID/GID 65532 with a persistent `/data`
+volume and an external master key. A `/config` mount is needed only for an explicit
+legacy import or referenced external files. HTTPS termination belongs to a trusted reverse proxy. One process owns
 one local database volume; benchmark writer coordination is process-local.
 
 ## Building blocks
@@ -51,11 +53,12 @@ one local database volume; benchmark writer coordination is process-local.
 
 ## Startup and shutdown
 
-`serve` initializes a missing config only when template/bootstrap is configured,
-strictly loads it, opens SQLite with the external key, verifies encrypted records,
-applies supported migrations, performs administrator setup, and constructs
-providers/catalog/router. Persisted inline/env/file secrets are rejected; no
-legacy state import is performed. Empty-provider setup is supported. Configured
+`serve` selects the database via CLI/environment, opens SQLite with the external
+key, verifies encrypted records before applying migrations, then loads stored
+settings (or fresh empty-provider defaults). It performs administrator setup and
+constructs providers/catalog/routers. Persisted inline/env/file secrets are
+rejected. YAML is read only by explicit `config validate` or `config import`;
+normal startup never imports legacy state. Empty-provider setup is supported. Configured
 provider discovery failures may use last-known-good/bundled fallback; an entirely
 unusable configured inference catalog fails startup.
 
@@ -79,8 +82,9 @@ Generic classification describes requirements. Jev chooses the physical model
 from dynamic criteria for up to 250 configured candidates, using price, verified
 capabilities and relevant benchmark scores. The gateway validates that choice;
 other classifiers and failure fallback retain deterministic selection.
-No benchmark fetching, SQLite writes, or aggregation happens on inference's
-routing path.
+Benchmark fetching and aggregation run outside inference selection. Budgeted
+requests reserve accounting capacity in SQLite before dispatch and settle usage
+afterward; limited requests fail closed if that storage is unavailable.
 
 ## Transport and catalog
 

@@ -23,6 +23,27 @@ on save/sign-out. A failed source retains its previous data independently of
 other sources. Refresh may take up to the configured source deadline (30 minutes
 by default) while respecting shared host rate limits. Inference continues.
 
+## Create mappings with Smart Mapping
+
+After enabling benchmark intelligence and refreshing sources, select **Smart
+Mapping** below the enable option. Choose an available configured decision model
+(such as Jev) and select **Start**. This can make many paid provider requests;
+the card warns about costs before starting. Close the card to cancel.
+
+The check searches cached benchmark model names by family first: `gemma4:e2b`
+shortlists names containing `gemma`, rather than sending the full benchmark
+catalog. The decision model checks exact generation, size and variant, with a
+no-match option. Only validated choices with confidence of at least 0.9 create
+source-specific mappings. Options are sent in batches of at most 200; conflicting
+batch matches stay unmapped. Already matched sources need no request.
+
+The completion message reports checked models, requests, saved mappings and
+failures. Mappings use the existing revision-checked configuration save and
+persist across restart. Existing operator mappings remain authoritative; failed
+saves retain new mappings in the draft for reconciliation. Decision models can
+make mistakes: inspect the resulting benchmark evidence before relying on it
+for routing. The check uses cached data and does not refresh benchmark sources.
+
 ## Choose a source
 
 | Type | Published interface | Notes |

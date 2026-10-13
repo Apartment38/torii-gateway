@@ -27,7 +27,9 @@ The overview leads with current UTC requests, processed tokens, and estimated co
 
 The Overview client model selector includes token prices, provider allowance/reset
 information, and this month's gateway usage. **Models** shows the same tracking
-and expands provider-reported spend under **Inspect Metadata**. **Provider Balances**
+and expands provider-reported spend under **Inspect Metadata**. Its **Model Card**
+column links to an identified official publisher repository or system card;
+unknown cards display —. **Provider Balances**
 shows one card per provider, combining shared account balances and independent quota
 windows without adding repeated balances together. It shows subscription limits
 separately from the operator budgets on **Usage & Quota**.

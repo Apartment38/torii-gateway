@@ -2284,3 +2284,63 @@ test("benchmark edit toggle preserves its icon and accessible name across states
  assert.match(markup(),/>Edit Data</);
  assert.equal(app.run('document.querySelector("#benchmark-edit-data").attributes["aria-label"]'),"Edit Data");
 });
+
+test("smart mapping uses saved decision models and persists only nonconflicting mappings", async()=>{
+ let config={providers:[],intelligence:{enabled:true,identities:[{canonical_id:"manual",provider_ids:["p/gemma"],source_ids:{existing:["Gemma Existing"]}}]}};
+ const app=consoleFixture((url,options)=>{
+  if(url==="/gateway/v1/models")return response({models:[{id:"judge/jev",enabled:true,endpoints:{systemone:"supported"},availability:{available:true,stale:false}},{id:"judge/disabled",enabled:false,endpoints:{systemone:"supported"},availability:{available:true}},{id:"p/chat",enabled:true,endpoints:{chat_completions:"supported"},availability:{available:true}}]});
+  if(url==="/gateway/v1/intelligence/smart-mapping"){
+   assert.deepEqual(JSON.parse(options.body),{model:"judge/jev"});
+   return response({checked:3,requests:2,failed:0,ambiguous:0,mappings:[{canonical_id:"p/gemma",provider_ids:["p/gemma"],source_ids:{existing:["Changed"],new:["Gemma Exact"]}}]});
+  }
+  if(url==="/gateway/v1/config"){if(options?.method==="PUT")config=JSON.parse(options.body);return response(config);}
+  return response({});
+ });
+ app.context.config=config;app.run("applyConfig(config,fixtureRevision)");
+ await app.run("openSmartMapping()");
+ assert.match(app.run('document.querySelector("#benchmark-smart-mapping-model").innerHTML'),/judge\/jev/);
+ assert.doesNotMatch(app.run('document.querySelector("#benchmark-smart-mapping-model").innerHTML'),/disabled|p\/chat/);
+ await app.run("startSmartMapping()");
+ assert.deepEqual(config.intelligence.identities,[{canonical_id:"manual",provider_ids:["p/gemma"],source_ids:{existing:["Gemma Existing"],new:["Gemma Exact"]}}]);
+ assert.match(app.run('document.querySelector("#benchmark-smart-mapping-status").textContent'),/1 mappings saved/);
+ assert.equal(app.run('document.querySelector("#benchmark-smart-mapping-start").disabled'),false);
+});
+
+test("smart mapping preserves conflicting source aliases and blocks duplicate clicks",async()=>{
+ let finish;
+ const app=consoleFixture(()=>new Promise(resolve=>finish=resolve));
+ app.context.config={providers:[],intelligence:{enabled:true,identities:[{canonical_id:"manual",source_ids:{source:["Gemma Exact"]}}]}};
+ app.run('applyConfig(config,fixtureRevision);document.querySelector("#benchmark-smart-mapping-model").value="judge/jev"');
+ const pending=app.run("startSmartMapping()");await Promise.resolve();
+ await app.run("startSmartMapping()");assert.equal(app.calls.length,1);
+ finish(response({mappings:[{canonical_id:"p/new",provider_ids:["p/new"],source_ids:{source:["gemma_exact"]}}],checked:1,requests:1,failed:0,ambiguous:0}));
+ await pending;
+ assert.equal(app.calls.filter(call=>call.url==="/gateway/v1/config").length,0);
+ assert.match(app.run('document.querySelector("#benchmark-smart-mapping-status").textContent'),/0 mappings saved/);
+});
+
+test("smart mapping reports failed saves and ignores results from a previous login",async()=>{
+ const app=consoleFixture(url=>url==="/gateway/v1/config"?response({},false):response({checked:1,requests:1,failed:0,ambiguous:0,mappings:[{canonical_id:"p/new",provider_ids:["p/new"],source_ids:{source:["Gemma"]}}]}));
+ app.context.config={providers:[],intelligence:{enabled:true}};
+ app.run('applyConfig(config,fixtureRevision);document.querySelector("#benchmark-smart-mapping-model").value="judge/jev"');
+ await app.run("startSmartMapping()");
+ assert.match(app.run('document.querySelector("#benchmark-smart-mapping-status").textContent'),/draft; save pending or failed/);
+ assert.equal(app.run("benchmarkConfiguration.identities.length"),1);
+ let finish;
+ const stale=consoleFixture(()=>new Promise(resolve=>finish=resolve));
+ stale.context.config={providers:[],intelligence:{enabled:true}};
+ stale.run('applyConfig(config,fixtureRevision);document.querySelector("#benchmark-smart-mapping-model").value="judge/jev"');
+ const pending=stale.run("startSmartMapping()");await Promise.resolve();stale.run("consoleSession++");
+ finish(response({mappings:[{canonical_id:"p/new",provider_ids:["p/new"],source_ids:{source:["Gemma"]}}]}));await pending;
+ assert.equal(stale.run("benchmarkConfiguration.identities"),undefined);
+});
+
+test("model cards are safe external links with unknown cards left blank",()=>{
+ const app=consoleFixture(()=>response({}));
+ app.context.model={id:'p/model<bad>',model_card_url:"https://huggingface.co/google/gemma-3-4b-it"};
+ const markup=app.run("modelCardMarkup(model)");assert.match(markup,/rel="noopener noreferrer"/);assert.match(markup,/p\/model&lt;bad&gt;/);
+ for(const url of ["javascript:alert(1)","https://evil.example/card","https://user@huggingface.co/card",undefined]){app.context.model.model_card_url=url;assert.equal(app.run("modelCardMarkup(model)"),"—");}
+ app.run('physicalModels=[{id:"p/model",provider_id:"p",enabled:true,model_card_url:"https://huggingface.co/google/gemma-3-4b-it"}];renderModelsPage()');
+ assert.match(app.run('document.querySelector("#models-list").innerHTML'),/<th scope="col">Model Card<\/th>/);
+ assert.match(app.run('document.querySelector("#model-table-body").innerHTML'),/data-label="Model Card"/);
+});

@@ -10,6 +10,14 @@
     <link rel="stylesheet" href="/web/styles.css?v=18" />
   </head>
   <body>
+    <dialog id="benchmark-smart-mapping-dialog" aria-labelledby="benchmark-smart-mapping-title" aria-describedby="benchmark-smart-mapping-description benchmark-smart-mapping-warning">
+      <h1 id="benchmark-smart-mapping-title">Smart Mapping</h1>
+      <p id="benchmark-smart-mapping-description">Compare available provider models with cached benchmarks. Fuzzy search narrows the options, then your decision model confirms exact matches. Confirmed mappings are saved without replacing existing mappings.</p>
+      <p id="benchmark-smart-mapping-warning" class="notice">Warning: this check could make many requests to the decision model and incur costs on a paid provider.</p>
+      <label>Decision Model<select id="benchmark-smart-mapping-model"><option value="">Loading configured decision models…</option></select></label>
+      <p id="benchmark-smart-mapping-status" role="status" aria-live="polite"></p>
+      <div class="dialog-actions"><button id="benchmark-smart-mapping-start" type="button" class="button primary" disabled>Start</button><button id="benchmark-smart-mapping-close" type="button" class="button quiet">Close</button></div>
+    </dialog>
     <dialog id="benchmark-configuration" class="benchmark-overlay" aria-labelledby="benchmark-configuration-title"><h1 id="benchmark-configuration-title">Benchmark Sources · Configure Ingestion</h1>
               <div class="section-heading"><h2>Benchmark Sources</h2><button id="inspect-benchmarks" class="button quiet" type="button">Reload Cached Data</button></div>
               <div id="benchmark-sources-list" class="provider-list"></div>
@@ -165,6 +173,7 @@
           <section id="intelligence" class="page section-block">
             <div class="section-heading"><div><h1>Benchmark Intelligence</h1></div><div class="button-row benchmark-header-actions"><button id="benchmark-edit-data" aria-label="Edit Data" title="Edit Data" class="button quiet" type="button" aria-pressed="false"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m16 3 5 5-12 12H4v-5L16 3ZM13 6l5 5"/></svg><span class="action-label">Edit Data</span></button><button id="benchmark-upload" class="button quiet" type="button" aria-haspopup="dialog">Upload Data</button><button id="benchmark-configure" class="button quiet" type="button" aria-haspopup="dialog">Configure Ingestion</button><button id="refresh-benchmarks" class="button secondary" type="button">Refresh Benchmarks</button></div></div>
             <div class="check-row"><label class="checkbox" data-tooltip="Enable background benchmark ingestion and cached model intelligence. Automatic saves to apply this setting before refreshing benchmarks."><input id="intelligence-enabled" type="checkbox" /> Enable Benchmark Intelligence</label></div>
+            <div class="benchmark-mapping-actions"><button id="benchmark-smart-mapping" class="button secondary" type="button" aria-haspopup="dialog">Smart Mapping</button></div>
             <div id="benchmark-source-notice" class="notice" role="status"><span>◎</span><span id="benchmark-enable-notice">Benchmark intelligence is disabled. Enable it; wait for Saved before refreshing.</span></div>
             <section id="benchmark-refresh-panel" class="benchmark-refresh" aria-label="Benchmark refresh activity" hidden>
               <h2>Refresh Activity</h2><p id="benchmark-progress-label" role="status" aria-live="polite"></p>

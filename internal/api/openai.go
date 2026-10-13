@@ -56,6 +56,7 @@ type OpenAIHandler struct {
 	quota               *quota.Cache
 	observedQuotas      *quota.Cache
 	intelligence        *intelligence.Manager
+	smartMappingMu      sync.Mutex
 	latencyMu           sync.Mutex
 	latency             map[string]time.Duration
 	rerouteOnFailure    bool

@@ -60,6 +60,7 @@ type ManagedModel struct {
 	Quota            quota.Status        `json:"quota"`
 	Usage            []ModelUsage        `json:"usage"`
 	UsageAvailable   bool                `json:"usage_available"`
+	ModelCardURL     string              `json:"model_card_url,omitempty"`
 }
 
 // ModelUsage omits key identifiers and names from discovery metadata. Client
@@ -171,6 +172,7 @@ func (h *OpenAIHandler) ManagementModels(w http.ResponseWriter, r *http.Request)
 	usage, usageAvailable := h.modelUsage(r, true)
 	for _, d := range h.CatalogModels() {
 		m := ManagedModel{Descriptor: d, Enabled: h.enabled(d.PublicID), BenchmarkMissing: true, Quota: snapshots[d.PublicID], Usage: usage[d.PublicID], UsageAvailable: usageAvailable}
+		m.ModelCardURL = officialModelCard(d.UpstreamID)
 		if h.intelligence != nil {
 			if benchmark, ok := h.intelligence.Lookup(d.PublicID); ok {
 				benchmark.Observations = nil

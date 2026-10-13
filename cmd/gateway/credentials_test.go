@@ -177,7 +177,7 @@ func TestProviderUsesCurrentEncryptedCredentialAndSuppressesUpstreamErrorEcho(t 
 
 func TestBenchmarkMutationsRequireAdministrator(t *testing.T) {
 	r, _ := credentialRuntime(t)
-	for _, route := range []struct{ method, path string }{{"POST", "/gateway/v1/intelligence/import"}, {"PUT", "/gateway/v1/intelligence/observations/edit"}} {
+	for _, route := range []struct{ method, path string }{{"POST", "/gateway/v1/intelligence/import"}, {"PUT", "/gateway/v1/intelligence/observations/edit"}, {"POST", "/gateway/v1/intelligence/smart-mapping"}} {
 		req := httptest.NewRequest(route.method, route.path, strings.NewReader("invalid data"))
 		req.Header.Set("Authorization", "Bearer admin-sentinel")
 		w := httptest.NewRecorder()

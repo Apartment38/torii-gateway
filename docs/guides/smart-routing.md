@@ -15,6 +15,22 @@ metadata. No classifier is required for deterministic selection.
 If no eligible model exists, the request fails rather than ignoring a capability
 or policy restriction. Explicit `provider/model` requests bypass smart selection.
 
+## Create a named router
+
+Use additional routers when clients need different model pools or policies.
+
+1. Open **Smart routing** and select **Create router**.
+2. Enter a unique **Router Name**, for example `coding`; `smart` is reserved for
+   the default router.
+3. Choose its enabled providers/models and routing policy, then click **Save**.
+4. Refresh your client model list and request `coding` as the model name.
+
+Each router has its own classifier, policy, quota cache/local allowances and
+conversation affinity. Provider credentials, model enablement, client budgets
+and benchmark evidence are shared. A restricted router fails when no eligible
+model remains; it does not escape its pool. See
+[Additional smart routers](../reference/configuration.md#additional-smart-routers).
+
 ## Let Jev choose the model
 
 Jev receives the task prompt and chooses the cheapest model capable of completing
@@ -27,7 +43,7 @@ are excluded from chat routing pools.
 1. On **Providers**, connect **TypeSafe**, **OpenRouter**, or **Jev compatible**
    for a compatible decision server such as Laya.
 2. Supply a reachable URL and the service's key if required; test the connection.
-3. On **Smart routing**, select the discovered classifier model in Smart Routing.
+3. On **Smart routing**, select the router to configure and its discovered classifier model.
 4. Move models from **Available models** to **Enabled models** by double-clicking,
    or select them and press **Enable →**. Use **← Remove** to disable choices.
    Each router supports at most 250 models. An empty list allows all models from

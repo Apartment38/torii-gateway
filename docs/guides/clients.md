@@ -9,7 +9,7 @@ API key and a public model ID returned by `GET /v1/models`.
 | --- | --- |
 | Base URL | `http://127.0.0.1:8080/v1` |
 | API key | Your Torii gateway client key |
-| Model | A discovered ID such as `local/llama3.2`, or `smart` |
+| Model | A discovered ID such as `local/llama3.2`, `smart`, or a configured named router such as `coding` |
 
 Use your actual hostname/port for remote Torii, and HTTPS for remote authenticated
 traffic. A provider's URL/key belongs in Torii's settings, not in the client.
@@ -87,5 +87,5 @@ must send the context needed for the next request themselves.
 
 Tool/vision/structured-output support depends on verified model capabilities.
 For smart tool conversations, send a stable `X-Session-ID` on every turn and keep
-all tool-call/result IDs intact. See [Smart routing](smart-routing.md#keep-a-conversation-on-one-model).
+all tool-call/result IDs intact. See [Smart routing](smart-routing.md#keep-tool-calls-on-their-originating-model).
 Use `curl -i` to inspect request and routing headers when diagnosing selection.

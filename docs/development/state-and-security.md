@@ -74,8 +74,8 @@ online backup use SQLite's backup API or CLI `.backup`, not a live copy of the
 main file alone. Store the master-key backup separately with restricted access.
 Restore the database and original key together before restarting.
 
-The supported baseline is SQLite schema 4; the current schema is 9. Startup
-automatically adds settings, sessions, accounting and activity tables transactionally when opening
+The supported baseline is SQLite schema 4; the current schema is 10. Startup
+automatically adds settings, sessions, accounting, activity and password-reset tables transactionally when opening
 a schema-4 database, preserving existing credentials, admin, API key and state.
 No reset is required; legacy YAML settings require an explicit import before normal startup. Future schema upgrades run after
 master-key verification and commit one transactional step at a time.
@@ -93,8 +93,10 @@ Encryption protects stored credential payloads, not compromise of the running
 gateway: it must decrypt credentials for authentication and outbound requests.
 No persistent plaintext cache is introduced. Administrator passwords are hashed;
 passwords needed to authenticate to an upstream service belong in the encrypted
-store. Changing/resetting the administrator password, multi-user administration,
-Authentik integration and automated master-key rotation are not implemented.
+store. Administrator profile/password changes and email password reset are
+implemented; see [credential procedures](../guides/credentials.md). Multi-user
+administration, Authentik integration and automated master-key rotation are
+not implemented.
 Keep your administrator password in a password manager; do not delete system
 database records as a recovery shortcut. A lost inference API key can be replaced
 using the administrator login; a lost database master key cannot.
@@ -114,7 +116,9 @@ can extend this window; pending totals are retained with rate-limited
 `usage_flush_failed` warnings. Shutdown drains HTTP requests and attempts a final
 flush with a separate ten-second deadline. Failed final writes report
 `usage_shutdown_flush_failed`. This is routing accounting, not an audit-grade
-billing ledger. JSON and SSE also feed a separate durable reservation/settlement ledger. Budgets fail closed on storage errors; interrupted or unreported usage keeps conservative reservations. Activity retains metadata only, with bounded retention and storage.
+billing ledger. JSON and SSE also feed a separate durable reservation/settlement ledger. Budgets fail closed on storage errors; interrupted or unreported usage keeps conservative reservations. Activity retains metadata by default, with optional prompt/Jev body capture
+under the same bounded retention and storage limits; see
+[Activity configuration](../reference/configuration.md#activity-and-structured-logs).
 
 ## Maintaining future releases
 

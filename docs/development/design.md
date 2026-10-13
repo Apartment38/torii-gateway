@@ -36,7 +36,9 @@ provenance. Merge bundled → live authoritative → operator overrides. Gateway
 `model_pricing` supplies per-field manual rates across all router catalogs and
 classifier accounting. Provider free-model policy still forces zero effective cost.
 
-`router.catalog_file` is a strict JSON descriptor array. Its schema is
+`router.catalog_overrides` stores a strict descriptor array in SQLite settings.
+Legacy `router.catalog_file` is read only during explicit YAML import and embedded
+in that array. The descriptor schema is
 `catalog.Descriptor`: IDs/provider/upstream IDs, endpoints, capabilities,
 modalities, context window, pricing per million, general/tool/reasoning quality,
 locality, availability, provenance. Overrides must be supported by operator

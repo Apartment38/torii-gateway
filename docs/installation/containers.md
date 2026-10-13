@@ -149,6 +149,9 @@ mkdir -p config
 cp config.yaml config/config.yaml
 ```
 
-Review obsolete fields using [Configuration](../reference/configuration.md),
-set the container listener correctly, prepare ownership as above, and restart.
-Schemas 1–3 need the separate [baseline reset](../guides/backup-and-upgrade.md#one-time-baseline-reset).
+This copy preserves the old file; current Torii does not mount or load it at
+startup. Review obsolete fields using [Configuration](../reference/configuration.md),
+then follow [Legacy configuration import](../guides/backup-and-upgrade.md#legacy-configuration-import)
+to import it explicitly into SQLite before starting. External CA files still
+need readable mounts. Schemas 1–3 need the separate
+[baseline reset](../guides/backup-and-upgrade.md#one-time-baseline-reset).

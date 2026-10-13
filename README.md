@@ -67,8 +67,10 @@ export TORII_DB_KEY_FILE="$PWD/secrets/torii_db_key"
 
 Generate the master key only for a new installation. Back it up separately from
 `state/` and reuse it on every restart. Choose your administrator username and a
-password of at least 12 characters when prompted. Save the generated API key;
-it is shown once.
+password of at least 12 characters when prompted. You can also enter an optional
+recovery email. Save the generated API key; it is shown once. If started without
+an interactive terminal, Torii prints a 30-minute setup code instead; enter it
+in the web console to create the account.
 
 Open <http://127.0.0.1:8080/> and sign in. Add an Ollama provider named `local`
 with URL `http://127.0.0.1:11434` and confirm **Save provider**. In another terminal, replace the key
@@ -152,6 +154,7 @@ Your client's base URL is `http://127.0.0.1:8080/v1`.
 - [Full documentation](docs/README.md)
 - [Docker, Podman, native, and source installation](docs/installation/README.md)
 - [Features and limitations](docs/reference/features.md)
+- [Planned features and current boundaries](docs/reference/features.md#planned-features)
 
 ## Contribution and Development
 

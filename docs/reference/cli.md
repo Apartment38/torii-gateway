@@ -1,7 +1,6 @@
 # Command-line reference
 
-Examples assume the native binary is `./bin/gateway`. Containers use `/gateway`;
-the standalone remote login helper is `torii-auth`. Flags follow the command
+Examples assume the native binary is `./bin/gateway`. Containers use `/gateway`. Flags follow the command
 (and provider ID for `auth`). Errors print to stderr and exit nonzero; successful
 commands exit zero. A successful benchmark refresh may still report partial failure.
 
@@ -65,26 +64,3 @@ replacing wildcard hosts with loopback. `--url` takes an origin such as
 `https://gateway.example.com`, not the endpoint path. Intelligence must be enabled,
 the default gateway key must exist, and the running server must be reachable.
 Source partial failures appear in `partial_failure` even on exit zero.
-
-## Legacy remote login helper
-
-Normal console login uses a browser tab and one-time code, with no helper.
-See [Providers](../guides/providers.md). The helper remains available for API
-clients that explicitly request `login_method: "helper"` from the administrator
-login endpoint, as described in [API](api.md).
-
-For a returned pairing session, run the OS/architecture-matching helper on the
-computer with your browser. Both flags are required; use the returned session
-URL/token. For Linux amd64:
-
-```sh
-chmod +x ./torii-auth-linux-amd64
-./torii-auth-linux-amd64 --session-url 'https://gateway.example.com/gateway/v1/providers/login/session' \
-  --pairing-token 'ONE_TIME_PAIRING_TOKEN'
-```
-
-The helper receives the loopback callback, transfers the credential, and exits.
-Pairing expires after 10 minutes and is single use. Success prints
-`Codex login imported into Torii successfully.`; failure requires a new pairing
-session. Windows uses the matching `.exe`, without `chmod`. The helper needs
-no local gateway database/master key. `torii-auth version` prints build metadata.

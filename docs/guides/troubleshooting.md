@@ -27,7 +27,6 @@ never post provider keys, passwords, master keys, or unused setup codes.
 | Benchmark refresh rejected | Save enabled intelligence/sources, ensure stored default key exists, and check CLI URL | Refresh returns a summary |
 | Benchmark source fails/429 | Inspect source card; check credential, published schema, deadline, and rate-limit waits | Previous cache remains; retry later succeeds |
 | Benchmark score missing | Check dates, aliases, ambiguity, and declared scales; approximate matches are display-only | Inspect unmatched/observations API |
-| Downloaded helper endpoint unavailable | Rebuild an older container image; use helper matching host OS/architecture | Helper download works and pairing completes |
 
 For complete procedures, see [Installation](../installation/README.md),
 [Credentials](credentials.md), [Providers](providers.md), and

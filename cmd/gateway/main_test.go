@@ -587,7 +587,7 @@ providers:
 	}
 }
 
-func TestRemoteCodexLoginSessionImportsOnce(t *testing.T) {
+func TestRemovedLoginHelperIsUnavailable(t *testing.T) {
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "config.yaml")
 	configuration := `server:
@@ -607,6 +607,7 @@ providers:
 		t.Fatal(err)
 	}
 	runtime := &handlerRuntime{configPath: configPath, credentials: runtimeStateDB(t)}
+	cfg.Credentials = runtime.credentials
 	defer runtime.closeUsage()
 	if err := runtime.credentials.Put(state.GatewayAPIKeyID, state.Owner, "gateway", "authentication", []byte("test-management-key")); err != nil {
 		t.Fatal(err)
@@ -626,54 +627,28 @@ providers:
 	start.SetBasicAuth("test-admin", "test-admin-password")
 	started := httptest.NewRecorder()
 	handler.ServeHTTP(started, start)
-	if started.Code != http.StatusAccepted {
-		t.Fatalf("start status = %d, body = %s", started.Code, started.Body.String())
+	if started.Code != http.StatusBadRequest {
+		t.Fatalf("removed login method = %d %s", started.Code, started.Body.String())
 	}
-	var login providerLogin
-	if err := json.Unmarshal(started.Body.Bytes(), &login); err != nil {
-		t.Fatal(err)
+	for _, endpoint := range []struct{ method, path string }{
+		{http.MethodGet, "/gateway/v1/providers/login/session"},
+		{http.MethodPost, "/gateway/v1/providers/login/import"},
+		{http.MethodGet, "/gateway/v1/providers/login/helper/torii-auth-linux-amd64"},
+	} {
+		request := httptest.NewRequest(endpoint.method, endpoint.path, strings.NewReader(`{"access_token":"must-not-import"}`))
+		request.SetBasicAuth("test-admin", "test-admin-password")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("removed endpoint %s = %d %s", endpoint.path, response.Code, response.Body.String())
+		}
+		request.Header.Set("Authorization", "Bearer obsolete-pairing-token")
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("pairing token at %s = %d", endpoint.path, response.Code)
+		}
 	}
-	if login.HelperURL == "" || login.HelperToken == "" || login.ExpiresAt.IsZero() {
-		t.Fatalf("remote login response = %#v", login)
-	}
-
-	metadataRequest := httptest.NewRequest(http.MethodGet, "/gateway/v1/providers/login/session", nil)
-	metadataRequest.Header.Set("Authorization", "Bearer "+login.HelperToken)
-	metadata := httptest.NewRecorder()
-	handler.ServeHTTP(metadata, metadataRequest)
-	if metadata.Code != http.StatusOK || !strings.Contains(metadata.Body.String(), `"host_id":"urn:uuid:`) {
-		t.Fatalf("session metadata = %d %s", metadata.Code, metadata.Body.String())
-	}
-
-	importRequest := httptest.NewRequest(http.MethodPost, "/gateway/v1/providers/login/import", strings.NewReader(`{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_at":"2099-01-01T00:00:00Z","client_id":"oaiapp_test","id_token":"id-token","issuer":"https://auth.openai.com","host_id":"`+extractJSONField(metadata.Body.String(), "host_id")+`","scopes":["openid","chatgpt.tokens.use.direct"]}`))
-	importRequest.Header.Set("Authorization", "Bearer "+login.HelperToken)
-	importRequest.Header.Set("Content-Type", "application/json")
-	imported := httptest.NewRecorder()
-	handler.ServeHTTP(imported, importRequest)
-	if imported.Code != http.StatusOK {
-		t.Fatalf("import status = %d, body = %s", imported.Code, imported.Body.String())
-	}
-
-	replayed := httptest.NewRecorder()
-	handler.ServeHTTP(replayed, importRequest)
-	if replayed.Code != http.StatusUnauthorized {
-		t.Fatalf("replayed import status = %d, body = %s", replayed.Code, replayed.Body.String())
-	}
-	statusRequest := httptest.NewRequest(http.MethodGet, "/gateway/v1/providers/login?provider=openai-codex", nil)
-	statusRequest.SetBasicAuth("test-admin", "test-admin-password")
-	status := httptest.NewRecorder()
-	handler.ServeHTTP(status, statusRequest)
-	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"status":"success"`) || strings.Contains(status.Body.String(), login.HelperToken) {
-		t.Fatalf("login status = %d %s", status.Code, status.Body.String())
-	}
-}
-
-func extractJSONField(data, field string) string {
-	var values map[string]string
-	if json.Unmarshal([]byte(data), &values) != nil {
-		return ""
-	}
-	return values[field]
 }
 
 func TestBuildCompatibleProviderResolvesAndIsolatesCredentials(t *testing.T) {

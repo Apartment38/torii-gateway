@@ -4,11 +4,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -485,7 +482,6 @@ type handlerRuntime struct {
 	loginMu           sync.Mutex
 	logins            map[string]providerLogin
 	loginFlows        map[string]providerLoginFlow
-	loginSessions     map[string]providerLoginSession
 }
 
 type providerLogin struct {
@@ -493,24 +489,12 @@ type providerLogin struct {
 	Message         string    `json:"message,omitempty"`
 	VerificationURL string    `json:"verification_url,omitempty"`
 	UserCode        string    `json:"user_code,omitempty"`
-	HelperURL       string    `json:"helper_url,omitempty"`
-	HelperToken     string    `json:"helper_token,omitempty"`
 	ExpiresAt       time.Time `json:"expires_at,omitempty"`
 }
 
 type providerLoginFlow struct {
 	Authorization provider.PKCEAuthorization
 	Provider      config.ProviderConfig
-}
-
-type providerLoginSession struct {
-	TokenHash string
-	Provider  config.ProviderConfig
-	HostID    string
-	ClientID  string
-	IDToken   string
-	ExpiresAt time.Time
-	Used      bool
 }
 
 func (r *handlerRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -839,9 +823,6 @@ func buildHandlerWithRuntime(cfg *config.Config, configPath string, runtime *han
 		protect("GET /gateway/v1/providers/login", runtime.providerLoginStatus)
 		protect("/gateway/v1/credentials", runtime.credentialAPI)
 		protect("/gateway/v1/credentials/", runtime.credentialAPI)
-		mux.HandleFunc("GET /gateway/v1/providers/login/session", runtime.providerLoginSession)
-		mux.HandleFunc("POST /gateway/v1/providers/login/import", runtime.importProviderLogin)
-		protect("GET /gateway/v1/providers/login/helper/{asset}", runtime.downloadLoginHelper)
 		mux.HandleFunc("GET /gateway/v1/providers/login/callback", runtime.providerLoginCallback)
 		mux.HandleFunc("GET /auth/callback", runtime.providerLoginCallback)
 	}
@@ -1215,10 +1196,6 @@ func (r *handlerRuntime) startProviderLogin(w http.ResponseWriter, req *http.Req
 			writeConfigError(w, http.StatusServiceUnavailable, errors.New("Codex login requires the application database"))
 			return
 		}
-		if request.LoginMethod == "helper" {
-			r.startRemoteCodexLogin(w, req, providerConfig)
-			return
-		}
 		if request.LoginMethod != "" && request.LoginMethod != "device" {
 			writeConfigError(w, http.StatusBadRequest, errors.New("unsupported Codex login method"))
 			return
@@ -1277,19 +1254,13 @@ func (r *handlerRuntime) startDeviceCodexLogin(w http.ResponseWriter, cfg config
 	if r.logins == nil {
 		r.logins = make(map[string]providerLogin)
 	}
-	if existing, ok := r.logins[cfg.ID]; ok && existing.Status == "pending" && existing.HelperURL == "" && !existing.ExpiresAt.IsZero() {
+	if existing, ok := r.logins[cfg.ID]; ok && existing.Status == "pending" && !existing.ExpiresAt.IsZero() {
 		r.loginMu.Unlock()
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusAccepted, existing)
 		return
 	}
-	// A browser-only request replaces legacy helper/loopback sessions. Their
-	// old callbacks and pairing tokens must no longer be able to import a login.
-	for key, session := range r.loginSessions {
-		if session.Provider.ID == cfg.ID {
-			delete(r.loginSessions, key)
-		}
-	}
+	// Device authorization replaces any pending local PKCE callback.
 	for key, flow := range r.loginFlows {
 		if flow.Provider.ID == cfg.ID {
 			delete(r.loginFlows, key)
@@ -1303,166 +1274,6 @@ func (r *handlerRuntime) startDeviceCodexLogin(w http.ResponseWriter, cfg config
 	go r.completeProviderLogin(cfg)
 }
 
-// Explicit legacy helper sessions remain available for older clients.
-func (r *handlerRuntime) startRemoteCodexLogin(w http.ResponseWriter, req *http.Request, providerConfig config.ProviderConfig) {
-	r.loginMu.Lock()
-	existing, pending := r.logins[providerConfig.ID]
-	r.loginMu.Unlock()
-	if pending && existing.Status == "pending" && existing.HelperURL == "" && !existing.ExpiresAt.IsZero() {
-		writeConfigError(w, http.StatusConflict, errors.New("browser authorization is already pending for this provider"))
-		return
-	}
-	hostID, err := r.credentials.CodexHostID(req.Context())
-	if err != nil {
-		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("prepare Codex host identity: %w", err))
-		return
-	}
-	clientID, idToken := "dynamic_agent_client", ""
-	token, tokenHash, err := newLoginPairingToken()
-	if err != nil {
-		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("create Codex login session: %w", err))
-		return
-	}
-	expiresAt := time.Now().Add(10 * time.Minute)
-	r.loginMu.Lock()
-	if r.logins == nil {
-		r.logins = make(map[string]providerLogin)
-	}
-	if r.loginSessions == nil {
-		r.loginSessions = make(map[string]providerLoginSession)
-	}
-	if existing, ok := r.logins[providerConfig.ID]; ok && existing.Status == "pending" && existing.HelperURL != "" && existing.ExpiresAt.After(time.Now()) {
-		r.loginMu.Unlock()
-		writeJSON(w, http.StatusAccepted, existing)
-		return
-	}
-	r.loginSessions[tokenHash] = providerLoginSession{TokenHash: tokenHash, Provider: providerConfig, HostID: hostID, ClientID: clientID, IDToken: idToken, ExpiresAt: expiresAt}
-	status := providerLogin{Status: "pending", Message: "Run the Torii Auth Helper on the computer with your browser", HelperURL: providerLoginSessionURL(req), HelperToken: token, ExpiresAt: expiresAt}
-	r.logins[providerConfig.ID] = status
-	r.loginMu.Unlock()
-	writeJSON(w, http.StatusAccepted, status)
-}
-
-func (r *handlerRuntime) providerLoginSession(w http.ResponseWriter, req *http.Request) {
-	session, ok := r.findLoginSession(req)
-	if !ok {
-		writeConfigError(w, http.StatusUnauthorized, errors.New("Codex login session is invalid or expired"))
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]string{"provider_id": session.Provider.ID, "issuer": "https://auth.openai.com", "client_id": session.ClientID, "host_id": session.HostID})
-}
-
-func (r *handlerRuntime) downloadLoginHelper(w http.ResponseWriter, req *http.Request) {
-	asset := req.PathValue("asset")
-	allowed := map[string]string{
-		"torii-auth-linux-amd64":       "torii-auth-linux-amd64",
-		"torii-auth-linux-arm64":       "torii-auth-linux-arm64",
-		"torii-auth-darwin-amd64":      "torii-auth-darwin-amd64",
-		"torii-auth-darwin-arm64":      "torii-auth-darwin-arm64",
-		"torii-auth-windows-amd64.exe": "torii-auth-windows-amd64.exe",
-	}
-	filename, ok := allowed[asset]
-	if !ok {
-		http.NotFound(w, req)
-		return
-	}
-	path := filepath.Join("/helpers", filename)
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		http.Error(w, "This container image does not include the login helper; rebuild the image with the current Dockerfile.", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Unable to read the login helper.", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(data)
-}
-
-func (r *handlerRuntime) importProviderLogin(w http.ResponseWriter, req *http.Request) {
-	session, ok := r.findLoginSession(req)
-	if !ok {
-		writeConfigError(w, http.StatusUnauthorized, errors.New("Codex login session is invalid or expired"))
-		return
-	}
-	var imported struct {
-		AccessToken  string    `json:"access_token"`
-		RefreshToken string    `json:"refresh_token"`
-		TokenType    string    `json:"token_type"`
-		ExpiresAt    time.Time `json:"expires_at"`
-		AccountID    string    `json:"account_id"`
-		ClientID     string    `json:"client_id"`
-		IDToken      string    `json:"id_token"`
-		Issuer       string    `json:"issuer"`
-		Subject      string    `json:"subject"`
-		Email        string    `json:"email"`
-		HostID       string    `json:"host_id"`
-		Scopes       []string  `json:"scopes"`
-	}
-	if err := json.NewDecoder(io.LimitReader(req.Body, 1<<20)).Decode(&imported); err != nil {
-		writeConfigError(w, http.StatusBadRequest, errors.New("invalid Codex credential document (input omitted for credential safety)"))
-		return
-	}
-	if imported.AccessToken == "" || imported.RefreshToken == "" || imported.ClientID == "" || imported.HostID == "" {
-		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential is missing required fields"))
-		return
-	}
-	if !containsScope(imported.Scopes, "chatgpt.tokens.use.direct") {
-		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not include ChatGPT plan usage permission"))
-		return
-	}
-	if imported.HostID != session.HostID || (session.ClientID != "dynamic_agent_client" && imported.ClientID != session.ClientID) {
-		writeConfigError(w, http.StatusBadRequest, errors.New("Codex credential does not match this login session"))
-		return
-	}
-	store, err := r.oauthStore()
-	if err == nil {
-		err = store.Save(session.Provider.ID, &state.Credential{AccessToken: imported.AccessToken, RefreshToken: imported.RefreshToken, TokenType: imported.TokenType, ExpiresAt: imported.ExpiresAt, AccountID: imported.AccountID, Endpoint: session.Provider.BaseURL, ClientID: imported.ClientID, IDToken: imported.IDToken, Issuer: imported.Issuer, Subject: imported.Subject, Email: imported.Email, HostID: imported.HostID, Scopes: imported.Scopes})
-	}
-	if err != nil {
-		writeConfigError(w, http.StatusInternalServerError, fmt.Errorf("save Codex credential: %w", err))
-		return
-	}
-	r.loginMu.Lock()
-	if current, exists := r.loginSessions[session.TokenHash]; exists {
-		current.Used = true
-		r.loginSessions[session.TokenHash] = current
-	}
-	r.loginMu.Unlock()
-	r.setLoginSuccess(session.Provider.ID)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "imported", "provider_id": session.Provider.ID})
-}
-
-func (r *handlerRuntime) findLoginSession(req *http.Request) (providerLoginSession, bool) {
-	token := strings.TrimSpace(strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "))
-	if token == "" {
-		return providerLoginSession{}, false
-	}
-	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
-	r.loginMu.Lock()
-	defer r.loginMu.Unlock()
-	session, ok := r.loginSessions[tokenHash]
-	if !ok || session.Used || !session.ExpiresAt.After(time.Now()) {
-		return providerLoginSession{}, false
-	}
-	return session, true
-}
-
-func newLoginPairingToken() (string, string, error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", "", err
-	}
-	token := hex.EncodeToString(raw)
-	hash := sha256.Sum256([]byte(token))
-	return token, hex.EncodeToString(hash[:]), nil
-}
-
 func containsScope(scopes []string, wanted string) bool {
 	for _, scope := range scopes {
 		if scope == wanted {
@@ -1470,17 +1281,6 @@ func containsScope(scopes []string, wanted string) bool {
 		}
 	}
 	return false
-}
-
-func providerLoginSessionURL(req *http.Request) string {
-	scheme := req.Header.Get("X-Forwarded-Proto")
-	if scheme == "" {
-		scheme = "http"
-		if req.TLS != nil {
-			scheme = "https"
-		}
-	}
-	return (&url.URL{Scheme: scheme, Host: req.Host, Path: "/gateway/v1/providers/login/session"}).String()
 }
 
 func isLoopbackRequest(req *http.Request) bool {
@@ -1505,7 +1305,6 @@ func (r *handlerRuntime) providerLoginStatus(w http.ResponseWriter, req *http.Re
 		writeJSON(w, http.StatusNotFound, map[string]string{"status": "not_started"})
 		return
 	}
-	status.HelperToken = ""
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, status)
 }

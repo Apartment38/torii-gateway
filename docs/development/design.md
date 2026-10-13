@@ -156,8 +156,8 @@ Console Codex subscription login uses server-side device authorization. The
 browser receives only a verification URL, one-time code and status; OAuth
 credentials remain on the gateway and retain their account/client/issuer context
 in encrypted SQLite. Browser tabs open during the login click, with a visible
-link when popup opening is blocked. The optional legacy helper API requires an
-explicit login method; console login does not require a helper or loopback listener.
+link when popup opening is blocked. Console login uses device authorization
+without a loopback listener.
 
 
 ## Console design language

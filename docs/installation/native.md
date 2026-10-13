@@ -8,7 +8,7 @@ you to the provider setup tutorial. You need a built gateway from
 
 Open the [repository releases](https://github.com/Apartment38/torii-gateway/releases).
 If a release is available, download the `torii-gateway-OS-ARCH` binary
-(`.exe` on Windows), `SHA256SUMS`, and optionally `torii-auth-OS-ARCH`.
+(`.exe` on Windows) and `SHA256SUMS`.
 Choose the architecture of your computer, verify the downloaded binary's hash
 against the release checksums, and retain its release notes. If assets are not
 available, build from source. Examples below call the gateway `./bin/gateway`.
